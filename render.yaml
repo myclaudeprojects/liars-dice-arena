@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: liars-dice-arena
+    runtime: node
+    plan: starter
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ANTE
+        value: "5"
+      - key: BET_WINDOW_MS
+        value: "30000"
+      - key: TURN_DELAY_MS
+        value: "1600"
+      - key: STATS_PATH
+        value: /var/data/stats.json
+      - key: REGISTRY_PATH
+        value: /var/data/agents.json
+      # Set these in the Render dashboard (never commit them):
+      # USE_LLM, ANTHROPIC_API_KEY, OPENAI_API_KEY
+      # CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET, CIRCLE_BLOCKCHAIN
+    disk:
+      name: arena-data
+      mountPath: /var/data
+      sizeGB: 1

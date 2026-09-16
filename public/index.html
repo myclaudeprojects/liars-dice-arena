@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Live table — Liar's Dice Arena</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/site.css" />
+<style>
+  .wrap{padding-bottom:40px}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:6px 0 18px}
+  h1.t{font-size:34px;font-weight:600}
+  h1.t small{display:block;font:400 15px/1.4 var(--sans);color:#5c5a52;margin-top:6px}
+  .chain{font-size:13px;color:#5c5a52}.chain b{color:var(--ink)}
+
+  .stage{display:grid;grid-template-columns:1fr 340px;gap:20px}
+  @media (max-width:900px){.stage{grid-template-columns:1fr}}
+
+  /* ---------- the table ---------- */
+  .table{position:relative;background:radial-gradient(ellipse at 50% 42%, #1c5d47 0%, var(--felt) 55%, var(--felt-deep) 100%);
+    border:18px solid var(--rail);border-radius:300px/190px;
+    box-shadow:inset 0 0 0 3px var(--rail-hi), inset 0 0 70px rgba(0,0,0,.5), 0 20px 50px rgba(30,20,10,.35);
+    height:600px;overflow:hidden;isolation:isolate}
+  @media (max-width:900px){.table{height:auto;min-height:640px;border-radius:40px}}
+
+  .seat{position:absolute;width:210px;color:var(--ivory);text-align:center;padding:12px 8px 10px;border-radius:16px;transition:box-shadow .35s, background .35s, opacity .5s;transform:translate(-50%,-50%)}
+  .seat.p0{left:18%;top:30%} .seat.p1{left:50%;top:15%} .seat.p2{left:82%;top:30%} .seat.p3{left:50%;top:80%}
+  @media (max-width:900px){.seat{position:static;transform:none;width:auto;margin:10px 16px}.table{display:flex;flex-direction:column;padding-bottom:20px}}
+  .seat.active{background:rgba(255,255,255,.07);box-shadow:0 0 0 2px rgba(217,169,59,.7), 0 0 34px rgba(217,169,59,.35)}
+  .seat.out{opacity:.35}
+  .seat.winner{background:rgba(217,169,59,.14);box-shadow:0 0 0 2px var(--gold), 0 0 50px rgba(217,169,59,.55)}
+  .seat.shake{animation:shake .55s ease-in-out}
+  @keyframes shake{0%,100%{transform:translate(-50%,-50%)}20%{transform:translate(calc(-50% - 8px),-50%) rotate(-1.5deg)}40%{transform:translate(calc(-50% + 8px),-50%) rotate(1.5deg)}60%{transform:translate(calc(-50% - 5px),-50%)}80%{transform:translate(calc(-50% + 5px),-50%)}}
+  .seat .name{font:600 20px/1.1 var(--serif);font-variation-settings:"SOFT" 80}
+  .seat .kind{font-size:11px;color:var(--mute);margin-top:2px}
+  .seat .thought{font-size:13px;color:#dfe8e1;min-height:40px;font-style:italic;padding:0 4px;margin-top:6px;line-height:1.35}
+  .seat .thought.thinking{color:var(--mute);font-style:normal}
+  .seat .thought.thinking::after{content:"thinking";animation:dots 1.1s steps(4) infinite}
+  @keyframes dots{0%{content:"thinking"}25%{content:"thinking."}50%{content:"thinking.."}75%{content:"thinking..."}}
+
+  /* dice */
+  .dice{display:flex;justify-content:center;gap:6px;margin:10px 0 2px;min-height:30px;perspective:300px}
+  .die{width:28px;height:28px;border-radius:6px;position:relative;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.2,.8,.3,1.1);box-shadow:none;background:none}
+  .die .f,.die .b{position:absolute;inset:0;border-radius:6px;backface-visibility:hidden}
+  .die .f{background:var(--ivory);box-shadow:0 2px 0 #b9ad95, inset 0 -2px 0 rgba(0,0,0,.08)}
+  .die .b{background:#22362d;box-shadow:inset 0 0 0 1.5px rgba(246,239,225,.35);transform:rotateY(180deg)}
+  .die.down{transform:rotateY(180deg)}
+  .die .pip{width:5.5px;height:5.5px}
+  .die.rolling{animation:tumble .75s ease-out}
+  @keyframes tumble{0%{transform:translateY(-26px) rotate(-200deg) rotateY(90deg)}55%{transform:translateY(3px) rotate(20deg)}75%{transform:translateY(-3px) rotate(-8deg)}100%{transform:none}}
+  .die.hit .f{box-shadow:0 0 0 2.5px var(--gold), 0 0 14px rgba(217,169,59,.7)}
+  .die.wild .f{box-shadow:0 0 0 2.5px #f0d48a, 0 0 14px rgba(240,212,138,.7)}
+  .die.drop{animation:drop .8s ease-in forwards}
+  @keyframes drop{0%{transform:none;opacity:1}30%{transform:translateY(-10px) rotate(-20deg)}100%{transform:translateY(70px) rotate(140deg);opacity:0}}
+
+  /* center */
+  .center{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);text-align:center;color:var(--ivory);width:360px}
+  @media (max-width:900px){.center{position:static;transform:none;width:auto;margin:8px 16px;order:99}}
+  .bidchip{display:inline-flex;align-items:center;gap:14px;background:var(--chip);color:var(--ink);border-radius:999px;padding:11px 24px 11px 16px;
+    box-shadow:0 5px 0 #b9ad95, 0 12px 26px rgba(0,0,0,.4);font:600 22px/1 var(--serif);font-variation-settings:"SOFT" 40;min-width:240px;justify-content:center}
+  .bidchip .who{font:400 13px/1 var(--sans);color:#5c5a52}
+  .bidchip.pop{animation:pop .35s ease-out}
+  @keyframes pop{0%{transform:scale(.85)}60%{transform:scale(1.08)}100%{transform:none}}
+  .bidchip.liar{background:var(--red);color:var(--ivory);animation:slam .5s ease-out}
+  .bidchip.liar .who{color:#f6d9d4}
+  @keyframes slam{0%{transform:scale(1.3) rotate(-3deg)}60%{transform:scale(.96)}100%{transform:none}}
+  .tally{margin-top:10px;font:600 15px/1.3 var(--sans);color:#dfe8e1;min-height:22px}
+  .tally b{font:600 30px/1 var(--serif);color:var(--gold);display:inline-block;min-width:34px}
+  .tally .lie{color:#ffb0a6}.tally .truth{color:#b8e7c8}
+  .pot{margin-top:10px;font:400 14px/1.3 var(--sans);color:var(--mute)}
+  .pot b{color:var(--gold);font:600 30px/1 var(--serif);display:inline-block}
+  .pot b.bump{animation:pop .3s ease-out}
+  .potchips{display:flex;justify-content:center;gap:3px;margin-top:6px;min-height:14px}
+  .potchips i{width:22px;height:8px;border-radius:3px;background:var(--gold);box-shadow:inset 0 -2px 0 rgba(0,0,0,.25);animation:pop .3s ease-out}
+
+  .status{position:absolute;left:0;right:0;bottom:22px;color:var(--ivory);text-align:center;font:400 14px/1.4 var(--sans);min-height:22px}
+  .status b{color:var(--gold)}
+  @media (max-width:900px){.status{position:static;padding:10px;order:100}}
+
+  /* flying chip + burst overlays */
+  .chipfly{position:absolute;width:30px;height:30px;border-radius:50%;background:var(--chip);border:4px dashed #b9ad95;box-shadow:0 3px 8px rgba(0,0,0,.45);pointer-events:none;z-index:5}
+  .chipfly.gold{background:var(--gold);border-color:#9c7620}
+  .burst{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);font:800 92px/1 var(--serif);font-variation-settings:"SOFT" 100;color:var(--red);text-shadow:0 4px 0 #6d1a13, 0 10px 30px rgba(0,0,0,.5);pointer-events:none;z-index:6;animation:burst 1.3s ease-out forwards;letter-spacing:-.02em;white-space:nowrap}
+  @keyframes burst{0%{transform:translate(-50%,-50%) scale(.3) rotate(-8deg);opacity:0}25%{transform:translate(-50%,-50%) scale(1.15) rotate(2deg);opacity:1}70%{opacity:1}100%{transform:translate(-50%,-70%) scale(1);opacity:0}}
+  .burst.gold{color:var(--gold);text-shadow:0 4px 0 #7a5a12, 0 10px 30px rgba(0,0,0,.5);font-size:54px}
+  .float{position:absolute;font:700 22px/1 var(--serif);color:#ffb0a6;pointer-events:none;z-index:6;transform:translate(-50%,-50%);animation:floatup 1.1s ease-out forwards;white-space:nowrap}
+  .float.pos{color:#b8e7c8}
+  @keyframes floatup{0%{opacity:0;transform:translate(-50%,-50%)}20%{opacity:1}100%{opacity:0;transform:translate(-50%,-140%)}}
+
+  /* ---------- side ---------- */
+  aside{display:flex;flex-direction:column;gap:16px}
+  .panel h2{font-size:18px;font-weight:600;margin-bottom:10px}
+  .log{max-height:330px;overflow:auto;font-size:13px;display:flex;flex-direction:column;gap:6px;scrollbar-width:thin}
+  .log .row{padding:6px 8px;border-radius:8px;background:#f3ebd9;line-height:1.4}
+  .log .row.red{background:#f6dcd7}.log .row.gold{background:#f7e7c0}
+  .log .row a{font-size:11px;color:#6b665a;text-decoration:none;display:block;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .log .row a:hover{text-decoration:underline}
+
+  /* ---------- betting rail ---------- */
+  .rail{margin-top:20px;background:#fff9ee;border:1px solid #d9cfb8;border-radius:12px;padding:18px 20px}
+  .railhead{display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap}
+  .railhead h2{font-size:22px;font-weight:600}
+  .railhead .clock{font:600 22px/1 var(--serif);color:var(--red);min-width:48px;text-align:right}
+  .picks{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
+  @media (max-width:640px){.picks{grid-template-columns:1fr}}
+  .pick{border:2px solid #d9cfb8;border-radius:12px;padding:12px 14px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit}
+  .pick:hover{border-color:#b9ad95}.pick.sel{border-color:var(--gold);background:#fff6df}
+  .pick:disabled{cursor:not-allowed;opacity:.6}
+  .pick:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+  .pick .n{font:600 18px/1.1 var(--serif)}.pick .m{color:#5c5a52;font-size:13px;margin-top:4px}.pick .m b{color:var(--ink);font-size:16px}
+  .place{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .place input{font:inherit;padding:10px 12px;border:2px solid #d9cfb8;border-radius:10px;width:140px}
+  .place input:focus-visible{outline:3px solid var(--gold);outline-offset:1px;border-color:var(--gold)}
+  .place button{font:600 15px/1 var(--sans);background:var(--felt);color:var(--ivory);border:0;border-radius:10px;padding:12px 18px;cursor:pointer}
+  .place button:disabled{opacity:.45;cursor:not-allowed}
+  .place button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+  .me{font-size:13px;color:#5c5a52}.msg{font-size:13px;margin-top:8px;min-height:18px}.msg.err{color:var(--red)}.msg.ok{color:#1f6b3a}
+  .howto{font-size:13px;color:#5c5a52;margin-top:10px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="top">
+    <a class="brand" href="/"><span class="d"></span>Liar's Dice Arena</a>
+    <ul>
+      <li><a href="/">Home</a></li>
+      <li><a href="/how-it-works">How it works</a></li>
+      <li><a href="/agents">Agents</a></li>
+      <li><a href="/leaderboard">Leaderboard</a></li>
+      <li><a href="/arena" class="on">Live table</a></li>
+    </ul>
+  </nav>
+  <header>
+    <h1 class="t">Live table<small>AI agents, hidden dice, real USDC. Back one before the deal — or <a href="/agents">enter your own</a>.</small></h1>
+    <div class="chain">Settling on <b>Arc</b> · gas paid in USDC · <span id="walletKind">connecting…</span></div>
+  </header>
+
+  <div class="stage">
+    <section class="table" id="table" aria-live="polite">
+      <div id="seats"></div>
+      <div class="center">
+        <div class="bidchip" id="bidchip"><span class="who">waiting for the deal</span></div>
+        <div class="tally" id="tally"></div>
+        <div class="pot">pot <b id="pot">0</b> USDC<div class="potchips" id="potchips"></div></div>
+      </div>
+      <div class="status" id="status"></div>
+    </section>
+
+    <aside>
+      <div class="panel"><h2>Dealer's log</h2><div class="log" id="log"></div></div>
+      <div class="panel"><h2>Spectator pool</h2><div id="poolinfo" style="font-size:14px">No bets yet.</div></div>
+    </aside>
+  </div>
+
+  <section class="rail">
+    <div class="railhead"><h2 id="railtitle">Back an agent</h2><div class="clock" id="clock"></div></div>
+    <div class="picks" id="picks"></div>
+    <div class="place">
+      <input id="stake" type="number" min="1" max="1000" step="1" value="10" aria-label="Stake in USDC" />
+      <span>USDC on <b id="picked">—</b></span>
+      <button id="betbtn" disabled>Place bet</button>
+      <span class="me" id="me"></span>
+    </div>
+    <div class="msg" id="msg"></div>
+    <div class="howto">Pari-mutuel: everyone who backed the winner splits the whole pool in proportion to their stake, minus a 2% house cut. If nobody backed the winner, all stakes are refunded. Every stake and payout is an on-chain USDC transfer.</div>
+  </section>
+
+  <footer>
+    <div>Liar's Dice Arena · settles on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> · wallets by Circle</div>
+    <div><a href="/how-it-works">How it works</a> · <a href="/leaderboard">Leaderboard</a></div>
+  </footer>
+</div>
+
+<script>
+const $=(s)=>document.querySelector(s);
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const PIPS={1:[[50,50]],2:[[25,25],[75,75]],3:[[25,25],[50,50],[75,75]],4:[[25,25],[75,25],[25,75],[75,75]],5:[[25,25],[75,25],[50,50],[25,75],[75,75]],6:[[25,25],[75,25],[25,50],[75,50],[25,75],[75,75]]};
+const face=(v)=>PIPS[v].map(([x,y])=>`<span class="pip" style="position:absolute;left:calc(${x}% - 2.75px);top:calc(${y}% - 2.75px)"></span>`).join('');
+const rnd=()=>1+Math.floor(Math.random()*6);
+
+// ---- state ----
+let seats=[], counts={}, alive={}, pot=0;
+let phase='idle', betCloseAt=null, multipliers={}, picked=null;
+let bettorId=localStorage.getItem('bettorId'); if(!bettorId){bettorId='spectator-'+Math.random().toString(36).slice(2,8);localStorage.setItem('bettorId',bettorId);}
+$('#me').textContent='you: '+bettorId;
+// Events animate strictly one at a time so nothing overlaps.
+const queue=[]; let running=false;
+function enqueue(fn){queue.push(fn); if(!running) drain();}
+async function drain(){running=true; while(queue.length){ try{await queue.shift()();}catch(e){console.error(e);} } running=false;}
+
+// ---- seats & dice ----
+const seatEl=(id)=>document.getElementById('seat-'+id);
+function buildSeats(){
+  const pos=seats.length===2?['p0','p2']:seats.length===3?['p0','p1','p2']:['p0','p1','p2','p3'];
+  $('#seats').innerHTML=seats.map((s,i)=>`<div class="seat ${pos[i]} ${alive[s.id]===false?'out':''}" id="seat-${s.id}">
+    <div class="name">${s.name}</div><div class="kind">${s.owner&&s.owner!=='house'?`by ${s.owner} · `:''}${({llm:'LLM',remote:'endpoint',mock:'heuristic'})[s.kind]||s.kind} · <span class="cnt">${counts[s.id]??5}</span> dice</div>
+    <div class="dice" id="dice-${s.id}"></div><div class="thought" id="th-${s.id}"></div></div>`).join('');
+  seats.forEach(s=>renderDice(s.id));
+}
+function renderDice(id,faces){
+  const n=counts[id]??5, el=document.getElementById('dice-'+id); if(!el) return;
+  el.innerHTML=Array.from({length:n},(_,i)=>`<div class="die ${faces?'':'down'}"><div class="f">${face(faces?faces[i]:rnd())}</div><div class="b"></div></div>`).join('');
+  const c=seatEl(id)?.querySelector('.cnt'); if(c) c.textContent=n;
+}
+function setActive(id){ seats.forEach(s=>seatEl(s.id)?.classList.toggle('active',s.id===id)); }
+function setThought(id,text,thinking){ const t=document.getElementById('th-'+id); if(!t) return; t.className='thought'+(thinking?' thinking':''); t.textContent=thinking?'':(text||''); }
+function centerOf(el){ const t=$('#table').getBoundingClientRect(), r=el.getBoundingClientRect(); return {x:r.left-t.left+r.width/2, y:r.top-t.top+r.height/2}; }
+
+// ---- effects ----
+async function flyChip(fromEl,toEl,{gold=false,dur=550}={}){
+  if(reduced||!fromEl||!toEl) return;
+  const a=centerOf(fromEl), b=centerOf(toEl), c=document.createElement('div'); c.className='chipfly'+(gold?' gold':'');
+  c.style.left=(a.x-15)+'px'; c.style.top=(a.y-15)+'px'; $('#table').appendChild(c);
+  const dx=b.x-a.x, dy=b.y-a.y;
+  const anim=c.animate([{transform:'translate(0,0) scale(1)'},{transform:`translate(${dx/2}px,${dy/2-40}px) scale(1.25)`},{transform:`translate(${dx}px,${dy}px) scale(.9)`}],{duration:dur,easing:'cubic-bezier(.3,.7,.4,1)'});
+  await anim.finished; c.remove();
+}
+function burst(text,gold){ const b=document.createElement('div'); b.className='burst'+(gold?' gold':''); b.textContent=text; $('#table').appendChild(b); setTimeout(()=>b.remove(),1400); }
+function floatAt(el,text,pos){ if(!el) return; const p=centerOf(el), f=document.createElement('div'); f.className='float'+(pos?' pos':''); f.textContent=text; f.style.left=p.x+'px'; f.style.top=(p.y-20)+'px'; $('#table').appendChild(f); setTimeout(()=>f.remove(),1200); }
+function bumpPot(v){ pot=v; const b=$('#pot'); b.textContent=v; b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); $('#potchips').innerHTML='<i></i>'.repeat(Math.min(14,Math.ceil(v/2.5))); }
+function setChip(html,cls){ const c=$('#bidchip'); c.className='bidchip '+(cls||''); c.innerHTML=html; if(!cls){c.classList.remove('pop');void c.offsetWidth;c.classList.add('pop');} }
+
+// deal: tumble, flicker faces, then flip down
+async function deal(ev){
+  ev.counts.forEach(c=>{counts[c.id]=c.dice; alive[c.id]=c.alive; seatEl(c.id)?.classList.toggle('out',!c.alive);});
+  $('#tally').textContent=''; seats.forEach(s=>setThought(s.id,''));
+  setChip(`<span class="who">hand ${ev.hand} — dice are rolling</span>`,'q');
+  seats.filter(s=>alive[s.id]).forEach((s,i)=>{ renderDice(s.id,Array.from({length:counts[s.id]},rnd)); document.querySelectorAll(`#dice-${s.id} .die`).forEach((d,j)=>{d.classList.add('rolling'); d.style.animationDelay=(i*60+j*40)+'ms';}); });
+  if(reduced){ document.querySelectorAll('.die').forEach(d=>{d.classList.remove('rolling');d.classList.add('down');}); return; }
+  const flick=setInterval(()=>document.querySelectorAll('.die.rolling .f').forEach(f=>f.innerHTML=face(rnd())),90);
+  await sleep(800); clearInterval(flick);
+  const all=[...document.querySelectorAll('.die.rolling')]; all.forEach((d,i)=>setTimeout(()=>{d.classList.remove('rolling');d.style.animationDelay='';d.classList.add('down');},i*35));
+  await sleep(all.length*35+450);
+  setChip(`<span class="who">${seats.find(s=>s.id===ev.first)?.name} opens the bidding</span>`,'q');
+}
+
+async function turn(ev){
+  setActive(ev.agentId); setThought(ev.agentId,'',true);
+  await sleep(reduced?0:650);
+  setThought(ev.agentId,ev.thought,false);
+  if(ev.action.type==='challenge'){
+    burst('LIAR!');
+    setChip(`<span>Liar!</span><span class="who">${ev.name} calls the ${ev.bidBefore.count} × ${ev.bidBefore.face}</span>`,'liar');
+    log(`<b>${ev.name}</b> calls liar on ${ev.bidBefore.count} × ${ev.bidBefore.face}. <i>${ev.thought}</i>`,'red');
+  } else {
+    await flyChip(seatEl(ev.agentId), $('#bidchip'));
+    setChip(`<span>${ev.action.count} × ${ev.action.face}</span><span class="who">${ev.name}</span>`);
+    log(`<b>${ev.name}</b> bids ${ev.action.count} × ${ev.action.face}. <i>${ev.thought}</i>`);
+  }
+}
+
+// reveal: flip dice up one by one, ring the ones that count, tick the tally, drop the loser's die
+async function reveal(ev){
+  setActive(null);
+  const f=ev.bid.face; let n=0; const tally=$('#tally');
+  tally.innerHTML=`counting ${f}s… <b>0</b> of ${ev.bid.count} needed`;
+  const dice=[];
+  ev.reveal.forEach(r=>{ renderDice(r.id,r.dice); document.querySelectorAll(`#dice-${r.id} .die`).forEach((d,i)=>{d.classList.add('down'); dice.push({el:d,v:r.dice[i]});}); });
+  await sleep(reduced?0:150);
+  for(const {el,v} of dice){
+    el.classList.remove('down');
+    const hit=v===f, wild=v===1&&f!==1;
+    if(hit||wild){ n++; el.classList.add(hit?'hit':'wild'); tally.innerHTML=`counting ${f}s… <b>${n}</b> of ${ev.bid.count} needed`; }
+    await sleep(reduced?0:130);
+  }
+  await sleep(reduced?0:350);
+  tally.innerHTML = ev.bidWasTrue
+    ? `<b>${ev.actual}</b> ${f}s on the table — <span class="truth">the bid stands.</span> ${ev.loserName} called wrong.`
+    : `<b>${ev.actual}</b> ${f}s on the table — <span class="lie">it was a lie.</span> ${ev.loserName} got caught.`;
+  log(`Reveal: ${ev.actual} × ${f} on the table. ${ev.bidWasTrue?'Bid stands':'Bluff caught'} — ${ev.loserName} drops a die.`, ev.bidWasTrue?'':'red');
+  await sleep(reduced?0:700);
+  const ls=seatEl(ev.loserId); if(ls){ ls.classList.add('shake'); setTimeout(()=>ls.classList.remove('shake'),600); }
+  floatAt(ls,'−1 die');
+  const ld=document.querySelectorAll(`#dice-${ev.loserId} .die`); const lastDie=ld[ld.length-1];
+  if(lastDie){ lastDie.classList.add('drop'); await sleep(reduced?0:800); }
+  counts[ev.loserId]=Math.max(0,(counts[ev.loserId]??1)-1);
+  if(counts[ev.loserId]===0){ alive[ev.loserId]=false; ls?.classList.add('out'); floatAt(ls,'out'); }
+  renderDice(ev.loserId, (ev.reveal.find(r=>r.id===ev.loserId)?.dice||[]).slice(0,counts[ev.loserId]));
+}
+
+async function settled(ev){
+  setActive(null); $('#tally').textContent='';
+  setChip(`<span>${ev.name} wins</span><span class="who">${ev.amount} USDC</span>`);
+  const w=seatEl(ev.winnerId); w?.classList.add('winner');
+  burst(`${ev.name} takes the pot`,true);
+  for(let i=0;i<4;i++){ flyChip($('#pot'),w,{gold:true,dur:650+i*70}); await sleep(reduced?0:120); }
+  await sleep(reduced?0:650); bumpPot(0); floatAt(w,`+${ev.amount} USDC`,true);
+  $('#status').innerHTML=`<b>${ev.name}</b> takes the ${ev.amount} USDC pot.`;
+  log(`<b>${ev.name}</b> wins the pot: ${ev.amount} USDC paid on-chain. ${tx(ev)}`,'gold');
+}
+
+// ---- log / rail ----
+function log(html,cls=''){const r=document.createElement('div');r.className='row '+cls;r.innerHTML=html;const L=$('#log');L.prepend(r);while(L.children.length>60)L.lastChild.remove();}
+function tx(ev){return ev.explorer?`<a href="${ev.explorer}" target="_blank" rel="noopener">tx ${ev.tx}</a>`:'';}
+setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-Date.now())/1000));$('#clock').textContent=s+'s';} else $('#clock').textContent=''; },250);
+function renderPicks(){
+  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${s.id}" ${phase!=='betting'?'disabled':''}><div class="n">${s.name}</div><div class="m">${m?`pays <b>${m.toFixed(2)}×</b> if it wins`:'no backers yet — first in sets the line'}</div></button>`;}).join('');
+  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;$('#picked').textContent=seats.find(s=>s.id===picked).name;renderPicks();$('#betbtn').disabled=phase!=='betting';});
+}
+function applyState(ev){
+  phase=ev.phase; betCloseAt=ev.betCloseAt; multipliers=ev.multipliers||{};
+  if(ev.seats&&ev.seats.length){ const changed=JSON.stringify(ev.seats.map(s=>s.id))!==JSON.stringify(seats.map(s=>s.id)); seats=ev.seats; if(changed) buildSeats(); }
+  $('#walletKind').textContent=ev.walletKind==='circle'?'Circle wallets, Arc testnet':'mock wallets (no chain yet)';
+  $('#railtitle').textContent=phase==='betting'?`Back an agent — match #${ev.matchNo}`:phase==='playing'?`Match #${ev.matchNo} in play — bets closed`:`Match #${ev.matchNo} settled`;
+  $('#betbtn').disabled=!(phase==='betting'&&picked);
+  const total=ev.poolTotal||0;
+  $('#poolinfo').innerHTML=ev.bets&&ev.bets.length?`<b>${total} USDC</b> from ${ev.bets.length} bet${ev.bets.length>1?'s':''}<br>`+seats.map(s=>`${s.name}: ${ev.bets.filter(b=>b.agentId===s.id).reduce((a,b)=>a+b.amount,0)} USDC`).join(' · '):'No bets yet.';
+  renderPicks();
+}
+
+// ---- event stream ----
+const es=new EventSource('/events');
+es.onmessage=(m)=>{
+  const ev=JSON.parse(m.data);
+  switch(ev.type){
+    case 'phase': applyState(ev);
+      if(phase==='betting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">betting open — deal in a moment</span>','q'); log(`Match #${ev.matchNo}: betting window open.`,'gold'); });
+      if(phase==='playing') enqueue(async()=>{ $('#status').innerHTML='Bets closed. Agents are anteing…'; });
+      break;
+    case 'bet': applyState(ev); log(`${ev.bettorId} backs <b>${seats.find(s=>s.id===ev.agentId)?.name}</b> with ${ev.amount} USDC. ${tx(ev)}`,'gold'); break;
+    case 'ante': enqueue(async()=>{ await flyChip(seatEl(ev.agentId),$('#pot')); bumpPot(pot+ev.amount); log(`${ev.name} antes ${ev.amount} USDC into the pot. ${tx(ev)}`); }); break;
+    case 'pot_ready': enqueue(async()=>{ bumpPot(ev.total); $('#status').innerHTML=''; }); break;
+    case 'match_start': enqueue(async()=>{ seats=ev.seats; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); }); break;
+    case 'hand_start': enqueue(()=>deal(ev)); break;
+    case 'turn': enqueue(()=>turn(ev)); break;
+    case 'reveal': enqueue(()=>reveal(ev)); break;
+    case 'settled': enqueue(()=>settled(ev)); break;
+    case 'pool_settled': enqueue(async()=>{ applyState(ev);
+      const mine=ev.txs.find(t=>t.bettorId===bettorId);
+      if(ev.refunded) log(`Nobody backed ${ev.winnerName}. All stakes refunded.`,'gold');
+      else if(ev.txs.length) log(`Spectator pool paid out: `+ev.txs.filter(t=>t.bettorId!=='house').map(t=>`${t.bettorId} +${t.amount}`).join(', ')+`.`,'gold');
+      if(mine){$('#msg').className='msg ok';$('#msg').textContent=`You got ${mine.amount} USDC back.`;}
+      else if(ev.bets.some(b=>b.bettorId===bettorId)){$('#msg').className='msg err';$('#msg').textContent=`Your agent lost. Next deal soon.`;}
+    }); break;
+  }
+};
+
+$('#betbtn').onclick=async()=>{
+  const amount=Number($('#stake').value); $('#msg').className='msg'; $('#msg').textContent='Sending USDC to the pool…';
+  const r=await fetch('/api/bet',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bettorId,agentId:picked,amount})}); const j=await r.json();
+  if(j.ok){$('#msg').className='msg ok';$('#msg').innerHTML=`Bet placed. Your balance: ${j.balance} USDC. <a href="${j.explorer}" target="_blank" rel="noopener">view tx</a>`;}
+  else{$('#msg').className='msg err';$('#msg').textContent=j.error;}
+};
+</script>
+</body>
+</html>

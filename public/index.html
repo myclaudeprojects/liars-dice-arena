@@ -347,6 +347,7 @@ es.onmessage=(m)=>{
     case 'phase': applyState(ev);
       if(phase==='betting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">betting open — deal in a moment</span>','q'); log(`Match #${ev.matchNo}: betting window open.`,'gold'); });
       if(phase==='playing') enqueue(async()=>{ $('#status').innerHTML='Bets closed. Agents are anteing…'; });
+      if(phase==='paused') enqueue(async()=>{ $('#status').innerHTML='Table paused after an error — next deal shortly.'; log('Table paused: '+(ev.error||'error')+'. Resuming shortly.','red'); });
       break;
     case 'bet': applyState(ev); log(`${ev.bettorId} backs <b>${seats.find(s=>s.id===ev.agentId)?.name}</b> with ${ev.amount} USDC. ${tx(ev)}`,'gold'); break;
     case 'ante': enqueue(async()=>{ await flyChip(seatEl(ev.agentId),$('#pot')); bumpPot(pot+ev.amount); log(`${ev.name} antes ${ev.amount} USDC into the pot. ${tx(ev)}`); }); break;

@@ -100,9 +100,24 @@ async function buildAgents() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+let lastError = null;
 async function cycle() {
   if (!houseWallet) houseWallet = await wallet.createSeatWallet("house");
   while (true) {
+    try { await oneMatch(); lastError = null; }
+    catch (e) {
+      // A failed match must never take the site down. Log, tell viewers, pause, move on.
+      lastError = { at: Date.now(), message: String(e?.message || e).slice(0, 300) };
+      console.error(`match #${state.matchNo} failed:`, e?.stack || e);
+      state.phase = "paused";
+      broadcast({ type: "phase", ...publicState(), error: lastError.message });
+      await sleep(15000);
+    }
+  }
+}
+
+async function oneMatch() {
+  {
     const agents = await buildAgents();
     state.matchNo++;
     state.seats = agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house" }));
@@ -203,7 +218,7 @@ async function agentsApi(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = req.url.split("?")[0];
   if (PAGES[url]) return sendFile(res, PAGES[url]);
-  if (url === "/health") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, phase: state.phase, matchNo: state.matchNo, wallet: wallet.kind, clients: clients.size, house: wallet.houseBalance ? await wallet.houseBalance().catch(() => null) : null })); }
+  if (url === "/health") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, phase: state.phase, matchNo: state.matchNo, wallet: wallet.kind, clients: clients.size, house: wallet.houseBalance ? await wallet.houseBalance().catch(() => null) : null, lastError })); }
   if (url === "/api/leaderboard") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(stats.leaderboard())); }
   if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(publicState())); }
   if (url.startsWith("/static/")) return sendFile(res, url.slice("/static/".length));
@@ -280,5 +295,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Liar's Dice Arena → http://localhost:${PORT}   (wallet: ${wallet.kind}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms)`);
-  cycle().catch((e) => { console.error("cycle crashed:", e); process.exit(1); });
+  cycle().catch((e) => { console.error("cycle crashed (unrecoverable):", e); });
+  process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
+  process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
 });

@@ -86,21 +86,38 @@ class EvmWallet {
     const pk = keccak256(concat([this.house.privateKey, toUtf8Bytes("liars-dice-arena:" + label)]));
     const w = new Wallet(pk, this.provider); this.signers.set(label, w); return w;
   }
+  // Retry transient RPC failures (rate limits, timeouts, brief outages) with backoff.
+  async _retry(fn, label) {
+    let last;
+    for (let i = 0; i < 5; i++) {
+      try { return await fn(); }
+      catch (e) {
+        last = e;
+        const msg = String(e?.message || e); const code = e?.code || e?.status;
+        const transient = /429|rate|timeout|ETIMEDOUT|ECONNRESET|503|502|SERVER_ERROR|NETWORK_ERROR|failed to detect|Too Many/i.test(msg) || [429, 502, 503, "TIMEOUT", "SERVER_ERROR", "NETWORK_ERROR"].includes(code);
+        if (!transient) throw e;
+        const wait = 600 * 2 ** i;
+        console.warn(`rpc transient (${label}) attempt ${i + 1}: ${msg.slice(0, 120)} — retrying in ${wait}ms`);
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+    throw last;
+  }
   _toWei(amt) { return this.ethers.parseUnits(Number(amt).toFixed(6), 18); }
   _fromWei(w) { return Math.floor(Number(this.ethers.formatUnits(w, 18)) * 1e6) / 1e6; }
 
   // walletId IS the label; address is derived. "house" maps to the key itself.
   async createSeatWallet(label) { const w = this._derive(String(label)); return { walletId: String(label), address: w.address, name: String(label) }; }
   async createPot(label = "pot") { return this.createSeatWallet(label); }
-  async getBalance(walletId) { return this._fromWei(await this.provider.getBalance(this._derive(walletId).address)); }
+  async getBalance(walletId) { return this._retry(async () => this._fromWei(await this.provider.getBalance(this._derive(walletId).address)), "getBalance"); }
 
   async _send(fromLabel, toAddress, amt) {
     const from = this._derive(fromLabel);
     const value = this._toWei(amt);
     const bal = await this.provider.getBalance(from.address);
     if (bal < value + this._toWei(this.gasReserve)) throw new Error(`insufficient_balance: ${fromLabel} has ${this._fromWei(bal)} USDC, needs ${amt} + gas`);
-    const tx = await from.sendTransaction({ to: toAddress, value });
-    const rc = await tx.wait();                   // Arc: sub-second finality
+    const tx = await this._retry(() => from.sendTransaction({ to: toAddress, value }), "send");
+    const rc = await this._retry(() => tx.wait(1, 60_000), "wait");   // Arc: sub-second finality
     if (!rc || rc.status !== 1) throw new Error(`tx_failed: ${tx.hash}`);
     return tx.hash;
   }

@@ -18,6 +18,8 @@ nav.top li a{text-decoration:none;padding:8px 12px;border-radius:8px;color:#4a48
 nav.top li a:hover{background:var(--room-2)}
 nav.top li a.on{background:var(--felt);color:var(--ivory)}
 nav.top li a.cta{background:var(--gold);color:var(--ink);font-weight:600}
+nav.top li a.buy{background:var(--felt);color:var(--ivory);font-weight:600}
+nav.top li a.buy:hover{background:var(--felt-deep)}
 nav.top a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 
 footer{margin-top:70px;padding:26px 0 40px;border-top:1px solid #d9cfb8;color:#5c5a52;font-size:13px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}

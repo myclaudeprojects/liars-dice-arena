@@ -36,6 +36,9 @@
   .fund .fh{font:600 18px/1.2 var(--serif)}
   .fund .fa code{display:block;background:rgba(0,0,0,.12);border-radius:8px;padding:8px 10px;margin:8px 0;font-size:13px;word-break:break-all;user-select:all}
   .fund .fb{font-size:13px;line-height:1.5}
+  .fund .frow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
+  .fund .fstat{font-size:13px;font-weight:600}
+  .fund .btn.primary{background:var(--felt);color:var(--ivory)}
   .testout{margin-top:12px;font-size:13px;background:rgba(0,0,0,.25);border-radius:8px;padding:10px 12px;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}
   .roster td .st{font-size:12px;padding:2px 8px;border-radius:999px;background:#e6dcc6}
   .roster td .st.active{background:#d8ead9;color:#1f6b3a}.roster td .st.unresponsive{background:#f6dcd7;color:var(--red)}
@@ -110,7 +113,12 @@
         <div class="fund" id="cFund" hidden>
           <div class="fh">Fund this address to get seated</div>
           <div class="fa"><code id="cAddr2"></code></div>
-          <div class="fb">Send at least <b id="cNeed"></b> USDC <b>on the Arc network</b>. Your agent antes from this wallet each match and its winnings land here. It is only seated while the balance covers an ante; top it up any time.</div>
+          <div class="fb">Your agent antes from this wallet each match and its winnings land here. It is only seated while the balance covers an ante (<b id="cNeed"></b> USDC minimum); top it up any time.</div>
+          <div class="frow">
+            <button class="btn primary" id="cFundBtn">Fund 0.50 USDC from my wallet</button>
+            <span class="fstat" id="cFundStat">Balance: checking…</span>
+          </div>
+          <div class="fb" style="margin-top:8px;opacity:.85">No wallet? Send USDC <b>on the Arc network</b> to the address above from any exchange or wallet.</div>
         </div>
         <div class="warn">Save the key now — it is shown once. You need it to test, retire or reactivate the agent, and your endpoint can use it to verify our signature.</div>
         <div class="row">
@@ -174,7 +182,32 @@ async function loadRoster(){
 }
 loadRoster(); setInterval(loadRoster,8000);
 
-let mine=null;
+let mine=null, chain=null, balTimer=null;
+fetch('/api/pool').then(r=>r.json()).then(p=>{chain=p.chain;}).catch(()=>{});
+async function ensureArc(){
+  const hex=chain.chainIdHex;
+  try{ await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:hex}]}); }
+  catch(e){ if(e.code===4902||/Unrecognized|not added/i.test(e.message||'')){ await window.ethereum.request({method:'wallet_addEthereumChain',params:[{chainId:hex,chainName:chain.name,nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:[chain.rpcUrl],blockExplorerUrls:[chain.explorer]}]}); } else throw e; }
+}
+function watchBalance(id){
+  clearInterval(balTimer);
+  const need=meta.ante+0.02;
+  const tick=async()=>{ try{ const j=await fetch('/api/agents/'+id).then(r=>r.json()); const b=Number(j.balance||0);
+    $('#cFundStat').innerHTML = b>=need ? `Balance: <span style="color:#1f6b3a">${b.toFixed(4)} USDC — seated at the next table</span>` : `Balance: ${b.toFixed(4)} USDC — needs ${need.toFixed(2)} to play`; }catch{} };
+  tick(); balTimer=setInterval(tick,5000);
+}
+$('#cFundBtn').onclick=async()=>{
+  if(!mine||!chain) return;
+  const st=$('#cFundStat');
+  try{
+    st.textContent='Opening your wallet…';
+    const accts=await window.ethereum.request({method:'eth_requestAccounts'}); await ensureArc();
+    st.textContent='Confirm 0.50 USDC in your wallet…';
+    const value='0x'+(500000000000000000n).toString(16); // 0.50 USDC (18-decimal native)
+    const tx=await window.ethereum.request({method:'eth_sendTransaction',params:[{from:accts[0],to:mine.fundingAddress,value}]});
+    st.innerHTML=`Sent — waiting for Arc… <a href="${chain.explorer}/tx/${tx}" target="_blank" rel="noopener" style="color:inherit">view</a>`;
+  }catch(e){ st.textContent=e.code===4001?'Cancelled in wallet.':(e.message||'Failed to send.'); }
+};
 $('#reg').onclick=async()=>{
   $('#err').textContent=''; $('#reg').disabled=true;
   const body={name:$('#name').value,owner:$('#owner').value,type};
@@ -187,7 +220,7 @@ $('#reg').onclick=async()=>{
   mine=j; $('#card').hidden=false; $('#cName').textContent=j.agent.name+' is registered'; $('#cNote').textContent=j.note;
   $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cAddr').textContent=j.fundingAddress; $('#cBal').textContent=j.balance+' USDC';
   $('#cTest').hidden=j.agent.type!=='endpoint'; $('#testout').hidden=true;
-  const live=meta.walletKind && meta.walletKind!=='mock'; $('#cFund').hidden=!live; if(live){ $('#cAddr2').textContent=j.fundingAddress; $('#cNeed').textContent=(Math.ceil((meta.ante+0.02)*100)/100).toFixed(2); }
+  const live=meta.walletKind && meta.walletKind!=='mock'; $('#cFund').hidden=!live; if(live){ $('#cAddr2').textContent=j.fundingAddress; $('#cNeed').textContent=(Math.ceil((meta.ante+0.02)*100)/100).toFixed(2); $('#cFundBtn').hidden=!window.ethereum; watchBalance(j.agent.id); }
   $('#card').scrollIntoView({behavior:'smooth',block:'nearest'}); loadRoster();
 };
 $('#cTest').onclick=async()=>{

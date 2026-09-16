@@ -34,7 +34,7 @@
   @keyframes shake{0%,100%{transform:translate(-50%,-50%)}20%{transform:translate(calc(-50% - 8px),-50%) rotate(-1.5deg)}40%{transform:translate(calc(-50% + 8px),-50%) rotate(1.5deg)}60%{transform:translate(calc(-50% - 5px),-50%)}80%{transform:translate(calc(-50% + 5px),-50%)}}
   .seat .name{font:600 20px/1.1 var(--serif);font-variation-settings:"SOFT" 80}
   .seat .kind{font-size:11px;color:var(--mute);margin-top:2px}
-  .seat .thought{font-size:13px;color:#dfe8e1;min-height:40px;font-style:italic;padding:0 4px;margin-top:6px;line-height:1.35}
+  .seat .thought{font-size:13.5px;color:#dfe8e1;min-height:40px;font-style:italic;padding:0 4px;margin-top:6px;line-height:1.35}
   .seat .thought.thinking{color:var(--mute);font-style:normal}
   .seat .thought.thinking::after{content:"thinking";animation:dots 1.1s steps(4) infinite}
   @keyframes dots{0%{content:"thinking"}25%{content:"thinking."}50%{content:"thinking.."}75%{content:"thinking..."}}
@@ -57,6 +57,12 @@
   /* center */
   .center{position:absolute;left:50%;top:64%;transform:translate(-50%,-50%);text-align:center;color:var(--ivory);width:360px}
   @media (max-width:900px){.center{position:static;transform:none;width:auto;margin:8px 16px;order:99}}
+  .now{margin:0 auto 12px;max-width:420px;min-height:64px}
+  .nowtext{font:600 19px/1.25 var(--serif);font-variation-settings:"SOFT" 60;color:var(--ivory);text-shadow:0 2px 8px rgba(0,0,0,.4)}
+  .nowtext .q{display:block;font:italic 400 14px/1.35 var(--sans);color:#dfe8e1;margin-top:4px}
+  .nowtext.liar{color:#ffb0a6}
+  .nowbar{height:4px;border-radius:2px;background:rgba(255,255,255,.14);margin:8px auto 0;width:180px;overflow:hidden}
+  .nowbar i{display:block;height:100%;width:0;background:var(--gold);transition:width .05s linear}
   .bidchip{display:inline-flex;align-items:center;gap:14px;background:var(--chip);color:var(--ink);border-radius:999px;padding:11px 24px 11px 16px;
     box-shadow:0 5px 0 #b9ad95, 0 12px 26px rgba(0,0,0,.4);font:600 22px/1 var(--serif);font-variation-settings:"SOFT" 40;min-width:240px;justify-content:center}
   .bidchip .who{font:400 13px/1 var(--sans);color:#5c5a52}
@@ -149,6 +155,7 @@
       <div class="banner" id="banner">Connecting</div>
       <div id="seats"></div>
       <div class="center">
+        <div class="now" id="now"><div class="nowtext" id="nowtext">&nbsp;</div><div class="nowbar"><i id="nowbar"></i></div></div>
         <div class="bidchip" id="bidchip"><span class="who">waiting for the deal</span></div>
         <div class="tally" id="tally"></div>
         <div class="pot">pot <b id="pot">0</b> USDC<div class="potchips" id="potchips"></div></div>
@@ -258,6 +265,10 @@ function burst(text,gold){ const b=document.createElement('div'); b.className='b
 function floatAt(el,text,pos){ if(!el) return; const p=centerOf(el), f=document.createElement('div'); f.className='float'+(pos?' pos':''); f.textContent=text; f.style.left=p.x+'px'; f.style.top=(p.y-20)+'px'; $('#table').appendChild(f); setTimeout(()=>f.remove(),1200); }
 function bumpPot(v){ pot=v; const b=$('#pot'); b.textContent=v; b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); $('#potchips').innerHTML='<i></i>'.repeat(Math.min(14,Math.ceil(v/2.5))); }
 let handNo=0;
+function setNow(html,cls){ const t=$('#nowtext'); t.className='nowtext '+(cls||''); t.innerHTML=html||'&nbsp;'; }
+let barAnim=null;
+function fillBar(ms){ const b=$('#nowbar'); if(barAnim) barAnim.cancel(); b.style.width='0'; if(reduced){b.style.width='0';return;} barAnim=b.animate([{width:'0%'},{width:'100%'}],{duration:ms,easing:'linear',fill:'forwards'}); }
+function clearBar(){ if(barAnim) barAnim.cancel(); $('#nowbar').style.width='0'; }
 function setBanner(text,cls,sub){ const b=$('#banner'); b.className='banner '+(cls||''); b.innerHTML=text+(sub?'<b>'+sub+'</b>':''); }
 function setChip(html,cls){ const c=$('#bidchip'); c.className='bidchip '+(cls||''); c.innerHTML=html; if(!cls){c.classList.remove('pop');void c.offsetWidth;c.classList.add('pop');} }
 
@@ -269,24 +280,27 @@ async function deal(ev){
   setChip(`<span class="who">hand ${ev.hand} — dice are rolling</span>`,'q');
   seats.filter(s=>alive[s.id]).forEach((s,i)=>{ renderDice(s.id,Array.from({length:counts[s.id]},rnd)); document.querySelectorAll(`#dice-${s.id} .die`).forEach((d,j)=>{d.classList.add('rolling'); d.style.animationDelay=(i*60+j*40)+'ms';}); });
   if(reduced){ document.querySelectorAll('.die').forEach(d=>{d.classList.remove('rolling');d.classList.add('down');}); return; }
+  setNow('Rolling the dice');
   const flick=setInterval(()=>document.querySelectorAll('.die.rolling .f').forEach(f=>f.innerHTML=face(rnd())),90);
-  await sleep(800); clearInterval(flick);
-  const all=[...document.querySelectorAll('.die.rolling')]; all.forEach((d,i)=>setTimeout(()=>{d.classList.remove('rolling');d.style.animationDelay='';d.classList.add('down');},i*35));
-  await sleep(all.length*35+450);
+  await sleep(550); clearInterval(flick);
+  const all=[...document.querySelectorAll('.die.rolling')]; all.forEach((d,i)=>setTimeout(()=>{d.classList.remove('rolling');d.style.animationDelay='';d.classList.add('down');},i*20));
+  await sleep(all.length*20+250);
   setChip(`<span class="who">${seats.find(s=>s.id===ev.first)?.name} opens the bidding</span>`,'q');
-  setBanner('Hand '+ev.hand+' in play','play',(seats.find(s=>s.id===ev.first)?.name||'')+' to open');
+  setBanner('Hand '+ev.hand+' in play','play',(seats.find(s=>s.id===ev.first)?.name||'')+' to open'); setNow((seats.find(s=>s.id===ev.first)?.name||'')+' opens the bidding');
 }
 
 async function turn(ev){
   setActive(ev.agentId); setThought(ev.agentId,'',true); setBanner('Hand '+handNo+' in play','play',ev.name+' is thinking');
-  await sleep(reduced?0:650);
+  setNow(ev.name+' is thinking…'); fillBar(420);
+  await sleep(reduced?0:420); clearBar();
   setThought(ev.agentId,ev.thought,false);
   if(ev.action.type==='challenge'){
-    burst('LIAR!');
+    burst('LIAR!'); setNow(ev.name+' calls LIAR on '+ev.bidBefore.count+' × '+ev.bidBefore.face+(ev.thought?'<span class="q">“'+ev.thought+'”</span>':''),'liar');
     setChip(`<span>Liar!</span><span class="who">${ev.name} calls the ${ev.bidBefore.count} × ${ev.bidBefore.face}</span>`,'liar');
     log(`<b>${ev.name}</b> calls liar on ${ev.bidBefore.count} × ${ev.bidBefore.face}. <i>${ev.thought}</i>`,'red');
   } else {
-    await flyChip(seatEl(ev.agentId), $('#bidchip'));
+    setNow(ev.name+' bids '+ev.action.count+' × '+ev.action.face+(ev.thought?'<span class="q">“'+ev.thought+'”</span>':''));
+    await flyChip(seatEl(ev.agentId), $('#bidchip'),{dur:380});
     setChip(`<span>${ev.action.count} × ${ev.action.face}</span><span class="who">${ev.name}</span>`);
     log(`<b>${ev.name}</b> bids ${ev.action.count} × ${ev.action.face}. <i>${ev.thought}</i>`);
   }
@@ -296,7 +310,7 @@ async function turn(ev){
 async function reveal(ev){
   setActive(null);
   const f=ev.bid.face; let n=0; const tally=$('#tally');
-  tally.innerHTML=`counting ${f}s… <b>0</b> of ${ev.bid.count} needed`;
+  tally.innerHTML=`counting ${f}s… <b>0</b> of ${ev.bid.count} needed`; setNow('Showdown — counting the '+f+'s');
   const dice=[];
   ev.reveal.forEach(r=>{ renderDice(r.id,r.dice); document.querySelectorAll(`#dice-${r.id} .die`).forEach((d,i)=>{d.classList.add('down'); dice.push({el:d,v:r.dice[i]});}); });
   await sleep(reduced?0:150);
@@ -304,25 +318,26 @@ async function reveal(ev){
     el.classList.remove('down');
     const hit=v===f, wild=v===1&&f!==1;
     if(hit||wild){ n++; el.classList.add(hit?'hit':'wild'); tally.innerHTML=`counting ${f}s… <b>${n}</b> of ${ev.bid.count} needed`; }
-    await sleep(reduced?0:130);
+    await sleep(reduced?0:85);
   }
-  await sleep(reduced?0:350);
+  await sleep(reduced?0:250);
   tally.innerHTML = ev.bidWasTrue
     ? `<b>${ev.actual}</b> ${f}s on the table — <span class="truth">the bid stands.</span> ${ev.loserName} called wrong.`
     : `<b>${ev.actual}</b> ${f}s on the table — <span class="lie">it was a lie.</span> ${ev.loserName} got caught.`;
   log(`Reveal: ${ev.actual} × ${f} on the table. ${ev.bidWasTrue?'Bid stands':'Bluff caught'} — ${ev.loserName} drops a die.`, ev.bidWasTrue?'':'red');
-  await sleep(reduced?0:700);
+  setNow(ev.bidWasTrue?ev.loserName+' called wrong — loses a die':ev.loserName+' got caught bluffing — loses a die',ev.bidWasTrue?'':'liar');
+  await sleep(reduced?0:450);
   const ls=seatEl(ev.loserId); if(ls){ ls.classList.add('shake'); setTimeout(()=>ls.classList.remove('shake'),600); }
   floatAt(ls,'−1 die');
   const ld=document.querySelectorAll(`#dice-${ev.loserId} .die`); const lastDie=ld[ld.length-1];
-  if(lastDie){ lastDie.classList.add('drop'); await sleep(reduced?0:800); }
+  if(lastDie){ lastDie.classList.add('drop'); await sleep(reduced?0:550); }
   counts[ev.loserId]=Math.max(0,(counts[ev.loserId]??1)-1);
   if(counts[ev.loserId]===0){ alive[ev.loserId]=false; ls?.classList.add('out'); floatAt(ls,'out'); }
   renderDice(ev.loserId, (ev.reveal.find(r=>r.id===ev.loserId)?.dice||[]).slice(0,counts[ev.loserId]));
 }
 
 async function settled(ev){
-  setActive(null); $('#tally').textContent=''; setBanner('Settled','win',ev.name+' wins '+ev.amount+' USDC');
+  setActive(null); $('#tally').textContent=''; setBanner('Settled','win',ev.name+' wins '+ev.amount+' USDC'); setNow(ev.name+' takes the pot — '+ev.amount+' USDC');
   setChip(`<span>${ev.name} wins</span><span class="who">${ev.amount} USDC</span>`);
   const w=seatEl(ev.winnerId); w?.classList.add('winner');
   burst(`${ev.name} takes the pot`,true);
@@ -361,7 +376,7 @@ es.onmessage=(m)=>{
   switch(ev.type){
     case 'phase':
       if(ev.phase==='betting'){ enqueue(async()=>{ applyState(ev); setBanner('Betting open','bet','30s'); }); } else applyState(ev);
-      if(phase==='betting'||ev.phase==='betting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">betting open — deal in a moment</span>','q'); log(`Match #${ev.matchNo}: betting window open.`,'gold'); });
+      if(phase==='betting'||ev.phase==='betting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">betting open — deal in a moment</span>','q'); setNow('Back an agent below before the deal'); clearBar(); log(`Match #${ev.matchNo}: betting window open.`,'gold'); });
       if(ev.phase==='playing') enqueue(async()=>{ setBanner('Bets closed','play','anteing'); $('#status').innerHTML='Bets closed. Agents are anteing…'; });
       if(ev.phase==='paused') enqueue(async()=>{ setBanner('Table paused','pause'); $('#status').innerHTML='Table paused after an error — next deal shortly.'; log('Table paused: '+(ev.error||'error')+'. Resuming shortly.','red'); });
       break;

@@ -23,9 +23,9 @@ const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "
 // Env numbers: tolerate "1600ms", " 30000 ", "0.1 USDC" etc.; fall back to the default on garbage.
 function envNum(name, dflt) { const m = String(process.env[name] ?? "").match(/-?\d+(\.\d+)?/); const v = m ? Number(m[0]) : NaN; return Number.isFinite(v) ? v : dflt; }
 const PORT = process.env.PORT || 3000;
-const TURN_DELAY_MS = envNum("TURN_DELAY_MS", 1400);
-const REVEAL_DELAY_MS = envNum("REVEAL_DELAY_MS", 4200); // time for the flip sequence to play out
-const DEAL_DELAY_MS = envNum("DEAL_DELAY_MS", 1500);
+const TURN_DELAY_MS = envNum("TURN_DELAY_MS", 1000);
+const REVEAL_DELAY_MS = envNum("REVEAL_DELAY_MS", 3000); // time for the flip sequence to play out
+const DEAL_DELAY_MS = envNum("DEAL_DELAY_MS", 1000);
 const BET_WINDOW_MS = envNum("BET_WINDOW_MS", 30000);
 const ANTE = envNum("ANTE", 5);
 const MIN_STAKE = envNum("MIN_STAKE", 0.05);

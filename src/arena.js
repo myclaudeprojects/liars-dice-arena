@@ -15,10 +15,10 @@ async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.n
   // 2) Collect antes on-chain (the pot fills).
   for (const ag of agents) {
     const tx = await wallet.ante(seatWallets[ag.id], pot, ante);
-    onEvent({ type: "ante", agentId: ag.id, name: ag.name, amount: ante, tx, explorer: wallet.explorerUrl(tx) });
+    await onEvent({ type: "ante", agentId: ag.id, name: ag.name, amount: ante, tx, explorer: wallet.explorerUrl(tx) });
   }
   const potTotal = Math.round(ante * agents.length * 1e6) / 1e6;
-  onEvent({ type: "pot_ready", total: potTotal });
+  await onEvent({ type: "pot_ready", total: potTotal });
 
   // 3) Play.
   const match = new Match({
@@ -27,10 +27,10 @@ async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.n
   });
   const byId = Object.fromEntries(agents.map((a) => [a.id, a]));
 
-  onEvent({ type: "match_start", seats: agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house" })), seed });
+  await onEvent({ type: "match_start", seats: agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house" })), seed });
   const emitDeal = () => onEvent({ type: "hand_start", hand: match.handNumber,
     counts: match.players.map((p) => ({ id: p.id, dice: p.dice.length, alive: p.alive })), first: match.currentPlayer.id });
-  emitDeal();
+  await emitDeal();
 
   let steps = 0;
   while (!match.winnerId && steps++ < maxSteps) {
@@ -38,7 +38,7 @@ async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.n
     const view = match.viewFor(actor.id);
     const { action, thought } = await actor.act(view);
 
-    onEvent({
+    await onEvent({
       type: "turn", agentId: actor.id, name: actor.name,
       thought, action, bidBefore: view.currentBid,
     });
@@ -46,23 +46,30 @@ async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.n
     const res = match.applyAction(action);
     if (!res.ok) {
       // Illegal move slipped through — force a challenge so the match can't stall.
-      onEvent({ type: "illegal", agentId: actor.id, error: res.error, action });
-      match.applyAction({ type: "challenge" });
+      await onEvent({ type: "illegal", agentId: actor.id, error: res.error, action });
+      const forced = match.applyAction({ type: "challenge" });
+      if (forced.ok && forced.resolved) {
+        await onEvent({ type: "reveal", ...forced.resolved,
+          bidderName: byId[forced.resolved.bidderId].name,
+          challengerName: byId[forced.resolved.challengerId].name,
+          loserName: byId[forced.resolved.loserId].name });
+        if (!forced.matchOver) await emitDeal();
+      }
       continue;
     }
     if (res.resolved) {
-      onEvent({ type: "reveal", ...res.resolved,
+      await onEvent({ type: "reveal", ...res.resolved,
         bidderName: byId[res.resolved.bidderId].name,
         challengerName: byId[res.resolved.challengerId].name,
         loserName: byId[res.resolved.loserId].name });
-      if (!res.matchOver) emitDeal();
+      if (!res.matchOver) await emitDeal();
     }
   }
 
   // 4) Settle the pot to the winner on-chain.
   const winner = byId[match.winnerId];
   const settleTx = await wallet.settle(pot, seatWallets[winner.id], potTotal);
-  onEvent({ type: "settled", winnerId: winner.id, name: winner.name, amount: potTotal, tx: settleTx, explorer: wallet.explorerUrl(settleTx) });
+  await onEvent({ type: "settled", winnerId: winner.id, name: winner.name, amount: potTotal, tx: settleTx, explorer: wallet.explorerUrl(settleTx) });
 
   // 5) Final balances (nice for the UI).
   const balances = {};

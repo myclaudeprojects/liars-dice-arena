@@ -10,7 +10,7 @@
 // A ready Anthropic and OpenAI adapter live in llm.js. This keeps the engine and
 // game loop free of any vendor specifics.
 
-const { DICE_SIDES } = require("./engine");
+const { DICE_SIDES, isHigherBid } = require("./engine");
 
 // Expected number of dice showing `face` among `unknownDice` dice we can't see,
 // with ones wild. Each unknown die matches a given non-1 face with prob 2/6
@@ -86,6 +86,9 @@ class MockAgent {
       }
     }
     targetCount = Math.min(targetCount, totalDice);
+    if (currentBid && !isHigherBid(currentBid, { count: targetCount, face: bestFace })) {
+      return { action: { type: "challenge" }, thought: `Can't go higher than ${currentBid.count}×${currentBid.face} with ${totalDice} dice on the table. Liar.` };
+    }
     const bluffing = targetCount > bestHeld + exp + 0.5;
     return {
       action: { type: "bid", count: targetCount, face: bestFace },
@@ -173,6 +176,7 @@ function parseAction(raw, view) {
     if (!Number.isInteger(count) || !Number.isInteger(face)) return null;
     if (face < 1 || face > DICE_SIDES) return null;
     if (count < 1 || count > view.totalDice) return null;
+    if (!isHigherBid(view.currentBid, { count, face })) return null;
     return { action: { type: "bid", count, face }, thought };
   }
   return null;

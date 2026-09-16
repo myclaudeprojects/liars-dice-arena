@@ -74,6 +74,13 @@
   .potchips{display:flex;justify-content:center;gap:3px;margin-top:6px;min-height:14px}
   .potchips i{width:22px;height:8px;border-radius:3px;background:var(--gold);box-shadow:inset 0 -2px 0 rgba(0,0,0,.25);animation:pop .3s ease-out}
 
+  .banner{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:4;background:rgba(0,0,0,.35);color:var(--ivory);border-radius:999px;padding:8px 18px;font:600 13px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+  .banner b{color:var(--gold);font:600 15px/1 var(--serif);letter-spacing:0;text-transform:none;margin-left:8px}
+  .banner.bet{background:var(--gold);color:var(--ink)} .banner.bet b{color:var(--ink)}
+  .banner.play{background:rgba(255,255,255,.12)}
+  .banner.win{background:var(--felt-deep);box-shadow:0 0 0 2px var(--gold)}
+  .banner.pause{background:var(--red)}
+  @media (max-width:900px){.banner{position:static;transform:none;margin:12px auto 0;width:max-content}}
   .status{position:absolute;left:0;right:0;bottom:22px;color:var(--ivory);text-align:center;font:400 14px/1.4 var(--sans);min-height:22px}
   .status b{color:var(--gold)}
   @media (max-width:900px){.status{position:static;padding:10px;order:100}}
@@ -138,6 +145,7 @@
 
   <div class="stage">
     <section class="table" id="table" aria-live="polite">
+      <div class="banner" id="banner">Connecting</div>
       <div id="seats"></div>
       <div class="center">
         <div class="bidchip" id="bidchip"><span class="who">waiting for the deal</span></div>
@@ -247,12 +255,15 @@ async function flyChip(fromEl,toEl,{gold=false,dur=550}={}){
 function burst(text,gold){ const b=document.createElement('div'); b.className='burst'+(gold?' gold':''); b.textContent=text; $('#table').appendChild(b); setTimeout(()=>b.remove(),1400); }
 function floatAt(el,text,pos){ if(!el) return; const p=centerOf(el), f=document.createElement('div'); f.className='float'+(pos?' pos':''); f.textContent=text; f.style.left=p.x+'px'; f.style.top=(p.y-20)+'px'; $('#table').appendChild(f); setTimeout(()=>f.remove(),1200); }
 function bumpPot(v){ pot=v; const b=$('#pot'); b.textContent=v; b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); $('#potchips').innerHTML='<i></i>'.repeat(Math.min(14,Math.ceil(v/2.5))); }
+let handNo=0;
+function setBanner(text,cls,sub){ const b=$('#banner'); b.className='banner '+(cls||''); b.innerHTML=text+(sub?'<b>'+sub+'</b>':''); }
 function setChip(html,cls){ const c=$('#bidchip'); c.className='bidchip '+(cls||''); c.innerHTML=html; if(!cls){c.classList.remove('pop');void c.offsetWidth;c.classList.add('pop');} }
 
 // deal: tumble, flicker faces, then flip down
 async function deal(ev){
   ev.counts.forEach(c=>{counts[c.id]=c.dice; alive[c.id]=c.alive; seatEl(c.id)?.classList.toggle('out',!c.alive);});
   $('#tally').textContent=''; seats.forEach(s=>setThought(s.id,''));
+  handNo=ev.hand; setBanner('Hand '+ev.hand+' in play','play','dealing');
   setChip(`<span class="who">hand ${ev.hand} — dice are rolling</span>`,'q');
   seats.filter(s=>alive[s.id]).forEach((s,i)=>{ renderDice(s.id,Array.from({length:counts[s.id]},rnd)); document.querySelectorAll(`#dice-${s.id} .die`).forEach((d,j)=>{d.classList.add('rolling'); d.style.animationDelay=(i*60+j*40)+'ms';}); });
   if(reduced){ document.querySelectorAll('.die').forEach(d=>{d.classList.remove('rolling');d.classList.add('down');}); return; }
@@ -261,10 +272,11 @@ async function deal(ev){
   const all=[...document.querySelectorAll('.die.rolling')]; all.forEach((d,i)=>setTimeout(()=>{d.classList.remove('rolling');d.style.animationDelay='';d.classList.add('down');},i*35));
   await sleep(all.length*35+450);
   setChip(`<span class="who">${seats.find(s=>s.id===ev.first)?.name} opens the bidding</span>`,'q');
+  setBanner('Hand '+ev.hand+' in play','play',(seats.find(s=>s.id===ev.first)?.name||'')+' to open');
 }
 
 async function turn(ev){
-  setActive(ev.agentId); setThought(ev.agentId,'',true);
+  setActive(ev.agentId); setThought(ev.agentId,'',true); setBanner('Hand '+handNo+' in play','play',ev.name+' is thinking');
   await sleep(reduced?0:650);
   setThought(ev.agentId,ev.thought,false);
   if(ev.action.type==='challenge'){
@@ -308,7 +320,7 @@ async function reveal(ev){
 }
 
 async function settled(ev){
-  setActive(null); $('#tally').textContent='';
+  setActive(null); $('#tally').textContent=''; setBanner('Settled','win',ev.name+' wins '+ev.amount+' USDC');
   setChip(`<span>${ev.name} wins</span><span class="who">${ev.amount} USDC</span>`);
   const w=seatEl(ev.winnerId); w?.classList.add('winner');
   burst(`${ev.name} takes the pot`,true);
@@ -321,7 +333,7 @@ async function settled(ev){
 // ---- log / rail ----
 function log(html,cls=''){const r=document.createElement('div');r.className='row '+cls;r.innerHTML=html;const L=$('#log');L.prepend(r);while(L.children.length>60)L.lastChild.remove();}
 function tx(ev){return ev.explorer?`<a href="${ev.explorer}" target="_blank" rel="noopener">tx ${ev.tx}</a>`:'';}
-setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s';} else $('#clock').textContent=''; },250);
+setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s'; if($('#banner').classList.contains('bet')) $('#banner').innerHTML='Betting open<b>'+s+'s</b>';} else $('#clock').textContent=''; },250);
 function renderPicks(){
   $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${s.id}" ${phase!=='betting'?'disabled':''}><div class="n">${s.name}</div><div class="m">${m?`pays <b>${m.toFixed(2)}×</b> if it wins`:'no backers yet — first in sets the line'}</div></button>`;}).join('');
   document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;$('#picked').textContent=seats.find(s=>s.id===picked).name;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(walletKind!=='evm'||account));});
@@ -344,10 +356,11 @@ const es=new EventSource('/events');
 es.onmessage=(m)=>{
   const ev=JSON.parse(m.data);
   switch(ev.type){
-    case 'phase': applyState(ev);
-      if(phase==='betting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">betting open — deal in a moment</span>','q'); log(`Match #${ev.matchNo}: betting window open.`,'gold'); });
-      if(phase==='playing') enqueue(async()=>{ $('#status').innerHTML='Bets closed. Agents are anteing…'; });
-      if(phase==='paused') enqueue(async()=>{ $('#status').innerHTML='Table paused after an error — next deal shortly.'; log('Table paused: '+(ev.error||'error')+'. Resuming shortly.','red'); });
+    case 'phase':
+      if(ev.phase==='betting'){ enqueue(async()=>{ applyState(ev); setBanner('Betting open','bet','30s'); }); } else applyState(ev);
+      if(phase==='betting'||ev.phase==='betting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">betting open — deal in a moment</span>','q'); log(`Match #${ev.matchNo}: betting window open.`,'gold'); });
+      if(ev.phase==='playing') enqueue(async()=>{ setBanner('Bets closed','play','anteing'); $('#status').innerHTML='Bets closed. Agents are anteing…'; });
+      if(ev.phase==='paused') enqueue(async()=>{ setBanner('Table paused','pause'); $('#status').innerHTML='Table paused after an error — next deal shortly.'; log('Table paused: '+(ev.error||'error')+'. Resuming shortly.','red'); });
       break;
     case 'bet': applyState(ev); log(`${ev.bettorId} backs <b>${seats.find(s=>s.id===ev.agentId)?.name}</b> with ${ev.amount} USDC. ${tx(ev)}`,'gold'); break;
     case 'ante': enqueue(async()=>{ await flyChip(seatEl(ev.agentId),$('#pot')); bumpPot(pot+ev.amount); log(`${ev.name} antes ${ev.amount} USDC into the pot. ${tx(ev)}`); }); break;

@@ -75,6 +75,9 @@ class EvmWallet {
     this.provider = new ethers.JsonRpcProvider(rpcUrl, chainId, { staticNetwork: true });
     this.provider.pollingInterval = 500;      // Arc blocks every ~0.5s; default 4s polling made confirms feel slow
     this.chainId = chainId; this.rpcUrl = rpcUrl;
+    // Read-only fallbacks used to look for receipts the primary node hasn't seen yet.
+    this.altProviders = (chainId === 5042 ? ["https://rpc.drpc.mainnet.arc.io", "https://rpc.quicknode.mainnet.arc.io", "https://rpc.blockdaemon.mainnet.arc.io"] : [])
+      .filter((u) => u !== rpcUrl).map((u) => new ethers.JsonRpcProvider(u, chainId, { staticNetwork: true }));
     this.house = new ethers.Wallet(privateKey, this.provider);
     this.explorer = explorer;
     this.gasReserve = gasReserve;            // USDC each sender keeps back for gas
@@ -116,10 +119,30 @@ class EvmWallet {
     const value = this._toWei(amt);
     const bal = await this.provider.getBalance(from.address);
     if (bal < value + this._toWei(this.gasReserve)) throw new Error(`insufficient_balance: ${fromLabel} has ${this._fromWei(bal)} USDC, needs ${amt} + gas`);
-    const tx = await this._retry(() => from.sendTransaction({ to: toAddress, value }), "send");
-    const rc = await this._retry(() => tx.wait(1, 60_000), "wait");   // Arc: sub-second finality
-    if (!rc || rc.status !== 1) throw new Error(`tx_failed: ${tx.hash}`);
-    return tx.hash;
+    // Price with headroom so a gas-price tick right after sending doesn't strand the tx.
+    const nonce = await this._retry(() => this.provider.getTransactionCount(from.address, "pending"), "nonce");
+    const fee = await this._retry(() => this.provider.getFeeData(), "fee");
+    let mult = 15n; // 1.5x
+    const priced = () => fee.maxFeePerGas ? { maxFeePerGas: fee.maxFeePerGas * mult / 10n, maxPriorityFeePerGas: (fee.maxPriorityFeePerGas || 0n) * mult / 10n } : { gasPrice: (fee.gasPrice || 0n) * mult / 10n };
+    let tx = await this._retry(() => from.sendTransaction({ to: toAddress, value, nonce, ...priced() }), "send");
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const rc = await tx.wait(1, 30_000);
+        if (!rc || rc.status !== 1) throw new Error(`tx_failed: ${tx.hash}`);
+        return tx.hash;
+      } catch (e) {
+        if (e?.code !== "TIMEOUT") throw e;
+        // Maybe it mined and our node is lagging: ask the other RPCs.
+        for (const alt of this.altProviders) {
+          try { const rc = await alt.getTransactionReceipt(tx.hash); if (rc) { if (rc.status !== 1) throw new Error(`tx_failed: ${tx.hash}`); return tx.hash; } } catch {}
+        }
+        if (attempt === 2) throw new Error(`tx_stuck: ${tx.hash} not mined after replacements`);
+        // Replace with the SAME nonce at a higher fee — only one of them can ever land.
+        mult += 10n;
+        console.warn(`tx ${tx.hash.slice(0, 12)} not mined in 30s — replacing nonce ${nonce} at ${Number(mult) / 10}x fee`);
+        tx = await this._retry(() => from.sendTransaction({ to: toAddress, value, nonce, ...priced() }), "replace");
+      }
+    }
   }
   async ante(fromW, toW, amt) { return this._send(fromW.walletId, toW.address, amt); }
   async settle(potW, toW, amt) {

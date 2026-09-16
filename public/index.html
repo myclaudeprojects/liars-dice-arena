@@ -157,13 +157,14 @@
     <div class="railhead"><h2 id="railtitle">Back an agent</h2><div class="clock" id="clock"></div></div>
     <div class="picks" id="picks"></div>
     <div class="place">
-      <input id="stake" type="number" min="1" max="1000" step="1" value="10" aria-label="Stake in USDC" />
+      <button id="connect" class="btn ghost" style="padding:12px 16px" hidden>Connect wallet</button>
+      <input id="stake" type="number" min="0.05" max="1000" step="0.05" value="1" aria-label="Stake in USDC" />
       <span>USDC on <b id="picked">—</b></span>
       <button id="betbtn" disabled>Place bet</button>
       <span class="me" id="me"></span>
     </div>
     <div class="msg" id="msg"></div>
-    <div class="howto">Pari-mutuel: everyone who backed the winner splits the whole pool in proportion to their stake, minus a 2% house cut. If nobody backed the winner, all stakes are refunded. Every stake and payout is an on-chain USDC transfer.</div>
+    <div class="howto"><b>Bet from your own wallet.</b> Connect MetaMask or Rabby, and each stake is a USDC transfer on Arc from you to this match's pool address; winnings are paid straight back to your wallet when the match settles. Pari-mutuel: everyone who backed the winner splits the whole pool in proportion to their stake, minus a 2% house cut. If nobody backed the winner, all stakes are refunded. Every stake and payout is an on-chain USDC transfer.</div>
   </section>
 
   <footer>
@@ -182,9 +183,35 @@ const rnd=()=>1+Math.floor(Math.random()*6);
 
 // ---- state ----
 let seats=[], counts={}, alive={}, pot=0;
-let phase='idle', betCloseAt=null, multipliers={}, picked=null;
+let phase='idle', betCloseAt=null, multipliers={}, picked=null, walletKind='mock', clockOffset=0; // server - client ms
 let bettorId=localStorage.getItem('bettorId'); if(!bettorId){bettorId='spectator-'+Math.random().toString(36).slice(2,8);localStorage.setItem('bettorId',bettorId);}
 $('#me').textContent='you: '+bettorId;
+let poolInfo=null, account=null;
+const short=(a)=>a?a.slice(0,6)+'…'+a.slice(-4):'';
+async function refreshMe(){
+  try{
+    poolInfo=await fetch('/api/pool').then(r=>r.json());
+    if(poolInfo.walletKind!=='evm'){ const j=await fetch('/api/balance/'+encodeURIComponent(bettorId)).then(r=>r.json()); $('#me').innerHTML=`you: ${bettorId} · balance ${j.balance} USDC (mock)`; return; }
+    $('#connect').hidden=!!account;
+    if(!window.ethereum){ $('#me').innerHTML='No wallet found — install <a href="https://metamask.io/download/" target="_blank" rel="noopener">MetaMask</a> or Rabby to bet.'; return; }
+    if(account){ const hex=await window.ethereum.request({method:'eth_getBalance',params:[account,'latest']}); const bal=Number(BigInt(hex))/1e18; $('#me').innerHTML=`<b>${short(account)}</b> · ${bal.toFixed(4)} USDC on Arc`; }
+    else $('#me').textContent='Connect a wallet to bet. Payouts go straight back to it.';
+  }catch{}
+}
+refreshMe(); setInterval(refreshMe,15000);
+
+async function ensureArc(){
+  const c=poolInfo.chain; const hex=c.chainIdHex;
+  try{ await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:hex}]}); }
+  catch(e){ if(e.code===4902||/Unrecognized|not added/i.test(e.message||'')){ await window.ethereum.request({method:'wallet_addEthereumChain',params:[{chainId:hex,chainName:c.name,nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:[c.rpcUrl],blockExplorerUrls:[c.explorer]}]}); } else throw e; }
+}
+$('#connect').onclick=async()=>{
+  try{ $('#msg').className='msg'; $('#msg').textContent='Opening your wallet…';
+    const accts=await window.ethereum.request({method:'eth_requestAccounts'}); account=accts[0]; bettorId=account;
+    await ensureArc(); $('#msg').textContent=''; $('#betbtn').disabled=!(phase==='betting'&&picked); refreshMe();
+  }catch(e){ $('#msg').className='msg err'; $('#msg').textContent=e.message||'Wallet connection failed.'; }
+};
+if(window.ethereum){ window.ethereum.on?.('accountsChanged',(a)=>{account=a[0]||null; if(account) bettorId=account; refreshMe();}); }
 // Events animate strictly one at a time so nothing overlaps.
 const queue=[]; let running=false;
 function enqueue(fn){queue.push(fn); if(!running) drain();}
@@ -294,17 +321,19 @@ async function settled(ev){
 // ---- log / rail ----
 function log(html,cls=''){const r=document.createElement('div');r.className='row '+cls;r.innerHTML=html;const L=$('#log');L.prepend(r);while(L.children.length>60)L.lastChild.remove();}
 function tx(ev){return ev.explorer?`<a href="${ev.explorer}" target="_blank" rel="noopener">tx ${ev.tx}</a>`:'';}
-setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-Date.now())/1000));$('#clock').textContent=s+'s';} else $('#clock').textContent=''; },250);
+setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s';} else $('#clock').textContent=''; },250);
 function renderPicks(){
   $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${s.id}" ${phase!=='betting'?'disabled':''}><div class="n">${s.name}</div><div class="m">${m?`pays <b>${m.toFixed(2)}×</b> if it wins`:'no backers yet — first in sets the line'}</div></button>`;}).join('');
-  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;$('#picked').textContent=seats.find(s=>s.id===picked).name;renderPicks();$('#betbtn').disabled=phase!=='betting';});
+  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;$('#picked').textContent=seats.find(s=>s.id===picked).name;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(walletKind!=='evm'||account));});
 }
 function applyState(ev){
   phase=ev.phase; betCloseAt=ev.betCloseAt; multipliers=ev.multipliers||{};
+  if(ev.serverNow) clockOffset=ev.serverNow-Date.now();
   if(ev.seats&&ev.seats.length){ const changed=JSON.stringify(ev.seats.map(s=>s.id))!==JSON.stringify(seats.map(s=>s.id)); seats=ev.seats; if(changed) buildSeats(); }
-  $('#walletKind').textContent=ev.walletKind==='circle'?'Circle wallets, Arc testnet':'mock wallets (no chain yet)';
+  $('#walletKind').textContent=({evm:'live on Arc mainnet',circle:'Circle wallets',mock:'mock wallets (no chain yet)'})[ev.walletKind]||ev.walletKind;
+  walletKind=ev.walletKind;
   $('#railtitle').textContent=phase==='betting'?`Back an agent — match #${ev.matchNo}`:phase==='playing'?`Match #${ev.matchNo} in play — bets closed`:`Match #${ev.matchNo} settled`;
-  $('#betbtn').disabled=!(phase==='betting'&&picked);
+  $('#betbtn').disabled=!(phase==='betting'&&picked&&(walletKind!=='evm'||account));
   const total=ev.poolTotal||0;
   $('#poolinfo').innerHTML=ev.bets&&ev.bets.length?`<b>${total} USDC</b> from ${ev.bets.length} bet${ev.bets.length>1?'s':''}<br>`+seats.map(s=>`${s.name}: ${ev.bets.filter(b=>b.agentId===s.id).reduce((a,b)=>a+b.amount,0)} USDC`).join(' · '):'No bets yet.';
   renderPicks();
@@ -321,6 +350,7 @@ es.onmessage=(m)=>{
       break;
     case 'bet': applyState(ev); log(`${ev.bettorId} backs <b>${seats.find(s=>s.id===ev.agentId)?.name}</b> with ${ev.amount} USDC. ${tx(ev)}`,'gold'); break;
     case 'ante': enqueue(async()=>{ await flyChip(seatEl(ev.agentId),$('#pot')); bumpPot(pot+ev.amount); log(`${ev.name} antes ${ev.amount} USDC into the pot. ${tx(ev)}`); }); break;
+    case 'funded': log(`House tops up ${ev.name}'s seat. ${tx(ev)}`); break;
     case 'pot_ready': enqueue(async()=>{ bumpPot(ev.total); $('#status').innerHTML=''; }); break;
     case 'match_start': enqueue(async()=>{ seats=ev.seats; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); }); break;
     case 'hand_start': enqueue(()=>deal(ev)); break;
@@ -331,16 +361,34 @@ es.onmessage=(m)=>{
       const mine=ev.txs.find(t=>t.bettorId===bettorId);
       if(ev.refunded) log(`Nobody backed ${ev.winnerName}. All stakes refunded.`,'gold');
       else if(ev.txs.length) log(`Spectator pool paid out: `+ev.txs.filter(t=>t.bettorId!=='house').map(t=>`${t.bettorId} +${t.amount}`).join(', ')+`.`,'gold');
-      if(mine){$('#msg').className='msg ok';$('#msg').textContent=`You got ${mine.amount} USDC back.`;}
+      if(mine){$('#msg').className='msg ok';$('#msg').textContent=`You got ${mine.amount} USDC back.`; refreshMe();}
       else if(ev.bets.some(b=>b.bettorId===bettorId)){$('#msg').className='msg err';$('#msg').textContent=`Your agent lost. Next deal soon.`;}
     }); break;
   }
 };
 
 $('#betbtn').onclick=async()=>{
-  const amount=Number($('#stake').value); $('#msg').className='msg'; $('#msg').textContent='Sending USDC to the pool…';
+  const amount=Number($('#stake').value); $('#msg').className='msg';
+  if(poolInfo&&poolInfo.walletKind==='evm'){
+    if(!account){ $('#msg').className='msg err'; $('#msg').textContent='Connect your wallet first.'; return; }
+    if(!poolInfo.poolAddress||!poolInfo.open){ $('#msg').className='msg err'; $('#msg').textContent='Betting is closed — wait for the next window.'; return; }
+    try{
+      await ensureArc();
+      $('#msg').textContent=`Confirm ${amount} USDC in your wallet…`;
+      const value='0x'+(BigInt(Math.round(amount*1e6))*1000000000000n).toString(16);
+      const txHash=await window.ethereum.request({method:'eth_sendTransaction',params:[{from:account,to:poolInfo.poolAddress,value}]});
+      $('#msg').innerHTML=`Sent. Waiting for Arc to confirm… <a href="${poolInfo.chain.explorer}/tx/${txHash}" target="_blank" rel="noopener">view</a>`;
+      let j=null;
+      for(let i=0;i<20;i++){ const r=await fetch('/api/bet',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bettorId:account,address:account,agentId:picked,amount,txHash})}); j=await r.json(); if(j.ok||!/not_found_yet/.test(j.error||'')) break; await sleep(700); }
+      if(j.ok){ $('#msg').className='msg ok'; $('#msg').innerHTML=`Bet placed on ${seats.find(s=>s.id===picked)?.name}. Winnings pay to ${short(j.payoutTo)}. <a href="${j.explorer}" target="_blank" rel="noopener">view tx</a>`; }
+      else { $('#msg').className='msg err'; $('#msg').textContent=j.error; }
+      refreshMe();
+    }catch(e){ $('#msg').className='msg err'; $('#msg').textContent=e.code===4001?'Transaction rejected in wallet.':(e.message||'Failed to send.'); }
+    return;
+  }
+  $('#msg').textContent='Sending USDC to the pool…';
   const r=await fetch('/api/bet',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bettorId,agentId:picked,amount})}); const j=await r.json();
-  if(j.ok){$('#msg').className='msg ok';$('#msg').innerHTML=`Bet placed. Your balance: ${j.balance} USDC. <a href="${j.explorer}" target="_blank" rel="noopener">view tx</a>`;}
+  if(j.ok){$('#msg').className='msg ok';$('#msg').innerHTML=`Bet placed. Your balance: ${j.balance} USDC. <a href="${j.explorer}" target="_blank" rel="noopener">view tx</a>`; refreshMe();}
   else{$('#msg').className='msg err';$('#msg').textContent=j.error;}
 };
 </script>

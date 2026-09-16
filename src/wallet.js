@@ -1,17 +1,17 @@
 // wallet.js — The ONLY place that touches money. Everything else is chain-agnostic.
 //
-// The game needs four operations:
-//   createSeatWallet(name)        -> { walletId, address }
-//   getBalance(walletId)          -> number (USDC)
-//   ante(fromWallet, potWallet, amt)   -> txHash  (agent pays into the pot)
+// The game needs these operations:
+//   createSeatWallet(label)              -> { walletId, address }
+//   createPot()                          -> { walletId, address }
+//   getBalance(walletId)                 -> number (USDC)
+//   ante(fromWallet, potWallet, amt)     -> txHash  (agent pays into the pot)
 //   settle(potWallet, winnerWallet, amt) -> txHash  (pot pays the winner)
-// Wallets are always passed as objects { walletId, address }: Circle
-// transactions are *sent from* a walletId but *sent to* an address.
+//   ensureFunded(wallet, amt)            -> txHash|null (house tops up its own seats)
+// Wallets are always passed as objects { walletId, address }.
 //
-// MockWallet implements these in memory so you can watch full matches with no
-// keys. CircleArcWallet is the real adapter — the marked TODO block is the only
-// code you finish against Circle's LIVE docs/MCP (method signatures + the Arc
-// chain id / USDC token address change too often to hardcode blindly).
+// MockWallet   — in memory, auto-funded, zero keys. Used for local play.
+// EvmWallet    — real: one hot key on Arc; every other wallet derived from it.
+// CircleArcWallet — placeholder for Circle developer-controlled wallets.
 
 // ---- MockWallet ----------------------------------------------------------
 class MockWallet {
@@ -34,7 +34,6 @@ class MockWallet {
     return { walletId, address };
   }
   async getBalance(walletId) { return this.balances.get(walletId) ?? 0; }
-  // fromW / toW are wallet objects: { walletId, address }
   async ante(fromW, toW, amt) {
     const b = this.balances.get(fromW.walletId) ?? 0;
     if (b < amt) throw new Error("insufficient_balance");
@@ -49,89 +48,100 @@ class MockWallet {
     this.balances.set(toW.walletId, (this.balances.get(toW.walletId) ?? 0) + pay);
     return "0xmocktx_settle_" + Math.random().toString(16).slice(2, 10);
   }
+  async ensureFunded() { return null; }
   explorerUrl(txHash) { return `mock://tx/${txHash}`; }
+  addressUrl(addr) { return `mock://address/${addr}`; }
 }
 
-// ---- CircleArcWallet (real) ---------------------------------------------
-// Uses Circle Developer Controlled Wallets. Fill the TODO block against live
-// docs: https://developers.circle.com/  (and Circle's MCP server for exact
-// current method names, the Arc chain identifier, and the USDC token id).
+// ---- CircleArcWallet (placeholder) ----------------------------------------
+// Circle developer-controlled wallets are supported by the SDK (see
+// scripts/circle-setup.js) but the arena runs self-custodied via EvmWallet.
 class CircleArcWallet {
-  constructor({ apiKey, entitySecret, blockchain = "ARC-TESTNET" }) {
-    if (!apiKey || !entitySecret) throw new Error("Circle apiKey + entitySecret required");
-    this.kind = "circle";
-    this.blockchain = blockchain;
-    this.apiKey = apiKey;
-    this.entitySecret = entitySecret;
+  constructor() { throw new Error("CircleArcWallet is not wired; set HOUSE_PRIVATE_KEY to use the self-custodied Arc adapter."); }
+}
 
-    // TODO(circle): initialize the SDK client. As of writing:
-    //   const { initiateDeveloperControlledWalletsClient } =
-    //     require("@circle-fin/developer-controlled-wallets");
-    //   this.client = initiateDeveloperControlledWalletsClient({ apiKey, entitySecret });
-    // Verify the package name + init signature in the live docs before relying on it.
-    this.client = null;
-    this._walletSetId = null;
+// ---- EvmWallet (real, self-custodied) ---------------------------------------
+// One hot key (HOUSE_PRIVATE_KEY) funds everything. Every other wallet the arena
+// needs — seats, pot, pool, spectator deposit wallets — is DERIVED from that key
+// and a label, so there is exactly one secret to protect and any wallet can be
+// re-created from (key, label). USDC is Arc's native currency (18 decimals on
+// the native side), so transfers are plain value transfers: no ERC-20 approvals.
+class EvmWallet {
+  constructor({ privateKey, rpcUrl = "https://rpc.mainnet.arc.io", chainId = 5042, explorer = "https://explorer.arc.io", gasReserve = 0.02 }) {
+    if (!privateKey) throw new Error("HOUSE_PRIVATE_KEY required");
+    const ethers = require("ethers");
+    this.ethers = ethers;
+    this.kind = "evm";
+    this.provider = new ethers.JsonRpcProvider(rpcUrl, chainId, { staticNetwork: true });
+    this.provider.pollingInterval = 500;      // Arc blocks every ~0.5s; default 4s polling made confirms feel slow
+    this.chainId = chainId; this.rpcUrl = rpcUrl;
+    this.house = new ethers.Wallet(privateKey, this.provider);
+    this.explorer = explorer;
+    this.gasReserve = gasReserve;            // USDC each sender keeps back for gas
+    this.signers = new Map([["house", this.house]]);
   }
+  _derive(label) {
+    if (this.signers.has(label)) return this.signers.get(label);
+    const { keccak256, toUtf8Bytes, concat, Wallet } = this.ethers;
+    const pk = keccak256(concat([this.house.privateKey, toUtf8Bytes("liars-dice-arena:" + label)]));
+    const w = new Wallet(pk, this.provider); this.signers.set(label, w); return w;
+  }
+  _toWei(amt) { return this.ethers.parseUnits(Number(amt).toFixed(6), 18); }
+  _fromWei(w) { return Math.floor(Number(this.ethers.formatUnits(w, 18)) * 1e6) / 1e6; }
 
-  async _ensureWalletSet() {
-    // TODO(circle): create (once) a wallet set to group the arena's wallets.
-    //   const r = await this.client.createWalletSet({ name: "liars-dice-arena" });
-    //   this._walletSetId = r.data.walletSet.id;
-    throw new Error("CircleArcWallet not wired yet — finish the TODO blocks against live docs.");
-  }
+  // walletId IS the label; address is derived. "house" maps to the key itself.
+  async createSeatWallet(label) { const w = this._derive(String(label)); return { walletId: String(label), address: w.address, name: String(label) }; }
+  async createPot(label = "pot") { return this.createSeatWallet(label); }
+  async getBalance(walletId) { return this._fromWei(await this.provider.getBalance(this._derive(walletId).address)); }
 
-  async createSeatWallet(name) {
-    // TODO(circle): create one developer-controlled wallet on Arc.
-    //   await this._ensureWalletSet();
-    //   const r = await this.client.createWallets({
-    //     walletSetId: this._walletSetId,
-    //     blockchains: [this.blockchain],   // confirm Arc identifier via MCP
-    //     count: 1, accountType: "SCA",
-    //   });
-    //   const w = r.data.wallets[0];
-    //   return { walletId: w.id, address: w.address, name };
-    throw new Error("TODO: createSeatWallet");
+  async _send(fromLabel, toAddress, amt) {
+    const from = this._derive(fromLabel);
+    const value = this._toWei(amt);
+    const bal = await this.provider.getBalance(from.address);
+    if (bal < value + this._toWei(this.gasReserve)) throw new Error(`insufficient_balance: ${fromLabel} has ${this._fromWei(bal)} USDC, needs ${amt} + gas`);
+    const tx = await from.sendTransaction({ to: toAddress, value });
+    const rc = await tx.wait();                   // Arc: sub-second finality
+    if (!rc || rc.status !== 1) throw new Error(`tx_failed: ${tx.hash}`);
+    return tx.hash;
   }
-
-  async createPot() {
-    // Same as createSeatWallet — the pot is just another wallet the arena controls.
-    throw new Error("TODO: createPot");
+  async ante(fromW, toW, amt) { return this._send(fromW.walletId, toW.address, amt); }
+  async settle(potW, toW, amt) {
+    // pay out what the pot actually holds (minus gas), never more than owed
+    const bal = this._fromWei(await this.provider.getBalance(this._derive(potW.walletId).address));
+    const pay = Math.min(amt, Math.max(0, bal - this.gasReserve));
+    if (pay <= 0) throw new Error(`pot_empty: ${potW.walletId} holds ${bal} USDC`);
+    return this._send(potW.walletId, toW.address, pay);
   }
-
-  async getBalance(walletId) {
-    // TODO(circle): read USDC balance.
-    //   const r = await this.client.getWalletTokenBalance({ id: walletId });
-    //   find the USDC entry (match the Arc USDC token id from MCP) and return Number(amount).
-    throw new Error("TODO: getBalance");
+  // House tops up one of its own seats so it can ante (community seats are funded by their owners).
+  async ensureFunded(w, needed) {
+    const bal = await this.getBalance(w.walletId);
+    const target = needed * 3 + this.gasReserve * 2;
+    if (bal >= needed + this.gasReserve) return null;
+    return this._send("house", w.address, Math.max(target - bal, needed));
   }
-
-  async ante(fromW, potW, amt) {
-    // TODO(circle): transfer `amt` USDC from fromW.walletId -> potW.address.
-    //   const r = await this.client.createTransaction({
-    //     walletId: fromW.walletId,
-    //     tokenId: ARC_USDC_TOKEN_ID,      // from MCP / live docs
-    //     destinationAddress: potW.address,
-    //     amounts: [String(amt)],
-    //     fee: { type: "level", config: { feeLevel: "MEDIUM" } },
-    //   });
-    //   return r.data.id; // then poll for the on-chain tx hash
-    throw new Error("TODO: ante");
+  async houseBalance() { return this.getBalance("house"); }
+  // Verify a spectator's own on-chain transfer into an arena address. Returns {from, amount, timestamp} or throws.
+  async verifyDeposit(txHash, expectedTo) {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(txHash || "")) throw new Error("bad_tx_hash");
+    let rc = null;
+    for (let i = 0; i < 20 && !rc; i++) { rc = await this.provider.getTransactionReceipt(txHash); if (!rc) await new Promise((r) => setTimeout(r, 500)); }
+    if (!rc) throw new Error("tx_not_found_yet");
+    if (rc.status !== 1) throw new Error("tx_failed");
+    const tx = await this.provider.getTransaction(txHash);
+    if (!tx || (tx.to || "").toLowerCase() !== expectedTo.toLowerCase()) throw new Error("tx_wrong_recipient");
+    const block = await this.provider.getBlock(rc.blockNumber);
+    return { from: tx.from, amount: this._fromWei(tx.value), timestamp: block.timestamp * 1000, blockNumber: rc.blockNumber };
   }
-
-  async settle(potW, winnerW, amt) {
-    // TODO(circle): transfer from potW.walletId -> winnerW.address (same call shape as ante).
-    throw new Error("TODO: settle");
-  }
-
-  explorerUrl(txHash) {
-    // Arcscan explorer. Confirm the exact host for testnet vs mainnet.
-    return `https://testnet.arcscan.app/tx/${txHash}`;
-  }
+  // What the browser needs to add Arc + pay the pool.
+  chainInfo() { return { chainId: this.chainId, chainIdHex: "0x" + this.chainId.toString(16), rpcUrl: this.rpcUrl, explorer: this.explorer, name: this.chainId === 5042 ? "Arc" : "Arc Testnet" }; }
+  explorerUrl(txHash) { return `${this.explorer}/tx/${txHash}`; }
+  addressUrl(addr) { return `${this.explorer}/address/${addr}`; }
 }
 
 function makeWallet(cfg = {}) {
+  if (cfg.provider === "evm") return new EvmWallet(cfg);
   if (cfg.provider === "circle") return new CircleArcWallet(cfg);
   return new MockWallet(cfg);
 }
 
-module.exports = { MockWallet, CircleArcWallet, makeWallet };
+module.exports = { MockWallet, CircleArcWallet, EvmWallet, makeWallet };

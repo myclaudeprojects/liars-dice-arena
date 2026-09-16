@@ -62,10 +62,21 @@ class BettingPool {
     this.bettorWallets = {}; // bettorId -> { walletId, address }
     this.poolWallet = null;
     this.open = true;
+    this.closeAt = null;
+    this.usedTx = new Set();
+  }
+
+  // A bet whose USDC already arrived on-chain from the bettor's own wallet.
+  // Payout goes straight back to that address.
+  recordExternal({ bettorId, address, agentId, amount, txHash }) {
+    if (this.usedTx.has(txHash)) throw new Error("tx_already_used");
+    this.usedTx.add(txHash);
+    this.bettorWallets[bettorId] = { walletId: null, address };
+    this.bets.push({ bettorId, agentId, amount, txHash });
   }
 
   async init() {
-    this.poolWallet = await this.wallet.createPot();
+    this.poolWallet = await this.wallet.createPot("pool"); // separate from the agents' pot
     return this.poolWallet;
   }
 

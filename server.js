@@ -17,18 +17,26 @@ const { BettingPool, impliedMultipliers } = require("./src/betting");
 const llm = require("./src/llm");
 const { Stats } = require("./src/stats");
 const stats = new Stats();
-const TABLE_SIZE = Number(process.env.TABLE_SIZE || 3);
+const TABLE_SIZE = Math.max(2, Math.min(4, Math.round(Number(process.env.TABLE_SIZE) || 3)));
 const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "1" || !process.env.RENDER });
 
+// Env numbers: tolerate "1600ms", " 30000 ", "0.1 USDC" etc.; fall back to the default on garbage.
+function envNum(name, dflt) { const m = String(process.env[name] ?? "").match(/-?\d+(\.\d+)?/); const v = m ? Number(m[0]) : NaN; return Number.isFinite(v) ? v : dflt; }
 const PORT = process.env.PORT || 3000;
-const TURN_DELAY_MS = Number(process.env.TURN_DELAY_MS || 1400);
-const REVEAL_DELAY_MS = Number(process.env.REVEAL_DELAY_MS || 4200); // time for the flip sequence to play out
-const DEAL_DELAY_MS = Number(process.env.DEAL_DELAY_MS || 1500);
-const BET_WINDOW_MS = Number(process.env.BET_WINDOW_MS || 30000);
-const ANTE = Number(process.env.ANTE || 5);
+const TURN_DELAY_MS = envNum("TURN_DELAY_MS", 1400);
+const REVEAL_DELAY_MS = envNum("REVEAL_DELAY_MS", 4200); // time for the flip sequence to play out
+const DEAL_DELAY_MS = envNum("DEAL_DELAY_MS", 1500);
+const BET_WINDOW_MS = envNum("BET_WINDOW_MS", 30000);
+const ANTE = envNum("ANTE", 5);
+const MIN_STAKE = envNum("MIN_STAKE", 0.05);
 
 // ---- world state --------------------------------------------------------
-const wallet = makeWallet(process.env.CIRCLE_API_KEY ? {
+// Money adapter: self-custodied hot key > Circle wallets > in-memory mock.
+const wallet = makeWallet(process.env.HOUSE_PRIVATE_KEY ? {
+  provider: "evm", privateKey: process.env.HOUSE_PRIVATE_KEY,
+  rpcUrl: process.env.ARC_RPC_URL || "https://rpc.mainnet.arc.io", chainId: Number(process.env.ARC_CHAIN_ID || 5042),
+  explorer: process.env.ARC_EXPLORER || "https://explorer.arc.io",
+} : process.env.CIRCLE_API_KEY ? {
   provider: "circle", apiKey: process.env.CIRCLE_API_KEY,
   entitySecret: process.env.CIRCLE_ENTITY_SECRET, blockchain: process.env.CIRCLE_BLOCKCHAIN || "ARC-TESTNET",
 } : { startingBalance: 100 });
@@ -50,7 +58,7 @@ const llmComplete = process.env.ANTHROPIC_API_KEY ? llm.anthropic() : process.en
 async function ensureWallet(rec) {
   // Mock wallets live in memory, so re-create after a restart; Circle wallets persist.
   if (rec.wallet && (wallet.kind === "circle" || wallet.balances?.has(rec.wallet.walletId))) return rec.wallet;
-  const w = await wallet.createSeatWallet(rec.name); registry.setWallet(rec.id, w); return w;
+  const w = await wallet.createSeatWallet(rec.id); registry.setWallet(rec.id, w); return w;
 }
 
 function instantiate(rec) {
@@ -78,7 +86,14 @@ async function buildAgents() {
   }
   const recs = registry.pickSeats(TABLE_SIZE, { eligible: (a) => funded.has(a.id) });
   const agents = [];
-  for (const rec of recs) { const ag = instantiate(rec); ag.walletInfo = await ensureWallet(rec); agents.push(ag); }
+  for (const rec of recs) {
+    const ag = instantiate(rec); ag.walletInfo = await ensureWallet(rec);
+    if (rec.house && wallet.ensureFunded) {           // house bankrolls its own bots
+      try { const tx = await wallet.ensureFunded(ag.walletInfo, ANTE); if (tx) broadcast({ type: "funded", agentId: rec.id, name: rec.name, tx, explorer: wallet.explorerUrl(tx) }); }
+      catch (e) { console.error(`could not fund ${rec.id}:`, e.message); }
+    }
+    agents.push(ag);
+  }
   registry.markPlayed(recs.map((r) => r.id));
   return agents;
 }
@@ -96,7 +111,7 @@ async function cycle() {
     pool = new BettingPool({ wallet, houseFeeBps: 200 });
     await pool.init();
     state.phase = "betting"; state.bets = []; state.multipliers = impliedMultipliers([], agents.map(a => a.id), 200);
-    state.betCloseAt = Date.now() + BET_WINDOW_MS;
+    state.betCloseAt = Date.now() + BET_WINDOW_MS; pool.closeAt = state.betCloseAt;
     broadcast({ type: "phase", ...publicState() });
     await sleep(BET_WINDOW_MS);
     pool.close();
@@ -113,6 +128,7 @@ async function cycle() {
                         ante: ANTE, log: result.log, poolTotal: pool.bets.reduce((s, b) => s + b.amount, 0), seed: result.seed });
 
     // 3) spectator settlement
+    pool.settledAt = Date.now();
     const settlement = await pool.settle(result.winnerId, houseWallet);
     stats.recordBets(pool.bets, result.winnerId, settlement.payouts);
     state.phase = "settled";
@@ -122,7 +138,7 @@ async function cycle() {
 }
 
 function publicState() {
-  return { phase: state.phase, matchNo: state.matchNo, seats: state.seats, bets: state.bets,
+  return { serverNow: Date.now(), phase: state.phase, matchNo: state.matchNo, seats: state.seats, bets: state.bets,
            multipliers: state.multipliers, betCloseAt: state.betCloseAt, poolTotal: state.bets.reduce((s, b) => s + b.amount, 0), ante: ANTE, walletKind: wallet.kind };
 }
 
@@ -156,7 +172,7 @@ async function agentsApi(req, res, url) {
       const w = await ensureWallet(rec);
       broadcast({ type: "agent_joined", id: rec.id, name: rec.name, owner: rec.owner });
       return json(res, 201, { ok: true, agent: decorate(registry.publicView(rec)), key: rec.key, fundingAddress: w.address,
-        balance: await wallet.getBalance(w.walletId), note: wallet.kind === "circle" ? `Send at least ${ANTE} USDC on Arc to the funding address to be seated.` : "Mock wallet auto-funded with 100 USDC for local play." });
+        balance: await wallet.getBalance(w.walletId), note: wallet.kind === "mock" ? "Mock wallet auto-funded with 100 USDC for local play." : `Send at least ${ANTE} USDC on Arc to the funding address to be seated.` });
     }
 
     const rec = registry.get(parts[2]); if (!rec) return json(res, 404, { ok: false, error: "No such agent." });
@@ -187,11 +203,12 @@ async function agentsApi(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = req.url.split("?")[0];
   if (PAGES[url]) return sendFile(res, PAGES[url]);
-  if (url === "/health") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, phase: state.phase, matchNo: state.matchNo, wallet: wallet.kind, clients: clients.size })); }
+  if (url === "/health") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, phase: state.phase, matchNo: state.matchNo, wallet: wallet.kind, clients: clients.size, house: wallet.houseBalance ? await wallet.houseBalance().catch(() => null) : null })); }
   if (url === "/api/leaderboard") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(stats.leaderboard())); }
   if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(publicState())); }
   if (url.startsWith("/static/")) return sendFile(res, url.slice("/static/".length));
   if (url.startsWith("/api/agents")) return agentsApi(req, res, url);
+  if (url === "/api/pool") return json(res, 200, { walletKind: wallet.kind, poolAddress: pool?.poolWallet?.address || null, open: !!(pool && pool.open), closeAt: state.betCloseAt, matchNo: state.matchNo, chain: wallet.chainInfo ? wallet.chainInfo() : null, minStake: MIN_STAKE });
 
   if (url === "/events") {
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
@@ -205,14 +222,36 @@ const server = http.createServer(async (req, res) => {
     let body = ""; req.on("data", (c) => body += c);
     req.on("end", async () => {
       try {
-        const { bettorId, agentId, amount } = JSON.parse(body);
-        if (!pool || !pool.open) throw new Error("Betting is closed — wait for the next match.");
+        const { bettorId, agentId, amount, txHash, address } = JSON.parse(body);
         if (!state.seats.find((s) => s.id === agentId)) throw new Error("Unknown seat.");
         const amt = Number(amount);
-        if (!(amt > 0) || amt > 1000) throw new Error("Stake must be between 0 and 1000 USDC.");
-        // Mock: hand every spectator an auto-funded wallet. Real: the spectator
-        // transfers from THEIR wallet to pool.poolWallet.address (Gateway / connected wallet).
-        if (!spectatorWallets[bettorId]) spectatorWallets[bettorId] = await wallet.createSeatWallet(bettorId);
+        if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
+
+        // Connected-wallet path: the stake already moved on-chain from the bettor's own wallet.
+        if (txHash && wallet.verifyDeposit) {
+          if (!pool) throw new Error("No match is open.");
+          const dep = await wallet.verifyDeposit(txHash, pool.poolWallet.address);
+          if (Math.abs(dep.amount - amt) > 0.000001) throw new Error(`Transfer was ${dep.amount} USDC, not ${amt}.`);
+          if (address && dep.from.toLowerCase() !== String(address).toLowerCase()) throw new Error("Transfer came from a different wallet.");
+          if (!pool.open && !(dep.timestamp <= (pool.closeAt || 0) + 3000 && state.phase === "playing" && !pool.settledAt)) {
+            // Landed too late for this match: refund straight back to the sender.
+            const rtx = await wallet.settle(pool.poolWallet, { address: dep.from }, dep.amount);
+            throw new Error(`Betting had closed — refunded ${dep.amount} USDC to your wallet (tx ${rtx.slice(0, 10)}…).`);
+          }
+          pool.recordExternal({ bettorId: dep.from, address: dep.from, agentId, amount: amt, txHash });
+          state.bets = pool.bets;
+          state.multipliers = impliedMultipliers(pool.bets, state.seats.map((s) => s.id), pool.houseFeeBps);
+          broadcast({ type: "bet", bettorId: dep.from, agentId, amount: amt, tx: txHash, explorer: wallet.explorerUrl(txHash), ...publicState() });
+          return json(res, 200, { ok: true, tx: txHash, explorer: wallet.explorerUrl(txHash), payoutTo: dep.from });
+        }
+
+        if (!pool || !pool.open) throw new Error("Betting is closed — wait for the next match.");
+        // Each spectator has an arena wallet (derived on real chains, auto-funded on mock).
+        if (!spectatorWallets[bettorId]) spectatorWallets[bettorId] = await wallet.createSeatWallet("spectator:" + bettorId);
+        if (wallet.kind !== "mock") {
+          const have = await wallet.getBalance(spectatorWallets[bettorId].walletId);
+          if (have < amt + 0.02) throw new Error(`Your arena balance is ${have} USDC. Send USDC on Arc to your deposit address ${spectatorWallets[bettorId].address} first (leave ~0.02 for gas).`);
+        }
         const r = await pool.placeBet({ bettorId, bettorWallet: spectatorWallets[bettorId], agentId, amount: amt });
         state.bets = pool.bets;
         state.multipliers = impliedMultipliers(pool.bets, state.seats.map((s) => s.id), pool.houseFeeBps);
@@ -230,15 +269,16 @@ const server = http.createServer(async (req, res) => {
 
   if (url.startsWith("/api/balance/")) {
     const id = decodeURIComponent(url.split("/").pop());
+    if (!spectatorWallets[id]) spectatorWallets[id] = await wallet.createSeatWallet("spectator:" + id);
     const w = spectatorWallets[id];
-    res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ balance: w ? await wallet.getBalance(w.walletId) : null }));
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" });
+    return res.end(JSON.stringify({ balance: await wallet.getBalance(w.walletId), address: w.address, explorer: wallet.addressUrl?.(w.address) || null, kind: wallet.kind }));
   }
 
   res.writeHead(404, { "content-type": "text/plain" }); res.end("not found");
 });
 
 server.listen(PORT, () => {
-  console.log(`Liar's Dice Arena → http://localhost:${PORT}   (wallet: ${wallet.kind}, agents: ${process.env.USE_LLM ? "llm" : "mock"})`);
+  console.log(`Liar's Dice Arena → http://localhost:${PORT}   (wallet: ${wallet.kind}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms)`);
   cycle().catch((e) => { console.error("cycle crashed:", e); process.exit(1); });
 });

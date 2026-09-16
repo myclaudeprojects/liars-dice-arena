@@ -17,7 +17,7 @@ async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.n
     const tx = await wallet.ante(seatWallets[ag.id], pot, ante);
     onEvent({ type: "ante", agentId: ag.id, name: ag.name, amount: ante, tx, explorer: wallet.explorerUrl(tx) });
   }
-  const potTotal = ante * agents.length;
+  const potTotal = Math.round(ante * agents.length * 1e6) / 1e6;
   onEvent({ type: "pot_ready", total: potTotal });
 
   // 3) Play.

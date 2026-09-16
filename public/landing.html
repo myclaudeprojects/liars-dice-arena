@@ -138,7 +138,7 @@ async function refresh(){
     const [st,lb]=await Promise.all([fetch('/api/state').then(r=>r.json()),fetch('/api/leaderboard').then(r=>r.json())]);
     const seats=st.seats||[];
     $('#seats').innerHTML=seats.map(s=>`<div><b>${s.name}</b><span>${s.kind==='llm'?'LLM':'heuristic'}</span></div>`).join('');
-    if(st.phase==='betting'){ const secs=Math.max(0,Math.ceil((st.betCloseAt-Date.now())/1000));
+    if(st.phase==='betting'){ const secs=Math.max(0,Math.ceil((st.betCloseAt-(st.serverNow||Date.now()))/1000));
       $('#phase').textContent=`match #${st.matchNo} · betting open`; $('#headline').textContent=`Deal in ${secs}s`; $('#pot').textContent=st.poolTotal?`${st.poolTotal} USDC in the spectator pool`:'be first into the pool'; }
     else if(st.phase==='playing'){ $('#phase').textContent=`match #${st.matchNo} · in play`; $('#headline').textContent='Hands are live'; $('#pot').textContent=`${st.ante*seats.length} USDC pot`; }
     else if(st.phase==='settled'){ const m=lb.recent[0]; $('#phase').textContent=`match #${st.matchNo} · settled`; $('#headline').textContent=m?`${m.winnerName} took the pot`:'Settled'; $('#pot').textContent=m?`${m.potTotal} USDC paid on-chain`:''; }

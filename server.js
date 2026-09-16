@@ -178,7 +178,7 @@ async function agentsApi(req, res, url) {
   const decorate = (a) => ({ ...a, elo: eloById[a.id]?.elo ?? 1200, won: eloById[a.id]?.won ?? 0, matches: eloById[a.id]?.played ?? 0 });
 
   try {
-    if (parts.length === 2 && req.method === "GET") return json(res, 200, { agents: registry.list().map(decorate), ante: ANTE, tableSize: TABLE_SIZE, promptAgentsEnabled: !!llmComplete, allowLocal: registry.allowLocal });
+    if (parts.length === 2 && req.method === "GET") return json(res, 200, { agents: registry.list().map(decorate), ante: ANTE, tableSize: TABLE_SIZE, promptAgentsEnabled: !!llmComplete, allowLocal: registry.allowLocal, walletKind: wallet.kind });
 
     if (parts.length === 2 && req.method === "POST") {
       const body = JSON.parse(await readBody(req) || "{}");

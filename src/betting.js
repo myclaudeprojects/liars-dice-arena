@@ -1,8 +1,9 @@
 // betting.js — Spectator pari-mutuel pool.
 //
 // Humans back an agent before the match. All stakes go into one pool wallet.
-// After the match, backers of the winner split the ENTIRE pool pro-rata to
-// their stake (optionally minus a house fee in bps). Losers get nothing.
+// After the match, backers of the winner get their own stakes back plus the
+// losers' stakes pro-rata, minus a house fee (bps) taken from the losers' money
+// only. Losers get nothing.
 // If nobody backed the winner, everyone is refunded.
 //
 // Pure math lives in `computePayouts` (unit-testable). `BettingPool` wires it
@@ -24,7 +25,10 @@ function computePayouts(bets, winnerId, houseFeeBps = 0) {
     };
   }
 
-  const houseCut = round6((pool * houseFeeBps) / 10_000);
+  // Rake comes out of the LOSING side's stakes only. A winner never pays fee on their own money,
+  // so a sole backer of the winner gets exactly 1.00x back.
+  const losingStake = pool - winnerStake;
+  const houseCut = round6((losingStake * houseFeeBps) / 10_000);
   const distributable = pool - houseCut;
 
   // Pro-rata share of the whole pool per unit of winning stake.
@@ -47,7 +51,7 @@ function impliedMultipliers(bets, agentIds, houseFeeBps = 0) {
   const out = {};
   for (const id of agentIds) {
     const stake = bets.filter((b) => b.agentId === id).reduce((s, b) => s + b.amount, 0);
-    out[id] = stake > 0 ? round6((pool * (1 - houseFeeBps / 10_000)) / stake) : null;
+    out[id] = stake > 0 ? round6((stake + (pool - stake) * (1 - houseFeeBps / 10_000)) / stake) : null;
   }
   return out;
 }

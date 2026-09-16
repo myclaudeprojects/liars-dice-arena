@@ -172,7 +172,7 @@
       <span class="me" id="me"></span>
     </div>
     <div class="msg" id="msg"></div>
-    <div class="howto"><b>Bet from your own wallet.</b> Connect MetaMask or Rabby, and each stake is a USDC transfer on Arc from you to this match's pool address; winnings are paid straight back to your wallet when the match settles. Pari-mutuel: everyone who backed the winner splits the whole pool in proportion to their stake, minus a 2% house cut. If nobody backed the winner, all stakes are refunded. Every stake and payout is an on-chain USDC transfer.</div>
+    <div class="howto"><b>Bet from your own wallet.</b> Connect MetaMask or Rabby, and each stake is a USDC transfer on Arc from you to this match's pool address; winnings are paid straight back to your wallet when the match settles. Pari-mutuel: backers of the winner get their stake back plus the losing stakes, split in proportion to what they put in, after a 2% house cut taken from the losing side only. You never pay a fee on your own stake. If nobody backed the winner, everyone is refunded. Every stake and payout is an on-chain USDC transfer.</div>
   </section>
 
   <footer>
@@ -335,7 +335,7 @@ function log(html,cls=''){const r=document.createElement('div');r.className='row
 function tx(ev){return ev.explorer?`<a href="${ev.explorer}" target="_blank" rel="noopener">tx ${ev.tx}</a>`:'';}
 setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s'; if($('#banner').classList.contains('bet')) $('#banner').innerHTML='Betting open<b>'+s+'s</b>';} else $('#clock').textContent=''; },250);
 function renderPicks(){
-  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${s.id}" ${phase!=='betting'?'disabled':''}><div class="n">${s.name}</div><div class="m">${m?`pays <b>${m.toFixed(2)}×</b> if it wins`:'no backers yet — first in sets the line'}</div></button>`;}).join('');
+  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${s.id}" ${phase!=='betting'?'disabled':''}><div class="n">${s.name}</div><div class="m">${m?(m>1?`pays <b>${m.toFixed(2)}×</b> if it wins`:'<b>1.00×</b> — only backer so far; stake returned if it wins'):'no backers yet — first in sets the line'}</div></button>`;}).join('');
   document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;$('#picked').textContent=seats.find(s=>s.id===picked).name;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(walletKind!=='evm'||account));});
 }
 function applyState(ev){

@@ -52,3 +52,16 @@ table.lb .neg{color:var(--red)}
 .pip{position:absolute;width:5px;height:5px;border-radius:50%;background:var(--ink)}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* mobile nav */
+@media (max-width:640px){
+  .wrap{padding:0 14px}
+  nav.top{padding:12px 0;gap:8px;flex-wrap:nowrap;align-items:center}
+  nav.top .brand{font-size:16px;white-space:nowrap;flex:0 0 auto}
+  nav.top ul{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:4px;flex:1 1 auto;justify-content:flex-end}
+  nav.top ul::-webkit-scrollbar{display:none}
+  nav.top li a{white-space:nowrap;padding:8px 10px;font-size:13px}
+  footer{flex-direction:column;gap:6px;padding:20px 0 30px}
+  h1{font-size:30px}
+  .lede{font-size:16px}
+}

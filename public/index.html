@@ -130,6 +130,69 @@
   .place button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
   .me{font-size:13px;color:#5c5a52}.msg{font-size:13px;margin-top:8px;min-height:18px}.msg.err{color:var(--red)}.msg.ok{color:#1f6b3a}
   .howto{font-size:13px;color:#5c5a52;margin-top:10px;line-height:1.5}
+  .howlink{display:none}
+
+  /* ---------- mobile ---------- */
+  @keyframes shakeM{0%,100%{transform:none}20%{transform:translateX(-6px) rotate(-1deg)}40%{transform:translateX(6px) rotate(1deg)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+  @media (max-width:900px){
+    /* table: seats in a row, game state right under them, one screen tall */
+    .table{display:block;height:auto;min-height:0;padding:0 0 10px;border-width:10px;border-radius:28px}
+    .banner{position:static;transform:none;margin:12px auto 4px;width:max-content;max-width:calc(100% - 24px);white-space:normal;text-align:center;font-size:12px;padding:7px 14px}
+    .banner b{font-size:14px}
+    #seats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 10px 0}
+    .seat{position:static;transform:none;width:auto;margin:0;padding:8px 4px 6px;border-radius:12px}
+    .seat.shake{animation:shakeM .55s ease-in-out}
+    .seat .name{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .seat .kind{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .seat .thought{display:none}
+    .dice{gap:4px;margin:8px 0 0;min-height:22px;flex-wrap:wrap}
+    .die{width:20px;height:20px;border-radius:5px}
+    .die .pip{width:4px;height:4px}
+    .center{position:static;transform:none;width:auto;margin:10px 12px 0}
+    .now{min-height:52px;margin-bottom:8px}
+    .nowtext{font-size:17px}
+    .nowtext .q{font-size:13px}
+    .nowbar{width:140px}
+    .bidchip{min-width:0;padding:9px 18px 9px 14px;font-size:19px;gap:10px}
+    .bidchip .who{font-size:12px}
+    .tally{font-size:13px;min-height:18px}
+    .tally b{font-size:24px}
+    .pot{margin-top:8px;font-size:13px}
+    .pot b{font-size:24px}
+    .status{position:static;padding:8px 12px 0;font-size:13px}
+    .burst{font-size:54px}
+    .burst.gold{font-size:30px;white-space:normal;max-width:90%;text-align:center}
+    .float{font-size:18px}
+    aside{gap:12px}
+    .log{max-height:190px;font-size:12.5px}
+    header{margin:0 0 12px}
+    h1.t{font-size:22px}
+    h1.t small{font-size:13px;margin-top:4px}
+    .chain{font-size:12px}
+  }
+  @media (max-width:640px){
+    /* betting as a bottom sheet */
+    .wrap{padding-bottom:300px}
+    .rail{position:fixed;left:0;right:0;bottom:0;z-index:20;margin:0;border-radius:16px 16px 0 0;border-width:1px 0 0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(30,20,10,.25);max-height:62vh;overflow:auto}
+    .railhead h2{font-size:15px}
+    .railhead .clock{font-size:18px;min-width:40px}
+    #closednote{margin:4px 0 8px;font-size:12px}
+    .picks{grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
+    .pick{padding:8px 6px;border-radius:10px;min-height:56px}
+    .pick .n{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pick .m{font-size:11px;margin-top:3px;line-height:1.25}
+    .pick .m b{font-size:13px}
+    .place{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:stretch}
+    #connect{grid-column:1 / -1;width:100%;text-align:center}
+    .place input{width:100%;min-height:44px;font-size:16px}
+    .place > span:not(.me){display:none}
+    .place button#betbtn{min-height:44px;padding:0 18px;white-space:nowrap}
+    .me{grid-column:1 / -1;font-size:12px;line-height:1.35}
+    .msg{font-size:12.5px;margin-top:6px}
+    .howto{display:none}
+    .howlink{display:inline-block;font-size:12px;color:#5c5a52;margin-top:6px}
+    footer{padding-bottom:10px}
+  }
 </style>
 </head>
 <body>
@@ -175,12 +238,13 @@
     <div class="picks" id="picks"></div>
     <div class="place">
       <button id="connect" class="btn ghost" style="padding:12px 16px" hidden>Connect wallet</button>
-      <input id="stake" type="number" min="0.05" max="1000" step="0.05" value="1" aria-label="Stake in USDC" />
+      <input id="stake" type="number" inputmode="decimal" min="0.05" max="1000" step="0.05" value="1" aria-label="Stake in USDC" />
       <span>USDC on <b id="picked">—</b></span>
       <button id="betbtn" disabled>Place bet</button>
       <span class="me" id="me"></span>
     </div>
     <div class="msg" id="msg"></div>
+    <a class="howlink" href="/how-it-works#betting">How betting works →</a>
     <div class="howto"><b>Bet from your own wallet.</b> Connect MetaMask or Rabby, and each stake is a USDC transfer on Arc from you to this match's pool address; winnings are paid straight back to your wallet when the match settles. Pari-mutuel: backers of the winner get their stake back plus the losing stakes, split in proportion to what they put in, after a 2% house cut taken from the losing side only. You never pay a fee on your own stake. If nobody backed the winner, everyone is refunded. Every stake and payout is an on-chain USDC transfer.</div>
   </section>
 
@@ -353,7 +417,7 @@ function tx(ev){return ev.explorer?`<a href="${ev.explorer}" target="_blank" rel
 setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s'; if($('#banner').classList.contains('bet')) $('#banner').innerHTML='Betting open<b>'+s+'s</b>';} else $('#clock').textContent=''; },250);
 function renderPicks(){
   $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${s.id}" ${phase!=='betting'?'disabled':''}><div class="n">${s.name}</div><div class="m">${m?(m>1?`pays <b>${m.toFixed(2)}×</b> if it wins`:'<b>1.00×</b> — only backer so far; stake returned if it wins'):'no backers yet — first in sets the line'}</div></button>`;}).join('');
-  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;$('#picked').textContent=seats.find(s=>s.id===picked).name;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(walletKind!=='evm'||account));});
+  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;const nm=seats.find(s=>s.id===picked).name;$('#picked').textContent=nm;if(matchMedia('(max-width:640px)').matches)$('#betbtn').textContent='Bet on '+nm;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(walletKind!=='evm'||account));});
 }
 function applyState(ev){
   phase=ev.phase; betCloseAt=ev.betCloseAt; multipliers=ev.multipliers||{};

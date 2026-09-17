@@ -32,7 +32,7 @@ const MIN_STAKE = envNum("MIN_STAKE", 0.05);
 
 // ---- world state --------------------------------------------------------
 // Money adapter: self-custodied hot key > Circle wallets > in-memory mock.
-const wallet = makeWallet(process.env.HOUSE_PRIVATE_KEY ? {
+const wallet = makeWallet(process.env.MOCK === "1" ? { startingBalance: 100 } : process.env.HOUSE_PRIVATE_KEY ? {
   provider: "evm", privateKey: process.env.HOUSE_PRIVATE_KEY,
   rpcUrl: process.env.ARC_RPC_URL || "https://rpc.mainnet.arc.io", chainId: Number(process.env.ARC_CHAIN_ID || 5042),
   explorer: process.env.ARC_EXPLORER || "https://explorer.arc.io",

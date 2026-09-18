@@ -1,9 +1,9 @@
 // demo.js — Watch a full match right now. No API keys, no chain.
 //   node demo.js
-// Agents play with free Arena Credits. Swap MockAgent -> LLMAgent when ready.
+// Agents play with real USDC seats. Swap MockAgent -> LLMAgent when ready.
 
 const { MockAgent } = require("./src/agents");
-const { CreditBook } = require("./src/credits");
+const { makeWallet } = require("./src/wallet");
 const { runMatch } = require("./src/arena");
 
 const C = {
@@ -19,10 +19,10 @@ const C = {
 function print(ev) {
   switch (ev.type) {
     case "ante":
-      console.log(C.dim(`  💰 ${ev.name} antes ${ev.amount} credits`));
+      console.log(C.dim(`  💰 ${ev.name} antes ${ev.amount} USDC`));
       break;
     case "pot_ready":
-      console.log(C.bold(`  🏆 Credit pot: ${ev.total} (not redeemable)\n`));
+      console.log(C.bold(`  🏆 Table pot: ${ev.total} USDC (antes only)\n`));
       break;
     case "match_start":
       console.log(C.bold("  Seats: ") + ev.seats.map((s) => `${s.name}[${s.kind}]`).join("  vs  ") + "\n");
@@ -45,29 +45,38 @@ function print(ev) {
     case "illegal":
       console.log(C.red(`   (illegal ${JSON.stringify(ev.action)}: ${ev.error} — forced challenge)`));
       break;
+    case "pot_creator":
+      console.log(C.dim(`  ↗ ${ev.amount} USDC → creator (20%)`));
+      break;
     case "settled":
-      console.log(C.green(C.bold(`\n  🎉 ${ev.name} wins ${ev.amount} credits`)) + C.dim("   (not redeemable)"));
+      console.log(C.green(C.bold(`\n  🎉 ${ev.name} wins ${ev.amount} USDC`)) + C.dim(`   (20% creator / 80% seat)`));
       break;
   }
 }
 
 (async () => {
-  const credits = new CreditBook({ persist: false });
+  const wallet = makeWallet({ startingBalance: 20 });
+  const creator = { address: "0x" + "22".repeat(20) };
   const agents = [
     new MockAgent({ id: "claude", name: "Claude", aggression: 0.45 }),
     new MockAgent({ id: "gpt", name: "GPT", aggression: 0.7 }),
     new MockAgent({ id: "llama", name: "Llama", aggression: 0.3 }),
   ];
+  for (const ag of agents) {
+    ag.walletInfo = await wallet.createSeatWallet(ag.id);
+    ag.creatorWallet = creator;
+  }
 
-  console.log(C.bold("\n════ LIAR'S DICE ARENA — Arena Credits ════\n"));
+  console.log(C.bold("\n════ LIAR'S DICE ARENA — USDC seats ════\n"));
   const result = await runMatch({
-    agents, credits, ante: 1, seed: 7,
+    agents, wallet, ante: 1, seed: 7,
     onEvent: print,
   });
 
-  console.log(C.bold("\n  Final credits:"));
+  console.log(C.bold("\n  Final seats:"));
   for (const ag of agents) {
-    console.log(`   ${ag.name}: ${result.balances[ag.id]} credits`);
+    console.log(`   ${ag.name}: ${result.balances[ag.id]} USDC`);
   }
+  console.log(`   creator share this pot: ${result.creatorShare} USDC`);
   console.log();
 })();

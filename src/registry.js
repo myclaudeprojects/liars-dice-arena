@@ -90,10 +90,11 @@ class Registry {
       avatar: av,
       imageUrl: av.url,
       endpointHost: endpoint ? safeHost(endpoint) : null,
-      fundingAddress: null,
+      fundingAddress: a.wallet?.address || null,
       token: a.token || null,
       ownerAddress: a.ownerAddress || null,
-      sidelineReason: a.status === "sidelined" ? (a.sidelineReason || "unresponsive") : null,
+      bankroll: this.bankrollSummary(a),
+      sidelineReason: a.status === "sidelined" ? (a.sidelineReason || "below_min_seat") : null,
     };
   }
   list() { return Object.values(this.agents).filter((a) => a.status !== "retired").map((a) => this.publicView(a)); }
@@ -114,7 +115,7 @@ class Registry {
     const rec = {
       type, owner, house: false, createdAt: Date.now(), lastPlayedAt: 0, played: 0,
       status: "active", failures: 0, wallet: null, token: null,
-      ownerAddress: String(ownerAddress),
+      ownerAddress: String(ownerAddress), bankrollExtra: 0, bankrollTopUps: [],
     };
     if (type === "heuristic") {
       const ag = (aggression == null || aggression === "") ? 0.5 : Number(aggression);
@@ -154,8 +155,8 @@ class Registry {
   retire(id) { if (this.agents[id]) { this.agents[id].status = "retired"; this._save(); } }
   reactivate(id) { const a = this.agents[id]; if (a) { a.status = "active"; a.failures = 0; a.sidelineReason = null; this._save(); } }
 
-  // Unresponsive community agents can be sidelined; credits never gate seating.
-  sideline(id, reason = "unresponsive") {
+  // Below MIN_SEAT (3 USDC) the agent is sidelined until a deposit or token-tax top-up.
+  sideline(id, reason = "below_min_seat") {
     const a = this.agents[id];
     if (!a || a.house) return;
     a.status = "sidelined";
@@ -163,15 +164,28 @@ class Registry {
     this._save();
   }
 
-  recordTreasuryInflow({ amount, txHash, source = "token_tax_prize_treasury" } = {}) {
+  // Token-tax 25% bankroll is an *extra* top-up, never a substitute for creator funding.
+  recordBankrollTopUp(id, { amount, txHash, source = "token_tax" } = {}) {
+    const a = this.agents[id];
+    if (!a) throw new Error("No such agent.");
     const amt = Number(amount);
     if (!(amt > 0) || !Number.isFinite(amt)) throw new Error("bad_amount");
-    this.treasury = this.treasury || { inflows: [], total: 0 };
-    const row = { amount: amt, txHash: txHash || null, source, at: Date.now(), fundsPlay: false };
-    this.treasury.inflows.push(row);
-    this.treasury.total = Math.round(((this.treasury.total || 0) + amt) * 1e6) / 1e6;
+    a.bankrollTopUps = a.bankrollTopUps || [];
+    a.bankrollTopUps.push({ amount: amt, txHash: txHash || null, source, at: Date.now() });
+    a.bankrollExtra = Math.round(((a.bankrollExtra || 0) + amt) * 1e6) / 1e6;
     this._save();
-    return row;
+    return a.bankrollTopUps[a.bankrollTopUps.length - 1];
+  }
+
+  bankrollSummary(a) {
+    if (!a) return null;
+    const ups = a.bankrollTopUps || [];
+    return {
+      extraTopUp: a.bankrollExtra || 0,
+      count: ups.length,
+      last: ups.length ? ups[ups.length - 1] : null,
+      source: "token_tax_25pct_extra",
+    };
   }
 
   recordFailure(id) {

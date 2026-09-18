@@ -13,11 +13,11 @@
 //     creator funds, buyback and burn, holder dividends, and liquidity.
 //   - Launch seeds a Uniswap pool (one-time LP). Liquidity as an *ongoing*
 //     tax slice is a form option — we set it to 0.
-// There is no native “arena / seat bankroll” bucket. The 25% slice is
-// Platform prize treasury (house prize wallet). It must NEVER fund agent
-// play credits or a redeemable seat balance. Do not fold it into liquidity.
+// There is no native “arena / seat bankroll” bucket. That 25% is a second
+// creator recipient (the agent’s funding address). Do not fold it into
+// the liquidity tax bucket.
 
-const { PUBLIC_BASE_URL, PRIZE_WALLET } = require("./economics");
+const { PUBLIC_BASE_URL } = require("./economics");
 const ARGUS_LAUNCH_CONTRACT = "0xa5628a11c412596e1f63b75a2c0284f843c549d6";
 const ARGUS_APP = "https://argus.world/";
 const ARGUS_TOKEN_CREATED_TOPIC = "0x1d8917231579f8ce39407f0d616f36f357b07329b0ce5164d0754ac15145ce0a";
@@ -26,25 +26,25 @@ const ARGUS_TOKEN_CREATED_TOPIC = "0x1d8917231579f8ce39407f0d616f36f357b07329b0c
 const AGENT_TOKEN_ECONOMICS = Object.freeze({
   creatorFunds: 0.30,             // human owner
   holderDividends: 0.35,          // USDC dividends to holders
-  platformPrizeTreasury: 0.25,    // platform prize treasury — NEVER play credits / seat pots
+  arenaSeatBankroll: 0.25,        // extra top-up of the agent's play wallet
   buybackBurn: 0.10,              // buyback and burn
   liquidityOngoing: 0,            // LP is a one-time launch seed, not a tax slice
 });
 
 function assertEconomics(econ = AGENT_TOKEN_ECONOMICS) {
-  const sum = econ.creatorFunds + econ.holderDividends + econ.platformPrizeTreasury
+  const sum = econ.creatorFunds + econ.holderDividends + econ.arenaSeatBankroll
     + econ.buybackBurn + econ.liquidityOngoing;
   if (Math.abs(sum - 1) > 1e-9) throw new Error(`token economics must sum to 1, got ${sum}`);
   if (econ.liquidityOngoing !== 0) throw new Error("liquidity must be launch-seed only (ongoing tax 0)");
-  if (econ.platformPrizeTreasury !== 0.25) throw new Error("25% must remain platform prize treasury (not a play pot)");
+  if (econ.arenaSeatBankroll !== 0.25) throw new Error("25% must remain arena seat bankroll");
   return econ;
 }
 
-// Four Argus form buckets. Prize treasury is NOT liquidity and NOT a seat
-// bankroll; it rides with creator funds and must be split to PRIZE_WALLET.
+// Four Argus form buckets. Arena seat is NOT liquidity; it rides with creator
+// funds and must be split to the seat wallet (splitter or dual recipient).
 function toArgusFormAllocation(econ = AGENT_TOKEN_ECONOMICS) {
   assertEconomics(econ);
-  const creatorBucket = econ.creatorFunds + econ.platformPrizeTreasury; // 0.55
+  const creatorBucket = econ.creatorFunds + econ.arenaSeatBankroll; // 0.55
   return {
     creatorFunds: creatorBucket,
     holderDividends: econ.holderDividends,
@@ -52,7 +52,7 @@ function toArgusFormAllocation(econ = AGENT_TOKEN_ECONOMICS) {
     liquidity: econ.liquidityOngoing,
     creatorSplit: {
       owner: econ.creatorFunds / creatorBucket,                 // 30/55
-      prizeTreasury: econ.platformPrizeTreasury / creatorBucket, // 25/55
+      arenaSeatBankroll: econ.arenaSeatBankroll / creatorBucket, // 25/55
     },
   };
 }
@@ -241,7 +241,7 @@ function buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, hous
     recipients: {
       creator,                 // 30% creator funds → connected user
       feeRecipient: creator,   // must never be the LDA/dev wallet
-      prizeTreasury: PRIZE_WALLET, // 25% platform prize treasury — NEVER play credits
+      seatBankroll: seatWallet?.address || null, // 25% — separate play wallet
       deployer: deployer && deployer !== creator ? deployer : null,
     },
     creatorRights: {
@@ -259,18 +259,17 @@ function buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, hous
     // TODO(argus): No public create API/SDK is documented. When Argus ships one,
     // submit buyTax/sellTax in 1–10% and the allocation above. If the form still
     // has a single creator wallet, set it to a 30/25 payment splitter
-    // (owner vs prize treasury), NEVER to the liquidity tax bucket and NEVER
-    // to an agent play/credit wallet.
+    // (owner vs seat), NEVER to the liquidity tax bucket.
     todos: [
       "TODO(argus): wallet-connect create on argus.world — no server-side create endpoint published",
-      "TODO(argus): single creator wallet → 30/25 splitter (owner vs PRIZE_WALLET platform prize treasury)",
+      "TODO(argus): single creator wallet → 30/25 splitter (owner vs agent funding address)",
       "TODO(argus): if factory deployer is the house key, set fee recipient / transfer creator to ownerAddress in the same flow — never leave creator as LDA/dev",
       "TODO(argus): confirm buy/sell tax bps against the live create form (cap 10% each)",
       "TODO(argus): confirm create-form keys for description/website/social — terms list names, symbols, images, descriptions, and links; map metadata.argusForm, do not invent twitter/telegram endpoints",
       "TODO(argus): set PUBLIC_BASE_URL so metadata.website is an absolute /agent/<id> deep link",
       "TODO(argus): image is our hosted /api/agents/:id/avatar (generated SVG or upload). If the live create form only accepts a file, the operator must GET this URL and attach it — no Argus image/CDN API is documented",
       "TODO(argus): if Argus later hosts images, POST the same bytes; keep the LDA URL so site cards and token art stay in sync",
-      "TODO(argus): 25% platform prize treasury is NEVER agent play credits, a seat pot, or a redeemable bankroll",
+      "TODO(argus): 25% arena seat bankroll is an EXTRA top-up of the play wallet when tax is collected — never a substitute for creator deposits",
     ],
   };
 }

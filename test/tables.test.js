@@ -3,18 +3,13 @@ const fs = require("fs");
 const path = require("path");
 process.env.REGISTRY_PATH = path.join(os.tmpdir(), "lda-tables-reg-" + process.pid + ".json");
 process.env.STATS_PATH = path.join(os.tmpdir(), "lda-tables-stats-" + process.pid + ".json");
-process.env.CREDITS_PATH = path.join(os.tmpdir(), "lda-tables-credits-" + process.pid + ".json");
 try { fs.unlinkSync(process.env.REGISTRY_PATH); } catch {}
 try { fs.unlinkSync(process.env.STATS_PATH); } catch {}
-try { fs.unlinkSync(process.env.CREDITS_PATH); } catch {}
 
 const { Registry } = require("../src/registry");
 const { makeWallet } = require("../src/wallet");
 const { MockAgent } = require("../src/agents");
 const { Stats } = require("../src/stats");
-const { CreditBook } = require("../src/credits");
-const { InfluenceBook } = require("../src/influence");
-const { OracleBook } = require("../src/lifecycle");
 const {
   TableManager, communityBusyIds, filterTableSummaries, TABLE_ID_RE,
 } = require("../src/tables");
@@ -45,20 +40,24 @@ const addr = (h) => "0x" + String(h).replace(/[^0-9a-f]/gi, "a").padEnd(40, "0")
 const a = reg.register({ name: "Alpha", type: "heuristic", owner: "alice", aggression: 0.2, ownerAddress: addr("a1") });
 const b = reg.register({ name: "Bravo", type: "heuristic", owner: "bob", aggression: 0.4, ownerAddress: addr("b2") });
 const c = reg.register({ name: "Charlie", type: "heuristic", owner: "cara", aggression: 0.6, ownerAddress: addr("c3") });
-const first = reg.pickSeats(2, { eligible: () => true });
-assert(first.some((x) => x.id === a.id) && first.some((x) => x.id === b.id), "first two community by wait");
-const rest = reg.pickSeats(2, { eligible: () => true, excludeIds: first.map((x) => x.id) });
-assert(rest.some((x) => x.id === c.id), "exclude skips seated community");
-assert(!rest.some((x) => first.map((s) => s.id).includes(x.id)), "no overlap");
 
 (async () => {
   const w = makeWallet({ startingBalance: 80 });
-  const credits = new CreditBook({ persist: false });
+  const ensureWallet = async (rec) => {
+    if (rec.wallet && w.balances?.has(rec.wallet.walletId)) return rec.wallet;
+    const wal = await w.createSeatWallet(rec.id);
+    reg.setWallet(rec.id, wal);
+    return wal;
+  };
+  await ensureWallet(reg.get(a.id));
+  await ensureWallet(reg.get(b.id));
+  await ensureWallet(reg.get(c.id));
 
   const mgr = new TableManager({
-    wallet: w, registry: reg, stats: new Stats(), credits,
+    wallet: w, registry: reg, stats: new Stats(),
     instantiate: (rec) => { const ag = new MockAgent({ id: rec.id, name: rec.name, aggression: rec.aggression ?? 0.5 }); ag.owner = rec.owner; return ag; },
-    ante: 1, tableSize: 2, tableCount: 3, liveChain: false,
+    ensureWallet,
+    ante: 1, minSeat: 3, tableSize: 2, tableCount: 3, liveChain: false,
     startDelayMs: 5, turnDelayMs: 0, revealDelayMs: 0, dealDelayMs: 0,
     settlePauseMs: 1, errorPauseMs: 1, waitingMs: 1, staggerMs: 0,
     sleep: async () => {},
@@ -68,7 +67,6 @@ assert(!rest.some((x) => first.map((s) => s.id).includes(x.id)), "no overlap");
   eq(mgr.tables[0].id, "t-1", "stable ids");
   assert(mgr.get("t-2") && !mgr.get("nope"), "get");
   assert(mgr.findTableForBet === undefined, "no bet routing helper");
-  assert(typeof mgr.seatWallet !== "function", "no seat wallet helper");
 
   const t1 = await mgr.seatLock.run(() => mgr.buildAgents(mgr.tables[0]));
   mgr.tables[0].seats = t1.map((ag) => ({ id: ag.id, name: ag.name, owner: ag.owner || "house" }));
@@ -86,43 +84,33 @@ assert(!rest.some((x) => first.map((s) => s.id).includes(x.id)), "no overlap");
   eq(mgr.list({ agent: community1[0] }).length, 1, "list filter by seated agent");
   assert(mgr.findTableFeaturing(community1[0]).id === "t-1", "tip routing to featuring table");
   const st = mgr.tables[0].publicState();
-  assert(st.noSpectatorPool === true && st.noUsdcPot === true, "public state flags no pool / no USDC pot");
-  eq(st.unit, "credits", "credits unit");
+  assert(st.noSpectatorPool === true, "public state flags no pool");
+  eq(st.unit, "USDC", "USDC unit");
+  eq(st.minSeat, 3, "min seat");
   assert(!("bets" in st) && !("multipliers" in st) && !("poolTotal" in st), "no bet fields on table state");
-  assert(credits.balance(community1[0]) >= 1, "credits granted on seat");
+  assert(t1[0].walletInfo && t1[0].walletInfo.address, "seat wallet on agent");
 
-  const influence = new InfluenceBook();
-  const oracle = new OracleBook();
+  const phases = [];
   const life = new TableManager({
-    wallet: w, registry: reg, stats: new Stats(), credits: new CreditBook({ persist: false }),
-    influence, oracle,
+    wallet: w, registry: reg, stats: new Stats(),
     instantiate: (rec) => {
       const ag = new MockAgent({ id: rec.id, name: rec.name, aggression: rec.aggression ?? 0.5 });
       ag.owner = rec.owner;
       return ag;
     },
-    ante: 1, tableSize: 3, tableCount: 1, liveChain: false,
-    crowdDelayMs: 1, marketDelayMs: 1, lockBeatMs: 1,
-    turnDelayMs: 0, revealDelayMs: 0, dealDelayMs: 0,
+    ensureWallet,
+    ante: 1, minSeat: 3, tableSize: 3, tableCount: 1, liveChain: false,
+    startDelayMs: 1, turnDelayMs: 0, revealDelayMs: 0, dealDelayMs: 0,
     settlePauseMs: 1, errorPauseMs: 1, waitingMs: 1, staggerMs: 0,
     sleep: async () => {},
-    minTip: 0.05, predictionVenue: "placeholder",
+    minTip: 0.05,
   });
   const tLife = life.tables[0];
-  const phases = [];
   const orig = tLife.broadcast.bind(tLife);
   tLife.broadcast = (ev) => { phases.push(tLife.phase); orig(ev); };
   await tLife.oneMatch();
-  assert(phases.includes("crowd") && phases.includes("locked") && phases.includes("market") && phases.includes("playing") && phases.includes("settled"), "lifecycle phases");
-  assert(tLife.lockedConfig && tLife.lockedConfig.lockedConfigHash.length === 64, "locked hash");
-  eq(tLife.market.status, "awaiting_partner_listing", "partner listing stub");
-  assert(tLife.market.ldaDoesNotCustodyBets === true && tLife.market.ldaPaysWinnersFromLosers === false, "no custody / no lda payout");
-  const rec = oracle.list({ tableId: "t-1" })[0];
-  assert(rec && rec.matchId === "lda:t-1:1", "oracle match id");
-  assert(rec.lockedConfigHash === tLife.lockedConfig.lockedConfigHash, "oracle hash");
-  assert(rec.winnerAgentId || rec.aborted, "oracle winner or abort");
-  assert(rec.settledAt, "oracle timestamp");
-  eq(tLife.tipsOpen(), false, "tips closed after lock");
+  assert(phases.includes("starting") && phases.includes("playing") && phases.includes("settled"), "lifecycle phases");
+  eq(tLife.tipsOpen, undefined, "no crowd-only tip gate");
 
   console.log("tables ok");
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -27,7 +27,7 @@
         <div class="agent-sheet-stats" id="as-stats"></div>
         <div class="agent-sheet-hold" id="as-hold"></div>
         <form class="agent-sheet-tip" id="as-tip">
-          <p class="agent-sheet-tip-lede" id="as-tip-lede">Crowd phase only — pick <b>one</b> influence before lock. 100% of the USDC is a gift to the creator wallet. You are never entitled to winnings. Tips do not fund credits, pots, or prizes.</p>
+          <p class="agent-sheet-tip-lede" id="as-tip-lede">Pick <b>one</b> influence. 100% of the USDC is a gift to the agent's seat. You are never entitled to winnings. Spectators cannot stake into a win pool.</p>
           <div class="influence-picks" id="as-inf" role="radiogroup" aria-label="Pick one influence">
             <button type="button" class="inf" data-inf="aggressive" aria-pressed="false"><b>Aggressive</b><span>Bluff more, challenge more</span></button>
             <button type="button" class="inf" data-inf="calculated" aria-pressed="false"><b>Calculated</b><span>Play tighter / probability-focused</span></button>
@@ -43,7 +43,6 @@
           </div>
           <p class="agent-sheet-msg" id="as-tip-msg"></p>
         </form>
-        <div class="agent-sheet-market" id="as-market" hidden></div>
         <div class="agent-sheet-token" id="as-token"></div>
         <form class="agent-sheet-buy" id="as-form">
           <label for="as-amt">Amount (USDC)</label>
@@ -116,7 +115,7 @@
     root.querySelector("#as-hint").textContent = "";
     root.querySelector("#as-cta").disabled = true;
     const tipCta = root.querySelector("#as-tip-cta");
-    if (tipCta) { tipCta.disabled = true; tipCta.dataset.locked = "1"; tipCta.textContent = "Pick an influence"; }
+    if (tipCta) { tipCta.disabled = true; delete tipCta.dataset.locked; tipCta.textContent = "Pick an influence"; }
     pickInfluence("");
   }
 
@@ -147,47 +146,37 @@
     const formLine = (a.form || []).map((x) => `<i class="${x === "W" ? "w" : "l"}">${esc(x)}</i>`).join("") || "—";
     root.querySelector("#as-stats").innerHTML =
       cell(`${a.won ?? 0}–${Math.max(0, (a.matches ?? a.played ?? 0) - (a.won ?? 0))}`, "record") +
-      cell((a.net != null ? a.net + " cr" : "—"), "net credits") +
+      cell((a.net != null ? a.net + " USDC" : "—"), "net USDC") +
       `<div><b class="form">${formLine}</b><span>form</span></div>`;
 
-    const bal = h.credits != null ? Number(h.credits) + " cr" : (j.credits != null ? Number(j.credits) + " cr" : "—");
+    const bal = h.seatBalance != null ? Number(h.seatBalance) + " USDC" : (j.balance != null ? Number(j.balance) + " USDC" : "—");
     root.querySelector("#as-hold").innerHTML =
-      cell(bal, "credits") +
-      cell("no", "redeemable") +
-      cell(String(h.ante ?? 1) + " cr", "ante");
+      cell(bal, "seat") +
+      cell(String(h.minSeat ?? 3) + " USDC", "min to sit") +
+      cell(String(h.ante ?? 1) + " USDC", "ante");
 
     const tip = j.tip || {};
     const tipForm = root.querySelector("#as-tip");
     const tipCta = root.querySelector("#as-tip-cta");
     const tipMsg = root.querySelector("#as-tip-msg");
     const liveEl = root.querySelector("#as-inf-live");
-    const tipsOpen = tip.tipsOpen === true;
+    const tipsOpen = true;
     if (tipForm) {
-      tipForm.hidden = !tipsOpen;
+      tipForm.hidden = false;
       if (tipCta) {
-        if (!tipsOpen) {
-          tipCta.disabled = true;
-          tipCta.dataset.locked = "1";
-          tipCta.textContent = "Locked";
-        } else {
-          delete tipCta.dataset.locked;
-          const chosen = root.querySelector("#as-inf-val").value;
-          tipCta.disabled = !chosen;
-          tipCta.textContent = chosen ? "Tip · " + chosen.charAt(0).toUpperCase() + chosen.slice(1) : "Pick an influence";
-        }
+        delete tipCta.dataset.locked;
+        const chosen = root.querySelector("#as-inf-val").value;
+        tipCta.disabled = !chosen;
+        tipCta.textContent = chosen ? "Tip · " + chosen.charAt(0).toUpperCase() + chosen.slice(1) : "Pick an influence";
       }
       if (tipMsg) {
-        tipMsg.textContent = tipsOpen
-          ? "Crowd phase. You are never entitled to winnings. 100% to the creator wallet."
-          : (tip.phase === "build"
-            ? "Tips open when this agent is seated in a crowd phase, before lock."
-            : "Locked — no further paid influence. Predictions (if any) are on a partner venue. LDA does not pay winners from losers.");
+        tipMsg.textContent = "100% to the agent's seat. You are never entitled to winnings.";
       }
       const cur = tip.current || j.influence;
       if (liveEl) {
         liveEl.textContent = cur && cur.dominant
-          ? (cur.locked ? `Locked lean: ${cur.label} — ${cur.blurb}.` : `Crowd lean: ${cur.label} — ${cur.blurb}. Weighted by tip size.`)
-          : (tipsOpen ? "No crowd influence yet — your tip shifts the locked config." : "No crowd influence on this seat.");
+          ? `Lean: ${cur.label} — ${cur.blurb}. Weighted by tip size.`
+          : "No influence yet — your tip shifts how this seat plays.";
       }
       const choices = tip.choices;
       if (choices && choices.length) {
@@ -202,26 +191,8 @@
       }
     }
 
-    const mkt = j.market;
     const mEl = root.querySelector("#as-market");
-    if (mEl) {
-      if (mkt) {
-        mEl.hidden = false;
-        const contracts = (mkt.contracts || []).map((c) =>
-          `<div class="kv"><span>${esc(c.question)}</span><b>${esc(c.settlement)}</b></div>`
-        ).join("");
-        const cta = mkt.url
-          ? `<a class="btn primary" href="${esc(mkt.url)}" target="_blank" rel="noopener">Open on ${esc(mkt.venueLabel || mkt.venue)}</a>`
-          : `<p class="agent-sheet-hint">${esc(mkt.message || "Awaiting partner listing")}</p>`;
-        mEl.innerHTML =
-          `<h3>Prediction market</h3>` +
-          `<p>Predictions settle on a partner venue (Polymarket US / Kalshi). LDA does <b>not</b> custody USDC bets and does not pay winners from losers.</p>` +
-          contracts + cta;
-      } else {
-        mEl.hidden = true;
-        mEl.innerHTML = "";
-      }
-    }
+    if (mEl) { mEl.hidden = true; mEl.innerHTML = ""; }
 
     const ca = buy.address ? `<code>${esc(buy.address)}</code>` : "<span>no contract yet</span>";
     const link = buy.argusUrl
@@ -230,7 +201,7 @@
     const profile = a.id ? `<a href="/agent/${encodeURIComponent(a.id)}">Agent page</a>` : "";
     const econ = buy.economics;
     const split = econ
-      ? `Tax after protocol cut: creator ${(econ.creatorFunds || 0) * 100}% · holders ${(econ.holderDividends || 0) * 100}% · prize treasury ${(econ.platformPrizeTreasury || econ.arenaSeatBankroll || 0) * 100}% · burn ${(econ.buybackBurn || 0) * 100}% · LP tax ${(econ.liquidityOngoing || 0) * 100}%`
+      ? `Tax after protocol cut: creator ${(econ.creatorFunds || 0) * 100}% · holders ${(econ.holderDividends || 0) * 100}% · seat bankroll ${(econ.arenaSeatBankroll || 0) * 100}% · burn ${(econ.buybackBurn || 0) * 100}% · LP tax ${(econ.liquidityOngoing || 0) * 100}%`
       : "";
     const desc = buy.description ? `<p>${esc(buy.description)}</p>` : "";
     root.querySelector("#as-token").innerHTML =
@@ -321,14 +292,14 @@
       const cfg = await fetch("/api/config").then((r) => r.json()).catch(() => ({}));
       const live = !!cfg.live;
       const agent = await fetch("/api/agents/" + encodeURIComponent(currentId) + (tableId ? ("?table=" + encodeURIComponent(tableId)) : "")).then((r) => r.json());
-      const dest = (agent.tip && (agent.tip.creatorAddress || agent.tip.fundingAddress)) || (agent.holdings && agent.holdings.creatorAddress);
+      const dest = (agent.tip && (agent.tip.seatAddress || agent.tip.fundingAddress)) || (agent.holdings && agent.holdings.fundingAddress);
       const from = (window.LDAWallet && LDAWallet.account()) || localStorage.getItem("tipperId") || localStorage.getItem("bettorId") || "spectator";
       if (live) {
         if (!window.ethereum) throw new Error("Connect a wallet to tip on Arc.");
         const st = await LDAWallet.connect();
         const account = st.account;
         if (!account) throw new Error("Connect a wallet to tip.");
-        if (!dest) throw new Error("This agent has no creator wallet to tip.");
+        if (!dest) throw new Error("This agent has no seat wallet to tip.");
         const chain = cfg.chain;
         if (chain && chain.chainIdHex) {
           try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain.chainIdHex }] }); }
@@ -352,7 +323,7 @@
           if (j.ok || !/not_found_yet/.test(j.error || "")) break;
           await new Promise((res) => setTimeout(res, 700));
         }
-        if (j && j.ok) msg.textContent = `Gift recorded: ${j.amount} USDC → creator (100%), influence ${j.influence}. Never entitled to winnings.`;
+        if (j && j.ok) msg.textContent = `Gift recorded: ${j.amount} USDC → seat (100%), influence ${j.influence}. Never entitled to winnings.`;
         else msg.textContent = (j && j.error) || "Could not record tip.";
         return;
       }
@@ -362,7 +333,7 @@
         body: JSON.stringify({ amount: amt, from, tableId, influence: inf }),
       });
       const j = await r.json();
-      if (j.ok) msg.textContent = `Gift recorded: ${j.amount} USDC → creator (100%), ${j.influence}. ${j.mock ? "Demo wallets, not on chain. " : ""}You are never entitled to winnings.`;
+      if (j.ok) msg.textContent = `Gift recorded: ${j.amount} USDC → seat (100%), ${j.influence}. ${j.mock ? "Demo wallets, not on chain. " : ""}You are never entitled to winnings.`;
       else msg.textContent = j.error || "Could not tip.";
     } catch (err) {
       msg.textContent = err.message || "Failed.";

@@ -4,8 +4,7 @@ const path = require("path");
 process.env.CREDITS_PATH = path.join(os.tmpdir(), "lda-credits-" + process.pid + ".json");
 try { fs.unlinkSync(process.env.CREDITS_PATH); } catch {}
 
-const { CreditBook } = require("../src/credits");
-const { STARTING_CREDITS } = require("../src/economics");
+const { CreditBook, STARTING_CREDITS } = require("../src/credits");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 function eq(a, b, m) { if (Math.abs(a - b) > 1e-9) throw new Error((m || "eq") + `: ${a} != ${b}`); }

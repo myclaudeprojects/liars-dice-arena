@@ -6,7 +6,10 @@
 
 const fs = require("fs");
 const path = require("path");
-const { STARTING_CREDITS, DEFAULT_ANTE_CREDITS, round6 } = require("./economics");
+// Unused by the v1 USDC-seat money path. Kept as a library for tests.
+const STARTING_CREDITS = 1000;
+const DEFAULT_ANTE_CREDITS = 1;
+function round6(x) { return Math.round(Number(x) * 1e6) / 1e6; }
 
 const CREDITS_PATH = process.env.CREDITS_PATH || path.join(__dirname, "..", "data", "credits.json");
 

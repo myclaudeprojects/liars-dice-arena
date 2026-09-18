@@ -15,7 +15,7 @@ s.recordMatch({
     { id: "shark", name: "The Shark", kind: "mock" },
     { id: "degen", name: "Degen", kind: "mock" },
   ],
-  winnerId: "shark", potTotal: 3, ante: 1, log: [], seed: 1, unit: "credits",
+  winnerId: "shark", potTotal: 3, ante: 1, log: [], seed: 1, unit: "USDC",
 });
 s.recordMatch({
   matchNo: 2,
@@ -23,27 +23,19 @@ s.recordMatch({
     { id: "shark", name: "The Shark", kind: "mock" },
     { id: "degen", name: "Degen", kind: "mock" },
   ],
-  winnerId: "degen", potTotal: 3, ante: 1, log: [], seed: 2, unit: "credits",
+  winnerId: "degen", potTotal: 3, ante: 1, log: [], seed: 2, unit: "USDC",
 });
 s.recordTip({ from: "alice", agentId: "shark", amount: 2 });
-s.recordTreasury({ amount: 4, source: "token_tax_prize_treasury" });
-s.recordPrize({
-  amount: 5, agentId: "shark", agentName: "The Shark", creator: "0xabc",
-  pending: false, source: "platform_prize_treasury", paidTo: "creator",
-});
 const lb = s.leaderboard();
 const shark = lb.agents.find((a) => a.id === "shark");
 const degen = lb.agents.find((a) => a.id === "degen");
 assert(shark.form[0] === "L" && shark.form[1] === "W", "shark form newest first");
 assert(degen.form[0] === "W" && degen.form[1] === "L", "degen form");
 assert(shark.won === 1 && shark.played === 2, "record");
-assert(shark.creditsWon === 2 && shark.creditsLost === 1, "credit pot accounting");
+assert(shark.usdcWon === 2 && shark.usdcLost === 1, "USDC pot accounting");
 assert(lb.tippers.some((t) => t.id === "alice" && t.tipped === 2), "tipper board");
 assert(lb.totals.tips === 1 && lb.totals.tipsUsdc === 2, "tip totals");
-assert(lb.totals.creditsSettled === 6, "credits settled");
-assert(lb.totals.prizes === 1 && lb.totals.prizesUsdc === 5, "prize totals");
-assert(lb.treasury.total === 4 && lb.treasury.inflows[0].fundsPlay === false, "treasury not play");
+assert(lb.totals.usdcSettled === 6, "usdc settled");
 assert(shark.tipsUsdc === 2, "agent tips");
-assert(shark.prizesUsdc === 5, "agent prizes");
-assert(Array.isArray(lb.prizes) && lb.prizes[0].paidTo === "creator", "prizes list");
+assert(!lb.prizes, "no prize board");
 console.log("stats ok");

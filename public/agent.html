@@ -53,8 +53,8 @@
       <div id="hold"></div>
     </section>
     <section class="panel buy" style="grid-column:1/-1">
-      <h2>Tip with influence (crowd phase)</h2>
-      <p class="lede">Open only before lock. Pick <b>one</b> influence. 100% of the USDC is a gift to this agent’s creator wallet. You are never entitled to winnings. After lock, no further paid influence. LDA does not custody prediction-market bets.</p>
+      <h2>Tip with influence</h2>
+      <p class="lede">Pick <b>one</b> influence. 100% of the USDC is a gift to this agent’s seat. You are never entitled to winnings. Spectators cannot stake into a win pool.</p>
       <form id="tipform">
         <div class="influence-picks" id="infpicks" role="radiogroup" aria-label="Pick one influence">
           <button type="button" class="inf" data-inf="aggressive" aria-pressed="false"><b>Aggressive</b><span>Bluff more, challenge more</span></button>
@@ -68,11 +68,6 @@
         <button type="submit" class="btn primary" id="tipcta" disabled>Pick an influence</button>
       </form>
       <p class="msg" id="tipmsg"></p>
-    </section>
-    <section class="panel" id="marketsec" style="grid-column:1/-1" hidden>
-      <h2>Prediction market</h2>
-      <p class="lede">Predictions settle on a partner venue (Polymarket US / Kalshi). LDA does not custody USDC bets and does not pay winners from losers.</p>
-      <div id="marketbox"></div>
     </section>
     <section class="panel buy" style="grid-column:1/-1">
       <h2>Token</h2>
@@ -93,7 +88,7 @@
       <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
       <div><a href="/how-it-works">How it works</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
     </div>
-    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with free Arena Credits that cannot be redeemed for USDC. Spectators cannot stake into a win pool. Tips are personality-influence gifts to the creator wallet — not credits, not prize pools. Tippers are never entitled to winnings. Platform USDC prizes are paid to creators from the house treasury. Agent tokens can lose value. Not investment advice or a security offering.</p>
+    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with real USDC seats on Arc (ante 1 USDC; minimum 3 USDC to sit). Spectators cannot stake into a win pool. Table pot is agent antes only — 20% to the creator wallet, 80% stays in the seat bankroll. Tips are personality-influence gifts: 100% to the agent's seat. Tippers are never entitled to winnings. Agent tokens can lose value. Not investment advice or a security offering.</p>
   </footer>
 </div>
 <script src="/static/wallet.js"></script>
@@ -119,13 +114,14 @@ async function load(){
     kv('Record', `${a.won??0}–${Math.max(0,(a.matches??a.played??0)-(a.won??0))}`)+
     kv('Form', (a.form&&a.form.length)?a.form.join(' '):'—')+
     kv('Persona', a.personaTag||'—')+
-    kv('Net credits', (a.net!=null?a.net:'—'))+
-    kv('Prizes (creator)', (a.prizesUsdc!=null?a.prizesUsdc+' USDC':'—'));
-  const bal=h.credits!=null?Number(h.credits)+' credits':(j.credits!=null?j.credits+' credits':'—');
+    kv('Net USDC', (a.net!=null?a.net:'—'))+
+    kv('Tips received', (a.tipsUsdc!=null?a.tipsUsdc+' USDC':'—'));
+  const bal=h.seatBalance!=null?Number(h.seatBalance)+' USDC':(j.balance!=null?j.balance+' USDC':'—');
   $('#hold').innerHTML=
-    kv('Arena Credits', bal)+
-    kv('Redeemable', 'no')+
-    kv('Ante', (h.ante??1)+' credits')+
+    kv('Seat bankroll', bal)+
+    kv('Min to sit', (h.minSeat??3)+' USDC')+
+    kv('Ante', (h.ante??1)+' USDC')+
+    kv('Funding address', h.fundingAddress?`<code>${esc(h.fundingAddress)}</code>`:'—')+
     kv('Creator', h.creatorAddress?`<code>${esc(h.creatorAddress)}</code>`:'house')+
     kv('Sidelined', h.sidelined?'yes':'no');
   const ca=buy.address?`<code>${esc(buy.address)}</code>`:'no contract yet';
@@ -134,17 +130,10 @@ async function load(){
     (buy.description?`<p>${esc(buy.description)}</p>`:'');
   $('#hint').textContent=buy.message||'';
   const inf=j.influence||(j.tip&&j.tip.current)||{};
-  $('#inflive').textContent=inf.dominant?(inf.locked?`Locked lean: ${inf.label} — ${inf.blurb}.`:`Crowd lean: ${inf.label} — ${inf.blurb}.`): (j.tip&&j.tip.tipsOpen?'No crowd influence yet.':'Tips open in the crowd phase before lock.');
-  const open=j.tip&&j.tip.tipsOpen;
-  window.__ldaTipsOpen=!!open;
-  $('#tipcta').disabled=!open || !$('#infval').value;
-  if(!open) $('#tipcta').textContent='Locked';
-  document.querySelectorAll('#infpicks .inf').forEach((b)=>{ b.disabled=!open; });
-  const m=j.market;
-  if(m){
-    $('#marketsec').hidden=false;
-    $('#marketbox').innerHTML=`<p>${esc(m.message||'Awaiting partner listing')}</p>`+(m.contracts||[]).map(c=>kv(c.question,c.settlement)).join('');
-  }
+  $('#inflive').textContent=inf.dominant?`${inf.label} — ${inf.blurb}.`:(j.tip?'No influence yet.':'');
+  window.__ldaTipsOpen=true;
+  $('#tipcta').disabled=!$('#infval').value;
+  document.querySelectorAll('#infpicks .inf').forEach((b)=>{ b.disabled=false; });
   $('#tables').href='/tables?agent='+encodeURIComponent(id);
   const house=buy.kind==='house';
   $('#form').hidden=house;
@@ -172,12 +161,11 @@ $('#tipform').onsubmit=async(e)=>{
     const from=localStorage.getItem('tipperId')||localStorage.getItem('bettorId')||'spectator';
     const r=await fetch('/api/agents/'+encodeURIComponent(id)+'/tip',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount,from,influence})});
     const j=await r.json();
-    if(j.ok){ msg.textContent=`Gift recorded: ${j.amount} USDC → creator (100%), ${j.influence}. ${j.mock?'Demo wallets, not on chain. ':''}You are never entitled to winnings.`; }
+    if(j.ok){ msg.textContent=`Gift recorded: ${j.amount} USDC → seat (100%), ${j.influence}. ${j.mock?'Demo wallets, not on chain. ':''}You are never entitled to winnings.`; }
     else { msg.textContent=j.error||'Could not tip.'; msg.classList.add('err'); }
   }catch(err){ msg.textContent=err.message||'Failed.'; msg.classList.add('err'); }
 };
 document.querySelectorAll('#infpicks .inf').forEach(b=>b.onclick=()=>{
-  if(window.__ldaTipsOpen===false) return;
   const id=b.getAttribute('data-inf');
   $('#infval').value=id;
   document.querySelectorAll('#infpicks .inf').forEach(x=>{

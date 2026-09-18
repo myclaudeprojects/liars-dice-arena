@@ -8,8 +8,8 @@ const path = require("path");
 const STATS_PATH = process.env.STATS_PATH || path.join(__dirname, "..", "data", "stats.json");
 
 const EMPTY = {
-  matches: [], agents: {}, tippers: {}, prizes: [],
-  totals: { matches: 0, creditsSettled: 0, tips: 0, tipsUsdc: 0, prizes: 0, prizesUsdc: 0 },
+  matches: [], agents: {}, tippers: {},
+  totals: { matches: 0, usdcSettled: 0, tips: 0, tipsUsdc: 0 },
 };
 
 function load() {
@@ -28,25 +28,25 @@ function elo(ratingA, ratingB, aWon, k = 24) {
 }
 
 class Stats {
-  constructor() { this.s = load(); this.s.prizes ||= []; this.s.totals = { ...EMPTY.totals, ...this.s.totals }; }
+  constructor() { this.s = load(); this.s.totals = { ...EMPTY.totals, ...this.s.totals }; }
 
   agent(id, name, kind) {
     const a = (this.s.agents[id] ||= {
-      id, name, kind, played: 0, won: 0, creditsWon: 0, creditsLost: 0,
+      id, name, kind, played: 0, won: 0, usdcWon: 0, usdcLost: 0,
       bluffsCaught: 0, bluffsLanded: 0, callsRight: 0, callsWrong: 0, elo: 1200, form: [],
     });
     a.name = name; a.kind = kind; a.form = a.form || [];
-    a.creditsWon = a.creditsWon || 0; a.creditsLost = a.creditsLost || 0;
+    a.usdcWon = a.usdcWon || 0; a.usdcLost = a.usdcLost || 0;
     return a;
   }
 
-  recordMatch({ matchNo, seats, winnerId, potTotal, ante, log, seed, unit = "credits" }) {
+  recordMatch({ matchNo, seats, winnerId, potTotal, ante, log, seed, unit = "USDC" }) {
     const winner = this.agent(winnerId, seats.find((s) => s.id === winnerId).name, seats.find((s) => s.id === winnerId).kind);
     for (const s of seats) {
       const a = this.agent(s.id, s.name, s.kind);
       a.played++;
-      if (s.id === winnerId) { a.won++; a.creditsWon += potTotal - ante; a.form.unshift("W"); }
-      else { a.creditsLost += ante; a.form.unshift("L"); }
+      if (s.id === winnerId) { a.won++; a.usdcWon += potTotal - ante; a.form.unshift("W"); }
+      else { a.usdcLost += ante; a.form.unshift("L"); }
       if (a.form.length > 8) a.form.length = 8;
     }
     for (const ev of log) {
@@ -68,7 +68,7 @@ class Stats {
     });
     if (this.s.matches.length > 200) this.s.matches.length = 200;
     this.s.totals.matches++;
-    this.s.totals.creditsSettled = (this.s.totals.creditsSettled || 0) + potTotal;
+    this.s.totals.usdcSettled = (this.s.totals.usdcSettled || 0) + potTotal;
     save(this.s);
   }
 
@@ -83,35 +83,10 @@ class Stats {
     save(this.s);
   }
 
-  recordTreasury({ amount, txHash, source = "token_tax_prize_treasury" } = {}) {
-    const amt = Number(amount);
-    if (!(amt > 0) || !Number.isFinite(amt)) throw new Error("bad_amount");
-    this.s.treasury = this.s.treasury || { inflows: [], total: 0 };
-    const row = { amount: amt, txHash: txHash || null, source, at: Date.now(), fundsPlay: false };
-    this.s.treasury.inflows.unshift(row);
-    this.s.treasury.total = Math.round(((this.s.treasury.total || 0) + amt) * 1e6) / 1e6;
-    save(this.s);
-    return row;
-  }
-
-  recordPrize(row) {
-    this.s.prizes = this.s.prizes || [];
-    this.s.prizes.unshift(row);
-    if (this.s.prizes.length > 100) this.s.prizes.length = 100;
-    if (!row.pending && !row.error) {
-      this.s.totals.prizes = (this.s.totals.prizes || 0) + 1;
-      this.s.totals.prizesUsdc = Math.round(((this.s.totals.prizesUsdc || 0) + Number(row.amount || 0)) * 1e6) / 1e6;
-    }
-    const a = this.s.agents[row.agentId];
-    if (a && !row.pending) a.prizesUsdc = Math.round(((a.prizesUsdc || 0) + Number(row.amount || 0)) * 1e6) / 1e6;
-    save(this.s);
-    return row;
-  }
-
   leaderboard() {
     const agents = Object.values(this.s.agents).map((a) => ({
       ...a, elo: Math.round(a.elo),
-      net: +((a.creditsWon || 0) - (a.creditsLost || 0)).toFixed(2),
+      net: +((a.usdcWon || 0) - (a.usdcLost || 0)).toFixed(2),
       winRate: a.played ? a.won / a.played : 0,
       bluffRate: (a.bluffsLanded + a.bluffsCaught) ? a.bluffsLanded / (a.bluffsLanded + a.bluffsCaught) : null,
       callAccuracy: (a.callsRight + a.callsWrong) ? a.callsRight / (a.callsRight + a.callsWrong) : null,
@@ -123,8 +98,6 @@ class Stats {
     const totals = { ...EMPTY.totals, ...this.s.totals };
     return {
       agents, tippers, totals, recent: this.s.matches.slice(0, 20),
-      prizes: (this.s.prizes || []).slice(0, 20),
-      treasury: this.s.treasury || { inflows: [], total: 0 },
     };
   }
 }

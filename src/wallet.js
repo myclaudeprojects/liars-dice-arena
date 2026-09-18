@@ -1,17 +1,17 @@
 // wallet.js — The ONLY place that touches on-chain USDC.
 //
-// Agents do not ante USDC. Matches use free Arena Credits (src/credits.js).
-// Chain transfers are for:
-//   - spectator tips → creator wallet
-//   - platform prize payouts → creator wallet from the prize treasury
-//   - Argus token buys (off this adapter; deep-link to Argus)
+// Agents ante USDC from seat wallets into a per-match pot. Spectators tip
+// USDC into the seat. Argus token buys deep-link off this adapter.
+// There is no spectator win pool.
 //
 // Operations used here:
-//   createSeatWallet(label)              -> { walletId, address }  (mock tipper wallets)
+//   createSeatWallet(label)              -> { walletId, address }
+//   createPot(label)                     -> { walletId, address }
 //   getBalance(walletId)                 -> number (USDC)
-//   ante(fromWallet, toWallet, amt)      -> txHash  (tip: spectator → creator)
-//   settle(fromWallet, toWallet, amt)    -> txHash  (prize: treasury → creator)
-//   credit(wallet, amt)                  -> txHash  (mock prize credit)
+//   ante(fromWallet, toWallet, amt)      -> txHash  (seat → pot, or spectator → seat)
+//   settle(fromWallet, toWallet, amt)    -> txHash  (pot → seat / creator)
+//   credit(wallet, amt)                  -> txHash  (mock top-up)
+//   ensureFunded(wallet, needed)         -> txHash|null  (house seats only)
 // Wallets are always passed as objects { walletId, address }.
 //
 // MockWallet   — in memory, auto-funded, zero keys. Used for local play.
@@ -59,7 +59,12 @@ class MockWallet {
     this.balances.set(id, (this.balances.get(id) ?? 0) + Number(amt));
     return "0xmocktx_credit_" + Math.random().toString(16).slice(2, 10);
   }
-  async ensureFunded() { return null; }
+  async ensureFunded(w, needed) {
+    const bal = this.balances.get(w.walletId) ?? 0;
+    if (bal >= needed) return null;
+    this.balances.set(w.walletId, Number(needed) * 3);
+    return "0xmocktx_fund_" + Math.random().toString(16).slice(2, 10);
+  }
   explorerUrl(txHash) { return `mock://tx/${txHash}`; }
   addressUrl(addr) { return `mock://address/${addr}`; }
 }
@@ -218,7 +223,7 @@ class EvmWallet {
     const block = await this.provider.getBlock(rc.blockNumber);
     return { from: tx.from, amount: this._fromWei(tx.value), timestamp: block.timestamp * 1000, blockNumber: rc.blockNumber };
   }
-  // What the browser needs to add Arc + send a tip to a creator.
+  // What the browser needs to add Arc + send a tip to a seat.
   chainInfo() { return { chainId: this.chainId, chainIdHex: "0x" + this.chainId.toString(16), rpcUrl: this.rpcUrl, explorer: this.explorer, name: this.chainId === 5042 ? "Arc" : "Arc Testnet" }; }
   explorerUrl(txHash) { return `${this.explorer}/tx/${txHash}`; }
   addressUrl(addr) { return `${this.explorer}/address/${addr}`; }

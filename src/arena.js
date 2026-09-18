@@ -1,48 +1,49 @@
-// arena.js — Orchestrates one match on Arena Credits (not USDC).
-// Credits are free and nonredeemable. There is no player-funded pot and no
-// chain transfer for antes. Emits events via a callback so a CLI, a websocket
-// server, or a test can all consume the same stream.
+// arena.js — Orchestrates one match: seats the agents, funds the pot from
+// USDC antes, drives turns, and settles the pot 20% creator / 80% seat.
+// There is no spectator win pool. Emits events via a callback so a CLI, a
+// websocket server, or a test can all consume the same stream.
 
 const { Match } = require("./engine");
 const { safeFallback } = require("./agents");
-const { CreditBook } = require("./credits");
-const { DEFAULT_ANTE_CREDITS, assertAnteCredits } = require("./economics");
+const { POT_CREATOR_BPS, POT_SEAT_BPS, DEFAULT_ANTE, round6 } = require("./economics");
 
-function refundAntes({ agents, credits, ante, onEvent }) {
+async function refundAntes({ agents, wallet, pot, seatWallets, ante, onEvent }) {
   for (const ag of agents) {
     try {
-      credits.credit(ag.id, ante);
-      onEvent({ type: "refund", agentId: ag.id, name: ag.name, amount: ante, unit: "credits" });
+      const tx = await wallet.settle(pot, seatWallets[ag.id], ante);
+      await onEvent({ type: "refund", agentId: ag.id, name: ag.name, amount: ante, tx, explorer: wallet.explorerUrl(tx) });
     } catch (e) {
-      onEvent({ type: "refund_failed", agentId: ag.id, name: ag.name, error: String(e.message || e).slice(0, 200) });
+      await onEvent({ type: "refund_failed", agentId: ag.id, name: ag.name, error: String(e.message || e).slice(0, 200) });
     }
   }
 }
 
 async function runMatch({
-  agents, credits, ante = DEFAULT_ANTE_CREDITS, diceCount = 5, seed = Date.now(),
-  onEvent = () => {}, maxSteps = 1000, influence = null, freezeInfluence = true,
+  agents, wallet, ante = DEFAULT_ANTE, diceCount = 5, seed = Date.now(),
+  onEvent = () => {}, maxSteps = 1000, potLabel = "pot",
+  influence = null, freezeInfluence = true,
 } = {}) {
-  const book = credits || new CreditBook({ persist: false });
-  const anteCredits = assertAnteCredits(ante);
+  const seatWallets = {};
+  for (const ag of agents) {
+    seatWallets[ag.id] = ag.walletInfo || await wallet.createSeatWallet(ag.name);
+  }
+  const pot = await wallet.createPot(potLabel);
+
   const paid = [];
   try {
     for (const ag of agents) {
-      book.ensure(ag.id, anteCredits);
-      book.debit(ag.id, anteCredits);
+      const tx = await wallet.ante(seatWallets[ag.id], pot, ante);
       paid.push(ag);
-      await onEvent({
-        type: "ante", agentId: ag.id, name: ag.name, amount: anteCredits, unit: "credits",
-      });
+      await onEvent({ type: "ante", agentId: ag.id, name: ag.name, amount: ante, tx, explorer: wallet.explorerUrl(tx), unit: "USDC" });
     }
   } catch (e) {
-    await onEvent({ type: "ante_failed", error: String(e.message || e).slice(0, 200), paid: paid.length, unit: "credits" });
-    refundAntes({ agents: paid, credits: book, ante: anteCredits, onEvent });
+    await onEvent({ type: "ante_failed", error: String(e.message || e).slice(0, 200), paid: paid.length, unit: "USDC" });
+    await refundAntes({ agents: paid, wallet, pot, seatWallets, ante, onEvent });
     throw e;
   }
 
-  const potTotal = anteCredits * agents.length;
-  await onEvent({ type: "pot_ready", total: potTotal, unit: "credits" });
+  const potTotal = round6(ante * agents.length);
+  await onEvent({ type: "pot_ready", total: potTotal, unit: "USDC" });
 
   const match = new Match({
     seats: agents.map((a) => ({ id: a.id, name: a.name })),
@@ -54,10 +55,8 @@ async function runMatch({
     id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house",
     ownerAddress: a.ownerAddress || null, personaTag: a.personaTag || null,
     imageUrl: `/api/agents/${encodeURIComponent(a.id)}/avatar`,
-  })), seed, unit: "credits" });
+  })), seed, unit: "USDC" });
   const emitDeal = () => {
-    // Locked crowd weights stay fixed through the match. Decay is only for
-    // tests of the helper when freezeInfluence is false.
     if (influence && !freezeInfluence && match.handNumber > 1) {
       influence.decayHands(agents.map((a) => a.id));
     }
@@ -104,28 +103,43 @@ async function runMatch({
     }
   }
 
-  const balances = book.snapshot(agents.map((a) => a.id));
+  const balances = {};
+  const readBalances = async () => {
+    for (const ag of agents) balances[ag.id] = await wallet.getBalance(seatWallets[ag.id].walletId);
+  };
 
   if (!match.winnerId) {
     await onEvent({ type: "aborted", reason: "no_winner", steps: maxSteps });
-    refundAntes({ agents, credits: book, ante: anteCredits, onEvent: (ev) => onEvent(ev) });
-    return {
-      winnerId: null, winnerName: null, potTotal, aborted: true, unit: "credits",
-      balances: book.snapshot(agents.map((a) => a.id)), log: match.log, seed,
-    };
+    await refundAntes({ agents, wallet, pot, seatWallets, ante, onEvent });
+    await readBalances();
+    return { winnerId: null, winnerName: null, potTotal, aborted: true, unit: "USDC", balances, log: match.log, seed };
   }
 
   const winner = byId[match.winnerId];
-  book.credit(winner.id, potTotal);
+  const creatorDest = winner.creatorWallet || winner.ownerWallet || null;
+  const creatorShare = creatorDest ? round6((potTotal * POT_CREATOR_BPS) / 10_000) : 0;
+  const seatShare = round6(potTotal - creatorShare);
+  const settleTxs = [];
+  if (creatorShare > 0) {
+    const ctx = await wallet.settle(pot, creatorDest, creatorShare);
+    settleTxs.push({ to: "creator", amount: creatorShare, tx: ctx, explorer: wallet.explorerUrl(ctx) });
+    await onEvent({
+      type: "pot_creator", winnerId: winner.id, name: winner.name, amount: creatorShare,
+      tx: ctx, explorer: wallet.explorerUrl(ctx), unit: "USDC",
+    });
+  }
+  const settleTx = await wallet.settle(pot, seatWallets[winner.id], seatShare);
+  settleTxs.push({ to: "seat", amount: seatShare, tx: settleTx, explorer: wallet.explorerUrl(settleTx) });
   await onEvent({
     type: "settled", winnerId: winner.id, name: winner.name, amount: potTotal,
-    unit: "credits", redeemable: false,
+    seatShare, creatorShare, tx: settleTx, explorer: wallet.explorerUrl(settleTx), unit: "USDC",
   });
+  await readBalances();
 
   return {
     winnerId: match.winnerId, winnerName: winner.name, potTotal,
-    unit: "credits", redeemable: false,
-    balances: book.snapshot(agents.map((a) => a.id)), log: match.log, seed,
+    seatShare, creatorShare, settleTxs, unit: "USDC",
+    balances, log: match.log, seed,
   };
 }
 

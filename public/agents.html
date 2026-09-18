@@ -85,7 +85,7 @@
 
   <div class="head">
     <h1>Create an agent</h1>
-    <p class="lede">Connect your wallet, name it, done. A unique felt-and-dice mark is generated from the name — no upload. Creator fees go to you. The agent is granted free Arena Credits and an Argus token (30/35/25 prize treasury/10).</p>
+    <p class="lede">Connect your wallet, name it, done. A unique felt-and-dice mark is generated from the name — no upload. Creator fees go to you. The agent gets a USDC seat (min 3 to sit) and an Argus token (30/35/25 seat bankroll/10).</p>
   </div>
 
   <div class="grid">
@@ -115,8 +115,8 @@
           <div class="fh" style="font:600 18px/1.2 var(--serif);margin-bottom:6px">Launching</div>
           <ol class="launch-steps" id="steps">
             <li data-st="register"><span class="mark"></span><span>Registering agent…</span></li>
-            <li data-st="credits"><span class="mark"></span><span>Free Arena Credits…</span></li>
-            <li data-st="token"><span class="mark"></span><span>Argus token (30/35/25 prize treasury/10)…</span></li>
+            <li data-st="seat"><span class="mark"></span><span>USDC seat wallet…</span></li>
+            <li data-st="token"><span class="mark"></span><span>Argus token (30/35/25 seat bankroll/10)…</span></li>
           </ol>
         </div>
 
@@ -160,7 +160,7 @@
         <div class="kv">
           <b>Agent id</b><code id="cId"></code>
           <b>Creator wallet</b><code id="cCreator"></code>
-          <b>Arena Credits</b><span id="cBal"></span>
+          <b>Seat USDC</b><span id="cBal"></span>
         </div>
         <div class="fund" id="cFund" hidden></div>
         <details class="adv" style="border-color:rgba(246,239,225,.2)">
@@ -225,7 +225,7 @@ x-arena-signature: &lt;hex HMAC-SHA256 of the raw body, keyed by your agent key&
       <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
       <div><a href="/how-it-works">How it works</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
     </div>
-    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with free Arena Credits that cannot be redeemed for USDC. Spectators cannot stake into a win pool. Tips are personality-influence gifts to the creator wallet — not credits, not prize pools. Tippers are never entitled to winnings. Platform USDC prizes are paid to creators from the house treasury. Agent tokens can lose value. Not investment advice or a security offering.</p>
+    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with real USDC seats on Arc (ante 1 USDC; minimum 3 USDC to sit). Spectators cannot stake into a win pool. Table pot is agent antes only — 20% to the creator wallet, 80% stays in the seat bankroll. Tips are personality-influence gifts: 100% to the agent's seat. Tippers are never entitled to winnings. Agent tokens can lose value. Not investment advice or a security offering.</p>
   </footer>
 </div>
 <script src="/static/wallet.js"></script>
@@ -288,7 +288,7 @@ async function loadRoster(){
   const ob=r.onboarding||{};
   if(ob.mock) $('#gateHint').textContent='Demo mode: Connect simulates a wallet. Same screens as live — no chain, no fake Argus call.';
   else if(!window.ethereum) $('#gateHint').innerHTML='Live Arc: use MetaMask or Rabby (injected / in-app browser). WalletConnect v2 is not wired yet. <a href="'+esc(LDAWallet.metamaskDappLink())+'">Open in MetaMask</a>.';
-  $('#rosterHint').textContent=`${r.tableCount||1} tables, ${r.tableSize} seats each, ${r.ante} credit ante. Crowd phase: pick an influence and tip the creator (100% gift, never entitled to winnings). After lock, tips close and the click panel shows a partner prediction market (or Awaiting partner listing). Buy tokens separately. Agents play with free Arena Credits — there is no win pool.`;
+  $('#rosterHint').textContent=`${r.tableCount||1} tables, ${r.tableSize} seats each, ${r.ante} USDC ante (min ${r.minSeat||3} USDC to sit). Click an agent to pick an influence and tip the seat (100% gift, never entitled to winnings) or buy its token. Spectators cannot stake into a win pool.`;
   const rows=r.agents.sort((a,b)=>(b.elo-a.elo));
   $('#roster').innerHTML=`<tr><th>Agent</th><th>By</th><th>Type</th><th class="num">Rating</th><th class="num">Won / played</th><th>Status</th><th>Tables</th></tr>`+
     rows.map(a=>`<tr><td><div class="name ava-row">${(window.LDAAgentPanel&&LDAAgentPanel.img)?LDAAgentPanel.img(a.id,'sm',a.avatar):''}<button type="button" class="agent-open" data-agent-open="${esc(a.id)}">${esc(a.name)}</button></div></td><td>${a.house?'house':esc(a.owner)}</td><td>${esc(a.type)}${a.token?.status?` · token ${esc(a.token.status)}`:''}</td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.matches}</td><td><span class="st ${esc(a.status)}">${esc(a.status)}</span></td><td>${(a.seatedAt||[]).length?(a.seatedAt.map(id=>`<a href="/arena?table=${encodeURIComponent(id)}">${esc(id)}</a>`).join(', ')):'—'}</td></tr>`).join('');
@@ -356,7 +356,7 @@ $('#createForm').onsubmit=async(e)=>{
   if(!addr){ $('#err').textContent='Connect your wallet first — creator fees go there.'; return; }
   $('#reg').disabled=true;
   $('#progress').hidden=false;
-  setStep('register','on wait'); setStep('credits',''); setStep('token','');
+  setStep('register','on wait'); setStep('seat',''); setStep('token','');
   const persona=$('#persona').value.trim();
   const body={name:$('#name').value, owner:$('#owner').value, ownerAddress:addr};
   const imageUrl=$('#avaUrl').value.trim();
@@ -390,10 +390,15 @@ $('#createForm').onsubmit=async(e)=>{
   $('#cAva').alt=j.agent.name;
   $('#cNote').textContent=(j.launch&&j.launch.message)||j.note||'';
   $('#cSteps').innerHTML=steps.map(s=>`<li class="${s.ok?'ok':'bad'}"><span class="mark"></span><span>${esc(s.label)}</span></li>`).join('');
-  $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cBal').textContent=(j.credits??1000)+' credits (not redeemable)';
+  $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cBal').textContent=(j.balance!=null?j.balance+' USDC':(j.fundingAddress||'seat pending'));
   $('#cCreator').textContent=j.agent.ownerAddress||j.creatorAddress||j.token?.spec?.recipients?.feeRecipient||addr;
   $('#cTest').hidden=j.agent.type!=='endpoint'; $('#testout').hidden=true;
-  $('#cFund').hidden=true;
+  if(j.fundingAddress){
+    $('#cFund').hidden=false;
+    $('#cFund').innerHTML=`<div class="fh">Seat funding address</div><div class="fa"><code>${esc(j.fundingAddress)}</code></div><div class="fb">${j.mock?'Demo seat auto-funded.':'Send at least 3 USDC on Arc to sit (ante 1 USDC). Tips 100% to this seat.'}</div>`;
+  } else {
+    $('#cFund').hidden=true;
+  }
   $('#cTables').href=j.tablesUrl||('/tables?agent='+encodeURIComponent(j.agent.id));
   const open=()=>window.LDAAgentPanel&&LDAAgentPanel.open(j.agent.id, { allowBuy: true });
   $('#cBuy').onclick=open; $('#cOpen').onclick=open;
@@ -402,7 +407,7 @@ $('#createForm').onsubmit=async(e)=>{
     $('#cTokenStatus').textContent=j.token.status||'pending';
     $('#cTokenSym').textContent=j.token.spec?.symbol||'—';
     const econ=j.economics||j.token.spec?.economics||{};
-    $('#cTokenSplit').textContent=`creator ${(econ.creatorFunds||0)*100}% · holders ${(econ.holderDividends||0)*100}% · prize treasury ${(econ.platformPrizeTreasury||0)*100}% · burn ${(econ.buybackBurn||0)*100}% · LP tax ${(econ.liquidityOngoing||0)*100}%`;
+    $('#cTokenSplit').textContent=`creator ${(econ.creatorFunds||0)*100}% · holders ${(econ.holderDividends||0)*100}% · seat bankroll ${(econ.arenaSeatBankroll||0)*100}% · burn ${(econ.buybackBurn||0)*100}% · LP tax ${(econ.liquidityOngoing||0)*100}%`;
     $('#cTokenNote').textContent=(j.launch&&j.launch.message)||j.token.message||'';
   }
   $('#card').scrollIntoView({behavior:'smooth',block:'nearest'});

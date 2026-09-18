@@ -64,10 +64,9 @@ reg.sideline(rec.id, "unresponsive");
 assert(reg.get(rec.id).status === "sidelined", "sidelined");
 assert(reg.publicView(reg.get(rec.id)).sidelineReason === "unresponsive", "reason public");
 assert(!reg.pickSeats(8).some((s) => s.id === rec.id), "sidelined not seated");
-assert(!("bankroll" in reg.publicView(reg.get(rec.id))), "no bankroll summary");
-assert(reg.publicView(reg.get(rec.id)).fundingAddress === null, "no seat funding address");
-const tre = reg.recordTreasuryInflow({ amount: 2.5, source: "token_tax_prize_treasury" });
-assert(tre.fundsPlay === false && tre.amount === 2.5, "treasury inflow never funds play");
+assert(reg.publicView(reg.get(rec.id)).bankroll, "bankroll summary");
+const top = reg.recordBankrollTopUp(rec.id, { amount: 2.5, source: "token_tax" });
+assert(top.amount === 2.5 && top.source === "token_tax", "seat bankroll top-up");
 reg.reactivate(rec.id);
 assert(reg.get(rec.id).status === "active", "reactivated");
 

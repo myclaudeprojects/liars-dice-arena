@@ -48,6 +48,7 @@ const wallet = makeWallet(process.env.MOCK === "1" ? { startingBalance: 100 } : 
 const LIVE_CHAIN = wallet.kind === "evm";
 
 const spectatorWallets = {}; // bettorId -> wallet (mock: auto-funded)
+const mockTokenBuys = {}; // agentId -> mock purchases (demo only; not on chain)
 
 function parseReq(req) {
   const u = new URL(req.url, "http://local");
@@ -181,7 +182,12 @@ async function agentsApi(req, res, urlPath) {
   const parts = urlPath.split("/").filter(Boolean); // api, agents, :id?, :action?
   const lb = stats.leaderboard(); const eloById = Object.fromEntries(lb.agents.map((a) => [a.id, a]));
   const seated = tables.seatedIndex();
-  const decorate = (a) => ({ ...a, elo: eloById[a.id]?.elo ?? 1200, won: eloById[a.id]?.won ?? 0, matches: eloById[a.id]?.played ?? 0, seatedAt: seated[a.id] || [] });
+  const decorate = (a) => ({
+    ...a,
+    elo: eloById[a.id]?.elo ?? 1200, won: eloById[a.id]?.won ?? 0, matches: eloById[a.id]?.played ?? 0,
+    seatedAt: seated[a.id] || [],
+    buy: argus.buyView(a.token, { house: a.house, name: a.name, id: a.id }),
+  });
 
   try {
     if (parts.length === 2 && req.method === "GET") {
@@ -210,6 +216,7 @@ async function agentsApi(req, res, urlPath) {
       return json(res, 201, { ok: true, agent: decorate(registry.publicView(rec)), key: rec.key, fundingAddress: w.address,
         balance: await wallet.getBalance(w.walletId), token, economics: argus.AGENT_TOKEN_ECONOMICS,
         tablesUrl: `/tables?agent=${encodeURIComponent(rec.id)}`,
+        buy: argus.buyView(token, { house: false, name: rec.name, id: rec.id }),
         note: wallet.kind === "mock" ? "Mock wallet auto-funded with 100 USDC for local play." : `Send at least ${ANTE} USDC on Arc to the funding address to be seated.` });
     }
 
@@ -220,7 +227,34 @@ async function agentsApi(req, res, urlPath) {
       return json(res, 200, {
         ok: true, agent: decorate(registry.publicView(rec)), balance: w,
         tables: tables.featuring(rec.id),
+        buy: argus.buyView(rec.token, { house: rec.house, name: rec.name, id: rec.id }),
+        live: LIVE_CHAIN,
+        mockPurchases: LIVE_CHAIN ? undefined : (mockTokenBuys[rec.id] || []),
       });
+    }
+
+    if (parts[3] === "buy" && req.method === "POST") {
+      const body = JSON.parse(await readBody(req) || "{}");
+      const buy = argus.buyView(rec.token, { house: rec.house, name: rec.name, id: rec.id });
+      if (rec.house) {
+        return json(res, 200, { ok: true, mock: false, live: LIVE_CHAIN, delegated: true, buy,
+          message: buy.message });
+      }
+      if (LIVE_CHAIN) {
+        return json(res, 200, {
+          ok: true, mock: false, live: true, delegated: true, buy,
+          buyUrl: buy.argusUrl,
+          message: buy.address
+            ? "Open Argus to buy this agent's token on Arc. In-app swap is not wired."
+            : "Token is queued at registration — launch on Argus, then the CA will show here.",
+        });
+      }
+      const amt = Number(body.amount);
+      if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Amount must be between ${MIN_STAKE} and 1000 USDC.`);
+      const quote = argus.quoteMockBuy(amt, { symbol: buy.symbol || rec.name });
+      const purchase = { ...quote, buyer: String(body.buyer || "spectator").slice(0, 64), at: Date.now(), agentId: rec.id };
+      (mockTokenBuys[rec.id] ||= []).push(purchase);
+      return json(res, 200, { ok: true, mock: true, live: false, purchase, buy, agentId: rec.id });
     }
 
     // Everything below needs the owner's key.

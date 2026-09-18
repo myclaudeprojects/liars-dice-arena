@@ -1,6 +1,7 @@
 const {
   AGENT_TOKEN_ECONOMICS, assertEconomics, toArgusFormAllocation,
   buildTokenSpec, onAgentRegistered, tokenSymbol, publicTokenView,
+  tokenContract, tokenPageUrl, buyView, quoteMockBuy, ARENA_LIAR_TOKEN, ARGUS_APP,
 } = require("../src/argus");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
@@ -36,6 +37,20 @@ assert(spec.liquidity.ongoingTax === false, "lp seed only");
 assert(spec.recipients.seatBankroll, "seat recipient");
 assert(spec.todos.some((t) => /splitter/.test(t)), "splitter TODO");
 assert(!/liquidity tax bucket/i.test(JSON.stringify(spec.argusAllocation)), "seat not mapped into liquidity numbers");
+
+assert(tokenContract({ spec: { address: "0x" + "ab".repeat(20) } }) === "0x" + "ab".repeat(20), "ca from spec");
+assert(tokenContract({ spec: { address: "0x123" } }) === null, "reject short ca");
+assert(tokenPageUrl({}) === ARGUS_APP.replace(/\/$/, "") + "/", "no ca → launchpad home, not a fake buy path");
+assert(/\/token\/0x/.test(tokenPageUrl({ address: "0x" + "cd".repeat(20) })), "ca → argus token page");
+const houseBuy = buyView(null, { house: true, name: "The Shark", id: "shark" });
+assert(houseBuy.kind === "house" && houseBuy.address === ARENA_LIAR_TOKEN, "house → $LIAR");
+const pendingBuy = buyView({ status: "pending_manual_launch", spec }, { name: "Cold Hands", id: "cold-hands" });
+assert(pendingBuy.kind === "agent" && pendingBuy.symbol === "COLDHAND" && !pendingBuy.address, "pending has symbol, no ca");
+assert(pendingBuy.inAppSwap === false, "no invented in-app swap");
+const q = quoteMockBuy(2, { symbol: "COLDHAND" });
+eq(q.tokensOut, 2000, "mock rate");
+eq(q.usdcIn, 2, "usdc in");
+try { quoteMockBuy(0); throw new Error("zero should throw"); } catch (e) { if (e.message !== "bad_amount") throw e; }
 
 (async () => {
   const pending = await onAgentRegistered({ agent: { id: "a", name: "A" }, seatWallet: { address: "0x" + "33".repeat(20) } });

@@ -210,7 +210,7 @@
     </ul>
   </nav>
   <header>
-    <h1 class="t">Live table <span id="tableLabel"></span><small>AI agents, hidden dice, real USDC. This table has its own spectator pool. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small></h1>
+    <h1 class="t">Live table <span id="tableLabel"></span><small>AI agents, hidden dice, real USDC. This table has its own spectator pool. Click an agent to buy its token. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small></h1>
     <div class="chain">Settling on <b>Arc</b> · gas paid in USDC · <span id="walletKind">connecting…</span></div>
   </header>
 
@@ -254,7 +254,7 @@
     <div><a href="/how-it-works">How it works</a> · <a href="/leaderboard">Leaderboard</a></div>
   </footer>
 </div>
-
+<script src="/static/agent-panel.js"></script>
 <script>
 const $=(s)=>document.querySelector(s);
 const esc=(s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -308,7 +308,7 @@ const seatEl=(id)=>document.getElementById('seat-'+id);
 function buildSeats(){
   const pos=seats.length===2?['p0','p2']:seats.length===3?['p0','p1','p2']:['p0','p1','p2','p3'];
   $('#seats').innerHTML=seats.map((s,i)=>`<div class="seat ${pos[i]} ${alive[s.id]===false?'out':''}" id="seat-${s.id}">
-    <div class="name">${esc(s.name)}</div><div class="kind">${s.owner&&s.owner!=='house'?`by ${esc(s.owner)} · `:''}${({llm:'LLM',remote:'endpoint',mock:'heuristic'})[s.kind]||esc(s.kind)} · <span class="cnt">${counts[s.id]??5}</span> dice</div>
+    <div class="name"><button type="button" class="agent-open" data-agent-open="${esc(s.id)}" title="Open agent token">${esc(s.name)}</button></div><div class="kind">${s.owner&&s.owner!=='house'?`by ${esc(s.owner)} · `:''}${({llm:'LLM',remote:'endpoint',mock:'heuristic'})[s.kind]||esc(s.kind)} · <span class="cnt">${counts[s.id]??5}</span> dice</div>
     <div class="dice" id="dice-${s.id}"></div><div class="thought" id="th-${s.id}"></div></div>`).join('');
   seats.forEach(s=>renderDice(s.id));
 }
@@ -421,7 +421,7 @@ function log(html,cls=''){const r=document.createElement('div');r.className='row
 function tx(ev){ if(!ev.explorer||!/^(https?:|mock:)/i.test(ev.explorer)) return ''; return `<a href="${esc(ev.explorer)}" target="_blank" rel="noopener">tx ${esc(ev.tx)}</a>`; }
 setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s'; if($('#banner').classList.contains('bet')) $('#banner').innerHTML='Betting open<b>'+s+'s</b>';} else $('#clock').textContent=''; },250);
 function renderPicks(){
-  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${esc(s.id)}" ${phase!=='betting'?'disabled':''}><div class="n">${esc(s.name)}</div><div class="m">${m?(m>1?`pays <b>${m.toFixed(2)}×</b> if it wins`:'<b>1.00×</b> — only backer so far; stake returned if it wins'):'no backers yet — first in sets the line'}</div></button>`;}).join('');
+  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${esc(s.id)}" ${phase!=='betting'?'disabled':''}><div class="n"><span data-agent-open="${esc(s.id)}">${esc(s.name)}</span></div><div class="m">${m?(m>1?`pays <b>${m.toFixed(2)}×</b> if it wins`:'<b>1.00×</b> — only backer so far; stake returned if it wins'):'no backers yet — first in sets the line'}</div></button>`;}).join('');
   document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;const nm=seats.find(s=>s.id===picked).name;$('#picked').textContent=nm;if(matchMedia('(max-width:640px)').matches)$('#betbtn').textContent='Bet on '+nm;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(!live||account));});
 }
 function applyState(ev){

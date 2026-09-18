@@ -67,6 +67,72 @@ function publicTokenView(token) {
   return rest;
 }
 
+function tokenContract(token) {
+  const cands = [
+    token?.address, token?.contract,
+    token?.spec?.address, token?.spec?.contract, token?.spec?.tokenAddress,
+  ];
+  for (const c of cands) {
+    if (typeof c === "string" && /^0x[0-9a-fA-F]{40}$/.test(c)) return c;
+  }
+  return null;
+}
+
+// Real Argus token page when we have a CA; otherwise the known launchpad home.
+// Do not invent a swap/buy REST path.
+function tokenPageUrl(token) {
+  const ca = tokenContract(token);
+  const base = ARGUS_APP.replace(/\/$/, "");
+  return ca ? `${base}/token/${ca}` : `${base}/`;
+}
+
+const ARENA_LIAR_TOKEN = "0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790";
+
+function buyView(token, { house = false, name, id } = {}) {
+  if (house) {
+    return {
+      kind: "house",
+      agentId: id || null,
+      name: name || null,
+      symbol: "LIAR",
+      address: ARENA_LIAR_TOKEN,
+      argusUrl: `${ARGUS_APP.replace(/\/$/, "")}/token/${ARENA_LIAR_TOKEN}`,
+      inAppSwap: false,
+      message: "House agents don't have a personal token. $LIAR is the arena token.",
+    };
+  }
+  const spec = token?.spec || {};
+  const address = tokenContract(token);
+  return {
+    kind: "agent",
+    agentId: id || spec.agentId || null,
+    status: token?.status || null,
+    name: spec.name || name || null,
+    symbol: spec.symbol || tokenSymbol(name, id),
+    address,
+    argusUrl: tokenPageUrl(token),
+    inAppSwap: false,
+    economics: spec.economics || { ...AGENT_TOKEN_ECONOMICS },
+    message: address
+      ? "Buy on Argus. In-app swap waits on a public Argus buy API."
+      : "Token spec stored at registration. CA appears here once launched on Argus.",
+    todos: ["TODO(argus): in-app swap — no public buy/swap API; deep-link to argus.world"],
+  };
+}
+
+function quoteMockBuy(amountUsdc, { symbol = "AGENT", rate = 1000 } = {}) {
+  const usdcIn = Number(amountUsdc);
+  if (!(usdcIn > 0) || !Number.isFinite(usdcIn)) throw new Error("bad_amount");
+  const round6 = (x) => Math.round(x * 1e6) / 1e6;
+  return {
+    mock: true,
+    usdcIn: round6(usdcIn),
+    tokensOut: round6(usdcIn * rate),
+    rate,
+    symbol: String(symbol || "AGENT").slice(0, 12),
+  };
+}
+
 function buildTokenSpec({ agent, seatWallet, ownerAddress }) {
   const econ = assertEconomics(AGENT_TOKEN_ECONOMICS);
   const form = toArgusFormAllocation(econ);
@@ -140,11 +206,16 @@ async function onAgentRegistered({ agent, seatWallet, ownerAddress, fetchImpl = 
 module.exports = {
   ARGUS_LAUNCH_CONTRACT,
   ARGUS_APP,
+  ARENA_LIAR_TOKEN,
   AGENT_TOKEN_ECONOMICS,
   assertEconomics,
   toArgusFormAllocation,
   tokenSymbol,
   publicTokenView,
+  tokenContract,
+  tokenPageUrl,
+  buyView,
+  quoteMockBuy,
   buildTokenSpec,
   onAgentRegistered,
 };

@@ -142,6 +142,11 @@ API/SDK**. We therefore:
 House agents are not tokenized. `$LIAR` on the landing page is the arena token,
 separate from per-agent tokens.
 
+Click an agent (table seat, lobby, My agents, roster) to open a mini panel with
+the token from registration. Mock mode records a demo fill (`POST /api/agents/:id/buy`).
+Live mode deep-links to Argus (`argus.world/token/<CA>` when known). There is
+**no in-app swap** until Argus publishes a buy API — we do not invent one.
+
 ## Layout
 
 ```
@@ -158,7 +163,7 @@ src/httputil.js public-file path guard, HTML escape, tx-claim helpers
 examples/my-agent.js  a complete endpoint agent to copy
 server.js       HTTP + SSE routing, betting, Argus-on-register
 public/index.html  live table (pick via /arena?table=t-1)
-public/tables.html lobby / table browser + my-agents filters
+public/agent-panel.js click-to-buy overlay (Argus token / mock buy)
 public/agents.html register / test / roster + endpoint protocol docs
 ```
 

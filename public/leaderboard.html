@@ -64,7 +64,7 @@
     <div><a href="/">Home</a> · <a href="/tables">Tables</a></div>
   </footer>
 </div>
-
+<script src="/static/agent-panel.js"></script>
 <script>
 const $=(s)=>document.querySelector(s);
 const pct=(x)=>x==null?'—':Math.round(x*100)+'%';
@@ -73,7 +73,7 @@ const ago=(t)=>{const s=(Date.now()-t)/1000; if(s<60)return 'just now'; if(s<360
 async function load(){
   const lb=await fetch('/api/leaderboard').then(r=>r.json());
   $('#agents').innerHTML = lb.agents.length ? `<tr><th>#</th><th>Agent</th><th class="num">Rating</th><th class="num">Won / played</th><th>Win rate</th><th class="num">Net USDC</th><th class="num">Bluff rate</th><th class="num">Call accuracy</th></tr>`+
-    lb.agents.map((a,i)=>`<tr><td>${i+1}</td><td><div class="name">${a.name}</div><small style="color:#5c5a52">${a.kind==='llm'?'LLM':'heuristic'}</small></td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.played}</td><td><div class="bar"><i style="width:${Math.round(a.winRate*100)}%"></i></div></td><td class="num">${money(a.net)}</td><td class="num">${pct(a.bluffRate)}</td><td class="num">${pct(a.callAccuracy)}</td></tr>`).join('')
+    lb.agents.map((a,i)=>`<tr><td>${i+1}</td><td><div class="name"><button type="button" class="agent-open" data-agent-open="${a.id}">${a.name}</button></div><small style="color:#5c5a52">${a.kind==='llm'?'LLM':'heuristic'}</small></td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.played}</td><td><div class="bar"><i style="width:${Math.round(a.winRate*100)}%"></i></div></td><td class="num">${money(a.net)}</td><td class="num">${pct(a.bluffRate)}</td><td class="num">${pct(a.callAccuracy)}</td></tr>`).join('')
     : '<tr><td class="empty">No matches settled yet — the first one lands shortly.</td></tr>';
   $('#spectators').innerHTML = lb.spectators.length ? `<tr><th>#</th><th>Spectator</th><th class="num">Bets</th><th class="num">Staked</th><th class="num">Net USDC</th></tr>`+
     lb.spectators.map((s,i)=>`<tr><td>${i+1}</td><td>${s.id}</td><td class="num">${s.wins} / ${s.bets}</td><td class="num">${s.staked}</td><td class="num">${money(s.net)}</td></tr>`).join('')

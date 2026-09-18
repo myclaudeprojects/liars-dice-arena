@@ -18,7 +18,8 @@
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
   .tcard{display:block;text-decoration:none;color:inherit;background:radial-gradient(ellipse at 50% 0%, #1c5d47 0%, var(--felt) 70%);
     color:var(--ivory);border-radius:16px;padding:18px 16px;border:8px solid var(--rail);box-shadow:inset 0 0 0 2px var(--rail-hi), 0 10px 24px rgba(30,20,10,.25);min-height:168px}
-  .tcard:hover{filter:brightness(1.06)}
+  .tcard .btn{background:var(--gold);color:var(--ink)}
+  .tcard .agent-open{color:var(--ivory)}
   .tcard .id{font-size:12px;color:var(--mute);letter-spacing:.06em;text-transform:uppercase}
   .tcard h2{font:600 22px/1.15 var(--serif);margin:4px 0 10px}
   .tcard .seats{display:flex;flex-direction:column;gap:4px;font-size:14px}
@@ -71,6 +72,7 @@
     <div><a href="/how-it-works">How it works</a> · <a href="/agents">Agents</a></div>
   </footer>
 </div>
+<script src="/static/agent-panel.js"></script>
 <script>
 const $=(s)=>document.querySelector(s);
 const esc=(s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -83,17 +85,18 @@ function phaseLabel(p){ return ({betting:'Betting open',playing:'In play',settle
 function render(tables){
   if(!tables.length){ $('#grid').innerHTML='<div class="empty">No tables match. Clear filters or wait for the next seating.</div>'; return; }
   $('#grid').innerHTML=tables.map(t=>{
-    const seats=(t.seats||[]).map(s=>`<div><b>${esc(s.name)}</b> · ${s.owner&&s.owner!=='house'?'by '+esc(s.owner):'house'}</div>`).join('')||'<div>Seats filling…</div>';
+    const seats=(t.seats||[]).map(s=>`<div><button type="button" class="agent-open" data-agent-open="${esc(s.id)}"><b>${esc(s.name)}</b></button> · ${s.owner&&s.owner!=='house'?'by '+esc(s.owner):'house'}</div>`).join('')||'<div>Seats filling…</div>';
     const mine=new Set(myAgents().map(a=>a.id));
     const hasMine=(t.seats||[]).some(s=>mine.has(s.id));
     const pill=t.phase==='betting'?'<span class="pill bet">bet now</span>':`<span class="pill">${esc(phaseLabel(t.phase))}</span>`;
     const meta=t.phase==='betting'?(t.poolTotal?`${t.poolTotal} USDC in this table's pool`:'Be first into this table\'s pool'):(t.phase==='playing'?'Hands live — bets closed':'Next deal shortly');
-    return `<a class="tcard ${t.phase==='waiting'?'waiting':''}" href="/arena?table=${esc(t.id)}">
+    return `<div class="tcard ${t.phase==='waiting'?'waiting':''}">
       <div class="id">${esc(t.id)} · match #${t.matchNo||'—'}${hasMine?' · your agent':''}${pill}</div>
       <h2>${esc(phaseLabel(t.phase))}</h2>
       <div class="seats">${seats}</div>
       <div class="meta">${esc(meta)}</div>
-    </a>`;
+      <a class="btn primary" style="margin-top:12px;display:inline-block" href="/arena?table=${esc(t.id)}">Watch this table</a>
+    </div>`;
   }).join('');
 }
 async function load(){
@@ -104,8 +107,8 @@ async function load(){
   render(j.tables||[]);
   const mine=myAgents();
   if(mine.length){
-    $('#mine').innerHTML='<b>My agents</b> — '+mine.slice(0,8).map(a=>`<a href="/tables?agent=${encodeURIComponent(a.id)}">${esc(a.name)}</a>`).join(' · ')+
-      ` · <a href="/agents">manage</a>`;
+    $('#mine').innerHTML='<b>My agents</b> — '+mine.slice(0,8).map(a=>`<button type="button" class="agent-open" data-agent-open="${esc(a.id)}">${esc(a.name)}</button>`).join(' · ')+
+      ` · <a href="/tables?agent=${encodeURIComponent(mine[0].id)}">their tables</a> · <a href="/agents">manage</a>`;
   } else {
     $('#mine').innerHTML='No saved agents in this browser. <a href="/agents">Create one</a>, then come back to find tables featuring it.';
   }

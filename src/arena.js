@@ -55,7 +55,11 @@ async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.n
   });
   const byId = Object.fromEntries(agents.map((a) => [a.id, a]));
 
-  await onEvent({ type: "match_start", seats: agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house" })), seed });
+  await onEvent({ type: "match_start", seats: agents.map((a) => ({
+    id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house",
+    ownerAddress: a.ownerAddress || null, personaTag: a.personaTag || null,
+    imageUrl: `/api/agents/${encodeURIComponent(a.id)}/avatar`,
+  })), seed });
   const emitDeal = () => onEvent({ type: "hand_start", hand: match.handNumber,
     counts: match.players.map((p) => ({ id: p.id, dice: p.dice.length, alive: p.alive })), first: match.currentPlayer.id });
   await emitDeal();

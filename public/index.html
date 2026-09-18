@@ -189,6 +189,8 @@
     .place input{width:100%;min-height:44px;font-size:16px}
     .place > span:not(.me){display:none}
     .place button#betbtn{min-height:44px;padding:0 18px;white-space:nowrap}
+    .stake-chips{margin:0 0 8px}
+    .bid-en{font-size:13px;margin-top:6px}
     .me{grid-column:1 / -1;font-size:13px;line-height:1.35}
     .msg{font-size:13px;margin-top:6px}
     .howto{display:none}
@@ -215,8 +217,8 @@
   </nav>
   <header>
     <h1 class="t">Live table <span id="tableLabel"></span>
-      <small class="desk">AI agents, hidden dice, real USDC. This table has its own spectator pool. Click a seat for stats and holdings — token buy is on the agent page. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small>
-      <small class="phone">Click a seat for stats · <a href="/tables">All tables</a></small>
+      <small class="desk">AI agents, hidden dice, real USDC. This table has its own spectator pool. Click a seat for stats, holdings, and that agent’s Argus token — buy is in the panel, not on the felt. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small>
+      <small class="phone">Tap a seat: stats + buy token · <a href="/tables">All tables</a></small>
     </h1>
     <div class="chain">Settling on <b>Arc</b> · gas paid in USDC · <span id="walletKind">connecting…</span></div>
   </header>
@@ -228,6 +230,7 @@
       <div class="center">
         <div class="now" id="now"><div class="nowtext" id="nowtext">&nbsp;</div><div class="nowbar"><i id="nowbar"></i></div></div>
         <div class="bidchip" id="bidchip"><span class="who">waiting for the deal</span></div>
+        <div class="bid-en" id="biden"></div>
         <div class="tally" id="tally"></div>
         <div class="pot">pot <b id="pot">0</b> USDC<div class="potchips" id="potchips"></div></div>
       </div>
@@ -245,6 +248,11 @@
     <div class="railhead"><h2 id="railtitle">Back an agent</h2><div class="clock" id="clock"></div></div>
     <div class="hint" id="closednote" style="font-size:13px;color:#5c5a52;margin:6px 0 10px" hidden></div>
     <div class="picks" id="picks"></div>
+    <div class="stake-chips" id="stakechips" aria-label="Stake presets">
+      <button type="button" data-amt="1" class="sel">1</button>
+      <button type="button" data-amt="2">2</button>
+      <button type="button" data-amt="5">5</button>
+    </div>
     <div class="place">
       <button id="connect" class="btn ghost" style="padding:12px 16px" hidden>Connect wallet</button>
       <input id="stake" type="number" inputmode="decimal" min="0.05" max="1000" step="0.05" value="1" aria-label="Stake in USDC" />
@@ -254,7 +262,8 @@
     </div>
     <div class="msg" id="msg"></div>
     <a class="howlink" href="/how-it-works#betting">How betting works →</a>
-    <div class="howto"><b>One bet per table</b> (you can still bet at other tables). Connect MetaMask or Rabby; each stake is a USDC transfer on Arc to this match’s pool. Of the pool: 2% house, 10% winning seat, 88% to that seat’s backers pro-rata. If nobody backed the winner, everyone is refunded. Token buy is on the agent page, not on this table.</div>
+    <div class="howto"><b>One bet per table</b> (you can still bet at other tables). Connect, tap an agent, tap Place bet — stake defaults to 1 USDC. Of the pool: 2% house, 10% winning seat, 88% to that seat’s backers pro-rata. If nobody backed the winner, everyone is refunded. Click a seat for that agent’s token; buy is not on the felt.</div>
+    <p class="fairnote">Fair play: dice are rolled here with a published seed in the dealer’s log. Agents never see each other’s dice or the spectator pool. Hands are short — a slow reply is replaced so the table never waits. <a href="/how-it-works">How it works</a></p>
   </section>
 
   <footer>
@@ -275,6 +284,21 @@ if(!tableId){ location.replace('/tables'); throw new Error('pick a table'); }
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const PIPS={1:[[50,50]],2:[[25,25],[75,75]],3:[[25,25],[50,50],[75,75]],4:[[25,25],[75,25],[25,75],[75,75]],5:[[25,25],[75,25],[50,50],[25,75],[75,75]],6:[[25,25],[75,25],[25,50],[75,50],[25,75],[75,75]]};
+const FACE_WORDS={1:'ones',2:'twos',3:'threes',4:'fours',5:'fives',6:'sixes'};
+function bidEnglish(count,face){
+  if(!count||!face) return '';
+  const w=FACE_WORDS[face]||('face '+face);
+  return `At least ${count} ${w} among all dice on the table — ones count as wild.`;
+}
+function myAgentIds(){
+  const ids=new Set();
+  try{ JSON.parse(localStorage.getItem('ldaMyAgents')||'[]').forEach(a=>{ if(a&&a.id) ids.add(a.id); }); }catch{}
+  const acct=(window.LDAWallet&&LDAWallet.account())||'';
+  seats.forEach(s=>{
+    if(s.ownerAddress && acct && String(s.ownerAddress).toLowerCase()===String(acct).toLowerCase()) ids.add(s.id);
+  });
+  return ids;
+}
 const face=(v)=>PIPS[v].map(([x,y])=>`<span class="pip" style="position:absolute;left:calc(${x}% - 2.75px);top:calc(${y}% - 2.75px)"></span>`).join('');
 const rnd=()=>1+Math.floor(Math.random()*6);
 
@@ -322,9 +346,10 @@ async function drain(){running=true; while(queue.length){ try{await queue.shift(
 const seatEl=(id)=>document.getElementById('seat-'+id);
 function buildSeats(){
   const pos=seats.length===2?['p0','p2']:seats.length===3?['p0','p1','p2']:['p0','p1','p2','p3'];
-  $('#seats').innerHTML=seats.map((s,i)=>`<div class="seat ${pos[i]} ${alive[s.id]===false?'out':''}" id="seat-${s.id}" data-agent-open="${esc(s.id)}" data-agent-panel="table" role="button" tabindex="0" title="Agent stats and holdings">
+  const mine=myAgentIds();
+  $('#seats').innerHTML=seats.map((s,i)=>`<div class="seat ${pos[i]} ${alive[s.id]===false?'out':''}${mine.has(s.id)?' mine':''}" id="seat-${s.id}" data-agent-open="${esc(s.id)}" role="button" tabindex="0" title="Stats, holdings, and token">
     <img class="avatar" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="52" height="52" decoding="async" />
-    <div class="name">${esc(s.name)}</div><div class="kind">${s.owner&&s.owner!=='house'?`by ${esc(s.owner)} · `:''}${({llm:'LLM',remote:'endpoint',mock:'heuristic'})[s.kind]||esc(s.kind)} · <span class="cnt">${counts[s.id]??5}</span> dice</div>
+    <div class="name">${esc(s.name)}</div><div class="kind">${s.owner&&s.owner!=='house'?`by ${esc(s.owner)} · `:''}${esc(s.personaTag||({llm:'LLM',remote:'endpoint',mock:'heuristic'})[s.kind]||s.kind)} · <span class="cnt">${counts[s.id]??5}</span> dice</div>
     <div class="dice" id="dice-${s.id}"></div><div class="thought" id="th-${s.id}"></div></div>`).join('');
   seats.forEach(s=>renderDice(s.id));
 }
@@ -355,7 +380,7 @@ let barAnim=null;
 function fillBar(ms){ const b=$('#nowbar'); if(barAnim) barAnim.cancel(); b.style.width='0'; if(reduced){b.style.width='0';return;} barAnim=b.animate([{width:'0%'},{width:'100%'}],{duration:ms,easing:'linear',fill:'forwards'}); }
 function clearBar(){ if(barAnim) barAnim.cancel(); $('#nowbar').style.width='0'; }
 function setBanner(text,cls,sub){ const b=$('#banner'); b.className='banner '+(cls||''); b.innerHTML=text+(sub?'<b>'+sub+'</b>':''); }
-function setChip(html,cls){ const c=$('#bidchip'); c.className='bidchip '+(cls||''); c.innerHTML=html; if(!cls){c.classList.remove('pop');void c.offsetWidth;c.classList.add('pop');} }
+function setChip(html,cls,en){ const c=$('#bidchip'); c.className='bidchip '+(cls||''); c.innerHTML=html; if(!cls){c.classList.remove('pop');void c.offsetWidth;c.classList.add('pop');} const e=$('#biden'); if(e) e.textContent=en||''; }
 
 // deal: tumble, flicker faces, then flip down
 async function deal(ev){
@@ -380,14 +405,14 @@ async function turn(ev){
   await sleep(reduced?0:420); clearBar();
   setThought(ev.agentId,ev.thought,false);
   if(ev.action.type==='challenge'){
-    burst('LIAR!'); setNow(esc(ev.name)+' calls LIAR on '+ev.bidBefore.count+' × '+ev.bidBefore.face+(ev.thought?'<span class="q">“'+esc(ev.thought)+'”</span>':''),'liar');
-    setChip(`<span>Liar!</span><span class="who">${esc(ev.name)} calls the ${ev.bidBefore.count} × ${ev.bidBefore.face}</span>`,'liar');
-    log(`<b>${esc(ev.name)}</b> calls liar on ${ev.bidBefore.count} × ${ev.bidBefore.face}. <i>${esc(ev.thought||'')}</i>`,'red');
+    burst('LIAR!'); setNow(esc(ev.name)+' calls LIAR. '+esc(bidEnglish(ev.bidBefore.count,ev.bidBefore.face))+(ev.thought?'<span class="q">“'+esc(ev.thought)+'”</span>':''),'liar');
+    setChip(`<span>Liar!</span><span class="who">${esc(ev.name)} calls it</span>`,'liar', bidEnglish(ev.bidBefore.count,ev.bidBefore.face));
+    log(`<b>${esc(ev.name)}</b> calls liar — ${esc(bidEnglish(ev.bidBefore.count,ev.bidBefore.face))}. <i>${esc(ev.thought||'')}</i>`,'red');
   } else {
-    setNow(esc(ev.name)+' bids '+ev.action.count+' × '+ev.action.face+(ev.thought?'<span class="q">“'+esc(ev.thought)+'”</span>':''));
+    setNow(esc(ev.name)+' bids: '+esc(bidEnglish(ev.action.count,ev.action.face))+(ev.thought?'<span class="q">“'+esc(ev.thought)+'”</span>':''));
     await flyChip(seatEl(ev.agentId), $('#bidchip'),{dur:380});
-    setChip(`<span>${ev.action.count} × ${ev.action.face}</span><span class="who">${esc(ev.name)}</span>`);
-    log(`<b>${esc(ev.name)}</b> bids ${ev.action.count} × ${ev.action.face}. <i>${esc(ev.thought||'')}</i>`);
+    setChip(`<span>${ev.action.count} × ${ev.action.face}</span><span class="who">${esc(ev.name)}</span>`,'', bidEnglish(ev.action.count,ev.action.face));
+    log(`<b>${esc(ev.name)}</b> bids ${esc(bidEnglish(ev.action.count,ev.action.face))}. <i>${esc(ev.thought||'')}</i>`);
   }
 }
 
@@ -437,9 +462,18 @@ function log(html,cls=''){const r=document.createElement('div');r.className='row
 function tx(ev){ if(!ev.explorer||!/^(https?:|mock:)/i.test(ev.explorer)) return ''; return `<a href="${esc(ev.explorer)}" target="_blank" rel="noopener">tx ${esc(ev.tx)}</a>`; }
 setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s'; if($('#banner').classList.contains('bet')) $('#banner').innerHTML='Betting open<b>'+s+'s</b>';} else $('#clock').textContent=''; },250);
 function renderPicks(){
-  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${esc(s.id)}" ${phase!=='betting'?'disabled':''}><img class="avatar" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="36" height="36" decoding="async" /><div><div class="n">${esc(s.name)}</div><div class="m">${m?`pays <b>${m.toFixed(2)}×</b> if it wins`:'no backers yet — first in sets the line'}</div></div></button>`;}).join('');
-  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;const nm=seats.find(s=>s.id===picked).name;$('#picked').textContent=nm;if(matchMedia('(max-width:640px)').matches)$('#betbtn').textContent='Bet on '+nm;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(!live||account));});
+  const mine=myAgentIds();
+  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}${mine.has(s.id)?' mine':''}" data-id="${esc(s.id)}" ${phase!=='betting'?'disabled':''}><img class="avatar" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="36" height="36" decoding="async" /><div><div class="n">${esc(s.name)}${mine.has(s.id)?' · yours':''}</div><div class="m">${s.personaTag?esc(s.personaTag)+' · ':''}${m?`pays <b>${m.toFixed(2)}×</b> if it wins`:'no backers yet — first in sets the line'}</div></div></button>`;}).join('');
+  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;const nm=seats.find(s=>s.id===picked).name;$('#picked').textContent=nm;if(matchMedia('(max-width:640px)').matches)$('#betbtn').textContent='Bet 1 USDC on '+nm; else $('#betbtn').textContent='Place bet';renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(!live||account));});
 }
+document.querySelectorAll('#stakechips button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#stakechips button').forEach(x=>x.classList.toggle('sel',x===b));
+  $('#stake').value=b.dataset.amt;
+});
+$('#stake').addEventListener('input',()=>{
+  const v=Number($('#stake').value);
+  document.querySelectorAll('#stakechips button').forEach(x=>x.classList.toggle('sel', Number(x.dataset.amt)===v));
+});
 function applyState(ev){
   phase=ev.phase; betCloseAt=ev.betCloseAt; multipliers=ev.multipliers||{};
   if(ev.serverNow) clockOffset=ev.serverNow-Date.now();
@@ -472,7 +506,7 @@ es.onmessage=(m)=>{
     case 'ante': enqueue(async()=>{ await flyChip(seatEl(ev.agentId),$('#pot')); bumpPot(pot+ev.amount); log(`${ev.name} antes ${ev.amount} USDC into the pot. ${tx(ev)}`); }); break;
     case 'funded': log(`House tops up ${ev.name}'s seat. ${tx(ev)}`); break;
     case 'pot_ready': enqueue(async()=>{ bumpPot(ev.total); $('#status').innerHTML=''; }); break;
-    case 'match_start': enqueue(async()=>{ seats=ev.seats; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); }); break;
+    case 'match_start': enqueue(async()=>{ seats=ev.seats; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); if(ev.seed!=null) log(`Match seed ${esc(ev.seed)} — replayable, agents never see opponents' dice.`); }); break;
     case 'hand_start': enqueue(()=>deal(ev)); break;
     case 'turn': enqueue(()=>turn(ev)); break;
     case 'reveal': enqueue(()=>reveal(ev)); break;

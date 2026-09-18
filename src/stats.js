@@ -29,8 +29,8 @@ class Stats {
   constructor() { this.s = load(); }
 
   agent(id, name, kind) {
-    const a = (this.s.agents[id] ||= { id, name, kind, played: 0, won: 0, usdcWon: 0, usdcLost: 0, bluffsCaught: 0, bluffsLanded: 0, callsRight: 0, callsWrong: 0, elo: 1200 });
-    a.name = name; a.kind = kind; return a;
+    const a = (this.s.agents[id] ||= { id, name, kind, played: 0, won: 0, usdcWon: 0, usdcLost: 0, bluffsCaught: 0, bluffsLanded: 0, callsRight: 0, callsWrong: 0, elo: 1200, form: [] });
+    a.name = name; a.kind = kind; a.form = a.form || []; return a;
   }
 
   // Called with the arena's result + the raw engine log.
@@ -39,8 +39,9 @@ class Stats {
     for (const s of seats) {
       const a = this.agent(s.id, s.name, s.kind);
       a.played++;
-      if (s.id === winnerId) { a.won++; a.usdcWon += potTotal - ante; }
-      else a.usdcLost += ante;
+      if (s.id === winnerId) { a.won++; a.usdcWon += potTotal - ante; a.form.unshift("W"); }
+      else { a.usdcLost += ante; a.form.unshift("L"); }
+      if (a.form.length > 8) a.form.length = 8;
     }
     // Bluff / call accounting from challenge events.
     for (const ev of log) {
@@ -81,6 +82,7 @@ class Stats {
       winRate: a.played ? a.won / a.played : 0,
       bluffRate: (a.bluffsLanded + a.bluffsCaught) ? a.bluffsLanded / (a.bluffsLanded + a.bluffsCaught) : null,
       callAccuracy: (a.callsRight + a.callsWrong) ? a.callsRight / (a.callsRight + a.callsWrong) : null,
+      form: a.form || [],
     })).sort((x, y) => y.elo - x.elo);
     const spectators = Object.values(this.s.spectators).map((s) => ({ ...s, net: +(s.returned - s.staked).toFixed(2) })).sort((x, y) => y.net - x.net).slice(0, 25);
     return { agents, spectators, totals: this.s.totals, recent: this.s.matches.slice(0, 20) };

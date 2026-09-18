@@ -1,4 +1,4 @@
-const { Match, isHigherBid, countFace } = require("../src/engine");
+const { Match, isHigherBid, countFace, bidEnglish } = require("../src/engine");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 
@@ -9,6 +9,8 @@ assert(isHigherBid({ count: 2, face: 3 }, { count: 3, face: 1 }) === true, "rais
 assert(countFace([[1, 2, 2], [3, 1]], 2, true) === 4, "ones wild count");
 assert(countFace([[1, 2, 2], [3, 1]], 2, false) === 2, "no wild");
 assert(countFace([[1, 1, 1]], 1, true) === 3, "ones as ones");
+assert(/at least 4 threes/.test(bidEnglish(4, 3)), "plain English bid");
+assert(/wild/.test(bidEnglish(4, 3)), "wilds noted");
 
 const m0 = new Match({ seats: [{ id: "a", name: "A" }, { id: "b", name: "B" }], seed: 1 });
 assert(m0.applyAction(null).error === "unknown_action", "null action");

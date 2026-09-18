@@ -91,16 +91,18 @@
     const owner = a.house ? "house" : (a.owner || "");
     const creator = buy.creator || a.ownerAddress || h.creatorAddress;
     const tables = (j.tables || a.seatedAt || []).map((t) => t.id || t).filter(Boolean);
+    const tag = a.personaTag ? ` · ${esc(a.personaTag)}` : "";
     root.querySelector("#as-meta").innerHTML =
-      `${esc(a.id || "")}${owner ? " · by " + esc(owner) : ""}${a.type ? " · " + esc(a.type) : ""}` +
+      `${esc(a.id || "")}${owner ? " · by " + esc(owner) : ""}${a.type ? " · " + esc(a.type) : ""}${tag}` +
       (a.status ? ` · ${esc(a.status)}` : "") +
       (creator ? ` · creator ${esc(String(creator).slice(0, 6) + "…" + String(creator).slice(-4))}` : "") +
       (tables.length ? ` · at ${tables.map((id) => `<a href="/arena?table=${esc(id)}">${esc(id)}</a>`).join(", ")}` : "");
 
+    const form = (a.form || []).map((x) => `<i class="${x === "W" ? "w" : "l"}">${esc(x)}</i>`).join("") || "—";
     root.querySelector("#as-stats").innerHTML =
-      cell(a.elo ?? "—", "rating") +
-      cell(`${a.won ?? 0} / ${a.matches ?? a.played ?? 0}`, "won / played") +
-      cell((a.net != null ? a.net + " USDC" : "—"), "net");
+      cell(`${a.won ?? 0}–${Math.max(0, (a.matches ?? a.played ?? 0) - (a.won ?? 0))}`, "record") +
+      cell((a.net != null ? a.net + " USDC" : "—"), "net") +
+      `<div><b class="form">${form}</b><span>form</span></div>`;
 
     const bal = h.seatBalance != null ? Number(h.seatBalance).toFixed(2) + " USDC" : (j.balance != null ? Number(j.balance).toFixed(2) + " USDC" : "—");
     const extra = h.bankroll && h.bankroll.extraTopUp ? h.bankroll.extraTopUp + " extra" : "no tax top-up yet";
@@ -127,21 +129,15 @@
 
     const form = root.querySelector("#as-form");
     const cta = root.querySelector("#as-cta");
-    if (!allowBuy || buy.kind === "house") {
+    if (buy.kind === "house") {
       form.hidden = true;
-      root.querySelector("#as-hint").textContent = allowBuy
-        ? (buy.message || "House agents have no personal token.")
-        : "Token buy is on the agent page — not on the live table.";
-      if (!allowBuy && a.id && buy.kind !== "house") {
-        root.querySelector("#as-hint").innerHTML =
-          `Token buy is on the <a href="/agent/${encodeURIComponent(a.id)}">agent page</a>, not on the live table.`;
-      }
+      root.querySelector("#as-hint").textContent = buy.message || "House agents have no personal token.";
     } else {
       form.hidden = false;
       const mock = !j.live && buy.kind !== "house";
       cta.disabled = false;
       cta.textContent = mock ? "Mock buy" : (buy.address ? "Buy on Argus" : "Open Argus");
-      root.querySelector("#as-hint").textContent = buy.message || "";
+      root.querySelector("#as-hint").textContent = buy.message || "Token buy lives in this panel — not on the felt.";
       if (mock && (j.mockPurchases || []).length) {
         const last = j.mockPurchases[j.mockPurchases.length - 1];
         root.querySelector("#as-msg").textContent = `Last mock buy: ${last.usdcIn} USDC → ${last.tokensOut} ${last.symbol}`;
@@ -151,7 +147,7 @@
 
   async function open(id, opts) {
     if (!id) return;
-    allowBuy = !(opts && opts.allowBuy === false);
+    allowBuy = opts && opts.allowBuy === false ? false : true;
     currentId = id;
     ensure();
     root.hidden = false;
@@ -201,8 +197,7 @@
   }
 
   function flagsFromEl(el) {
-    const mode = el.getAttribute("data-agent-panel") || "";
-    return { allowBuy: mode !== "table" };
+    return { allowBuy: true };
   }
 
   document.addEventListener("click", (e) => {

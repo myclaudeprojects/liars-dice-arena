@@ -1,6 +1,7 @@
 // Small HTTP helpers shared by the server (and tests).
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => (
@@ -21,4 +22,12 @@ function shouldReleaseTxClaim(err) {
   return /not_found_yet|bad_tx_hash|tx_failed|tx_wrong_recipient/.test(msg);
 }
 
-module.exports = { escapeHtml, resolvePublicFile, shouldReleaseTxClaim };
+function timingSafeEqualString(a, b) {
+  if (a == null || b == null) return false;
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
+
+module.exports = { escapeHtml, resolvePublicFile, shouldReleaseTxClaim, timingSafeEqualString };

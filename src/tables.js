@@ -166,6 +166,8 @@ class Table {
     this.matchNo++;
     this.seats = agents.map((a) => ({
       id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house",
+      ownerAddress: a.ownerAddress || null,
+      personaTag: a.personaTag || null,
       imageUrl: `/api/agents/${encodeURIComponent(a.id)}/avatar`,
     }));
     this.busyIds = this.seats.filter((s) => s.owner && s.owner !== "house").map((s) => s.id);
@@ -341,7 +343,8 @@ class TableManager {
       const recFull = this.registry.get(rec.id) || rec;
       if (recFull.ownerAddress) ag.creatorWallet = { address: recFull.ownerAddress };
       else if (rec.house) ag.creatorWallet = { address: HOUSE_FEE_ADDRESS };
-      ag.ownerAddress = recFull.ownerAddress || null;
+      ag.ownerAddress = recFull.ownerAddress || ag.ownerAddress || null;
+      if (!ag.personaTag) ag.personaTag = recFull.personaTag || null;
       if (rec.house) {
         ag.walletInfo = await this.wallet.createSeatWallet(`${rec.id}:${table.id}`);
         if (this.wallet.ensureFunded) {

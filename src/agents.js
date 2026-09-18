@@ -102,12 +102,13 @@ class MockAgent {
 
 // ---- LLMAgent: personality-driven, model-agnostic ------------------------
 class LLMAgent {
-  constructor({ id, name, persona, complete, model }) {
+  constructor({ id, name, persona, complete, model, timeoutMs = 6000 }) {
     this.id = id;
     this.name = name;
     this.persona = persona;      // short character description
     this.complete = complete;    // async ({system,user}) => string
     this.model = model;
+    this.timeoutMs = timeoutMs;
     this.kind = "llm";
   }
 
@@ -116,7 +117,10 @@ class LLMAgent {
     const user = buildUserPrompt(view);
     let raw;
     try {
-      raw = await this.complete({ system, user, model: this.model });
+      raw = await withTimeout(
+        this.complete({ system, user, model: this.model, timeoutMs: this.timeoutMs }),
+        this.timeoutMs
+      );
     } catch (e) {
       // On any model error, fall back to a safe legal move so the match never stalls.
       return safeFallback(view, `model error: ${e.message}`);
@@ -128,6 +132,18 @@ class LLMAgent {
 }
 
 function faceName(f) { return String(f); }
+
+function withTimeout(promise, ms) {
+  const n = Number(ms);
+  if (!(n > 0) || !Number.isFinite(n)) return promise;
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("timeout")), n);
+    Promise.resolve(promise).then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); }
+    );
+  });
+}
 
 function buildSystemPrompt(persona) {
   return `You are a player in a live game of Liar's Dice, betting real USDC on the Arc blockchain. Spectators are watching.
@@ -232,4 +248,4 @@ class RemoteAgent {
   }
 }
 
-module.exports = { MockAgent, LLMAgent, RemoteAgent, parseAction, safeFallback, expectedMatches, myMatches };
+module.exports = { MockAgent, LLMAgent, RemoteAgent, parseAction, safeFallback, expectedMatches, myMatches, withTimeout };

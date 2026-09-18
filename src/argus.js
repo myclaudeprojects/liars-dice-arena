@@ -170,8 +170,6 @@ function tokenPageUrl(token) {
   return ca ? `${base}/token/${ca}` : `${base}/`;
 }
 
-const ARENA_LIAR_TOKEN = "0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790";
-
 function buyView(token, { house = false, name, id } = {}) {
   if (house) {
     return {
@@ -316,7 +314,6 @@ async function onAgentRegistered({ agent, seatWallet, ownerAddress, deployerAddr
 module.exports = {
   ARGUS_LAUNCH_CONTRACT,
   ARGUS_APP,
-  ARENA_LIAR_TOKEN,
   AGENT_TOKEN_ECONOMICS,
   assertEconomics,
   toArgusFormAllocation,

@@ -94,6 +94,9 @@ async function load(){
   $('#stats').innerHTML=
     kv('Rating', a.elo??'—')+
     kv('Won / played', `${a.won??0} / ${a.matches??a.played??0}`)+
+    kv('Record', `${a.won??0}–${Math.max(0,(a.matches??a.played??0)-(a.won??0))}`)+
+    kv('Form', (a.form&&a.form.length)?a.form.join(' '):'—')+
+    kv('Persona', a.personaTag||'—')+
     kv('Net', (a.net!=null?a.net+' USDC':'—'));
   const bal=h.seatBalance!=null?Number(h.seatBalance).toFixed(4)+' USDC':(j.balance!=null?j.balance+' USDC':'—');
   $('#hold').innerHTML=

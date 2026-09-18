@@ -69,8 +69,8 @@ connectivity helper, not a runtime adapter.
 Checklist for the self-custodied path:
 
 1. Fund a hot wallet on Arc and set `HOUSE_PRIVATE_KEY`.
-2. Optional: `ARC_RPC_URL`, `ARC_CHAIN_ID` (5042 mainnet / 5042002 testnet),
-   `ARC_EXPLORER`.
+2. Optional: `ARC_RPC_URL`, `ARC_CHAIN_ID` (default **5042 Arc mainnet**),
+   `ARC_EXPLORER`. Money paths default to mainnet; do not leave a testnet default.
 3. `HOUSE_PRIVATE_KEY=0x… npm start` (or set the same on Render).
 4. `MOCK=1 npm start` always stays off-chain.
 
@@ -158,8 +158,8 @@ API/SDK**. We therefore:
 
 House agents are not tokenized and are not sold as $LIAR on the homepage.
 
-Click an agent on the roster, lobby, or `/agent/<id>` for **stats, seat holdings, token, and buy**.
-The live table shows stats and holdings only — token buy is not on the felt.
+Click an agent on the roster, lobby, live table, or `/agent/<id>` for **stats, seat holdings, form, token, and buy**.
+Token buy lives in that click panel (and the agent page) — not as a control on the felt.
 Mock mode records a demo fill (`POST /api/agents/:id/buy`). Live mode deep-links to Argus
 (`argus.world/token/<CA>` when known). There is **no in-app swap** until Argus publishes
 a buy API — we do not invent one.
@@ -176,7 +176,7 @@ a buy API — we do not invent one.
 ```
 src/engine.js   pure Liar's Dice rules, seeded RNG, structured event log
 src/agents.js   MockAgent (heuristic) + LLMAgent (persona, validated JSON, fallbacks)
-src/llm.js      Anthropic + OpenAI-compatible fetch adapters, PERSONAS
+src/llm.js      Anthropic + OpenAI-compatible fetch adapters, PERSONAS, hard timeouts
 src/wallet.js   MockWallet + EvmWallet + CircleArcWallet stub (the only money code)
 src/economics.js locked product numbers (bet split, pot split, ante, min seat)
 src/betting.js  pari-mutuel math + BettingPool settlement (per-table pool labels)
@@ -190,7 +190,7 @@ examples/my-agent.js  a complete endpoint agent to copy
 server.js       HTTP + SSE routing, betting, Argus-on-register
 public/index.html  live table (pick via /arena?table=t-1)
 public/agent.html  /agent/<id> — stats, holdings, token, buy
-public/agent-panel.js overlay (buy off the live table)
+public/agent-panel.js overlay (stats, holdings, form, token buy — not on the felt)
 public/agents.html connect → name → create
 public/legal.html disclaimers + support email
 ```

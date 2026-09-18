@@ -53,6 +53,7 @@ function eq(a, b, m) { if (Math.abs(a - b) > 1e-6) throw new Error((m || "eq") +
 
   const circle = new CircleArcWallet({ apiKey: "test" });
   assert(circle.kind === "circle", "constructs");
+  assert(circle.blockchain === "ARC", "circle defaults to Arc mainnet, not testnet");
   let threw = false;
   try { await circle.createSeatWallet("x"); } catch (e) { threw = /TODO\(circle\)/.test(e.message); }
   assert(threw, "circle ops are TODO");

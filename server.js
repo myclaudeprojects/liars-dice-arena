@@ -17,7 +17,7 @@ const llm = require("./src/llm");
 const { Stats } = require("./src/stats");
 const argus = require("./src/argus");
 const avatar = require("./src/avatar");
-const { resolvePublicFile, shouldReleaseTxClaim } = require("./src/httputil");
+const { resolvePublicFile, shouldReleaseTxClaim, timingSafeEqualString } = require("./src/httputil");
 const { TableManager, TABLE_ID_RE } = require("./src/tables");
 const econ = require("./src/economics");
 const stats = new Stats();
@@ -30,6 +30,7 @@ function envNum(name, dflt) { const m = String(process.env[name] ?? "").match(/-
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 const TURN_DELAY_MS = envNum("TURN_DELAY_MS", 1000);
+const TURN_TIMEOUT_MS = envNum("TURN_TIMEOUT_MS", 6000);
 const REVEAL_DELAY_MS = envNum("REVEAL_DELAY_MS", 3000); // time for the flip sequence to play out
 const DEAL_DELAY_MS = envNum("DEAL_DELAY_MS", 1000);
 const BET_WINDOW_MS = envNum("BET_WINDOW_MS", 30000);
@@ -46,7 +47,7 @@ const wallet = makeWallet(process.env.MOCK === "1" ? { startingBalance: 100 } : 
   explorer: process.env.ARC_EXPLORER || "https://explorer.arc.io",
 } : process.env.CIRCLE_API_KEY ? {
   provider: "circle", apiKey: process.env.CIRCLE_API_KEY,
-  entitySecret: process.env.CIRCLE_ENTITY_SECRET, blockchain: process.env.CIRCLE_BLOCKCHAIN || "ARC-TESTNET",
+  entitySecret: process.env.CIRCLE_ENTITY_SECRET, blockchain: process.env.CIRCLE_BLOCKCHAIN || "ARC",
 } : { startingBalance: 100 });
 const LIVE_CHAIN = wallet.kind === "evm";
 
@@ -90,12 +91,12 @@ function instantiate(rec) {
   let ag;
   if (rec.type === "endpoint") {
     ag = new RemoteAgent({ ...base, endpoint: rec.endpoint, sign: (body) => registry.signature(rec, body),
-      allowLocal: registry.allowLocal,
+      allowLocal: registry.allowLocal, timeoutMs: TURN_TIMEOUT_MS,
       onResult: (ok) => ok ? registry.recordSuccess(rec.id) : registry.recordFailure(rec.id) });
   } else if (rec.type === "prompt" && llmComplete) {
-    ag = new LLMAgent({ ...base, persona: rec.persona, complete: llmComplete });
+    ag = new LLMAgent({ ...base, persona: rec.persona, complete: llmComplete, timeoutMs: TURN_TIMEOUT_MS });
   } else if (rec.house && process.env.USE_LLM && llmComplete && llm.PERSONAS[rec.persona]) {
-    ag = new LLMAgent({ ...base, persona: llm.PERSONAS[rec.persona], complete: llmComplete });
+    ag = new LLMAgent({ ...base, persona: llm.PERSONAS[rec.persona], complete: llmComplete, timeoutMs: TURN_TIMEOUT_MS });
   } else {
     ag = new MockAgent({ ...base, aggression: rec.aggression ?? 0.5 });
   }
@@ -103,6 +104,7 @@ function instantiate(rec) {
   if (rec.ownerAddress) ag.creatorWallet = { address: rec.ownerAddress };
   else if (rec.house) ag.creatorWallet = { address: econ.HOUSE_FEE_ADDRESS };
   ag.ownerAddress = rec.ownerAddress || null;
+  ag.personaTag = llm.personaTag(rec);
   return ag;
 }
 
@@ -253,11 +255,13 @@ async function agentsApi(req, res, urlPath) {
     const st = eloById[a.id] || {};
     return {
       ...a,
-      elo: st.elo ?? 1200, won: st.won ?? 0, matches: st.played ?? a.played ?? 0,
-      played: st.played ?? a.played ?? 0,
-      usdcWon: st.usdcWon ?? 0, usdcLost: st.usdcLost ?? 0,
-      net: +((st.usdcWon || 0) - (st.usdcLost || 0)).toFixed(2),
-      seatedAt: seated[a.id] || [],
+        elo: st.elo ?? 1200, won: st.won ?? 0, matches: st.played ?? a.played ?? 0,
+        played: st.played ?? a.played ?? 0,
+        usdcWon: st.usdcWon ?? 0, usdcLost: st.usdcLost ?? 0,
+        net: +((st.usdcWon || 0) - (st.usdcLost || 0)).toFixed(2),
+        form: st.form || [],
+        personaTag: a.personaTag || llm.personaTag(a),
+        seatedAt: seated[a.id] || [],
       buy: argus.buyView(a.token, { house: a.house, name: a.name, id: a.id }),
     };
   };
@@ -406,7 +410,7 @@ async function agentsApi(req, res, urlPath) {
     if (parts[3] === "bankroll" && req.method === "POST") {
       const body = JSON.parse(await readBody(req) || "{}");
       const secret = process.env.BANKROLL_WEBHOOK_SECRET;
-      const authed = registry.auth(rec.id, bearer(req)) || (secret && bearer(req) === secret);
+      const authed = registry.auth(rec.id, bearer(req)) || (secret && timingSafeEqualString(bearer(req), secret));
       if (!authed) return json(res, 401, { ok: false, error: "Wrong or missing agent key." });
       const amt = Number(body.amount);
       if (!(amt > 0) || !Number.isFinite(amt)) throw new Error("bad_amount");
@@ -493,6 +497,9 @@ const server = http.createServer(async (req, res) => {
       lastError: tables.tables.map((t) => t.lastError).find(Boolean) || null,
     }));
   }
+  if (url === "/api/leaderboard" && req.method === "GET") {
+    return json(res, 200, stats.leaderboard());
+  }
   if (url === "/api/config" && req.method === "GET") {
     return json(res, 200, {
       ante: ANTE, minSeat: MIN_SEAT, minStake: MIN_STAKE, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT,
@@ -502,6 +509,8 @@ const server = http.createServer(async (req, res) => {
       betSplit: { houseBps: econ.HOUSE_FEE_BPS, seatBps: econ.SEAT_FEE_BPS, pariBps: econ.PARI_BPS },
       potSplit: { creatorBps: econ.POT_CREATOR_BPS, seatBps: econ.POT_SEAT_BPS },
       tokenTax: argus.AGENT_TOKEN_ECONOMICS,
+      turnTimeoutMs: TURN_TIMEOUT_MS,
+      chainId: wallet.chainId || null,
     });
   }
   if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(lobbyState())); }
@@ -579,9 +588,15 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Liar's Dice Arena → http://${HOST}:${PORT}   (wallet: ${wallet.kind}, live: ${LIVE_CHAIN}, tables: ${TABLE_COUNT}×${TABLE_SIZE}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms)`);
+  console.log(`Liar's Dice Arena → http://${HOST}:${PORT}   (wallet: ${wallet.kind}, live: ${LIVE_CHAIN}, tables: ${TABLE_COUNT}×${TABLE_SIZE}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms, turn timeout: ${TURN_TIMEOUT_MS}ms)`);
   if (wallet.kind === "circle") {
     console.warn("CircleArcWallet is a stub (TODO(circle) on every money call). Set HOUSE_PRIVATE_KEY for live Arc, or MOCK=1 for local play.");
+    if (/TESTNET/i.test(wallet.blockchain || "")) {
+      console.warn("CIRCLE_BLOCKCHAIN is testnet — money paths are specified as Arc mainnet only. Default is ARC.");
+    }
+  }
+  if (LIVE_CHAIN && wallet.chainId && Number(wallet.chainId) !== 5042) {
+    console.warn(`ARC_CHAIN_ID=${wallet.chainId} is not Arc mainnet (5042).`);
   }
   tables.start().catch((e) => { console.error("tables start crashed (unrecoverable):", e); });
   process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));

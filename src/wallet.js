@@ -69,11 +69,13 @@ class MockWallet {
 // developers.circle.com (initiateDeveloperControlledWalletsClient,
 // createWalletSet, createWallets, createTransaction, getWalletTokenBalance).
 class CircleArcWallet {
-  constructor({ apiKey, entitySecret, blockchain = "ARC-TESTNET", walletSetId, usdcTokenId } = {}) {
+  constructor({ apiKey, entitySecret, blockchain = "ARC", walletSetId, usdcTokenId } = {}) {
     this.kind = "circle";
     this.apiKey = apiKey;
     this.entitySecret = entitySecret;
-    this.blockchain = blockchain || "ARC-TESTNET";
+    // Money paths are Arc mainnet. Circle's setup script uses "ARC" for mainnet;
+    // confirm the live identifier in the Circle console — do not default to testnet.
+    this.blockchain = blockchain || "ARC";
     this.walletSetId = walletSetId || process.env.CIRCLE_WALLET_SET_ID || null;
     this.usdcTokenId = usdcTokenId || process.env.CIRCLE_USDC_TOKEN_ID || null;
     this.wired = false;
@@ -104,6 +106,9 @@ class CircleArcWallet {
 class EvmWallet {
   constructor({ privateKey, rpcUrl = "https://rpc.mainnet.arc.io", chainId = 5042, explorer = "https://explorer.arc.io", gasReserve = 0.02 }) {
     if (!privateKey) throw new Error("HOUSE_PRIVATE_KEY required");
+    if (Number(chainId) !== 5042) {
+      console.warn(`EvmWallet chainId=${chainId} is not Arc mainnet (5042). Money paths are specified as mainnet-only.`);
+    }
     const ethers = require("ethers");
     this.ethers = ethers;
     this.kind = "evm";

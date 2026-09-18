@@ -1,4 +1,5 @@
 const { LLMAgent, MockAgent, parseAction, safeFallback } = require("../src/agents");
+const { personaTag } = require("../src/llm");
 const { makeWallet } = require("../src/wallet");
 const { runMatch } = require("../src/arena");
 
@@ -16,6 +17,8 @@ assert(parseAction('{"thought":"ok","action":{"type":"bid","count":5,"face":3}}'
 assert(safeFallback(viewOpen).action.type === "bid", "open fallback");
 assert(safeFallback(viewCeil).action.type === "challenge", "ceiling fallback");
 assert(safeFallback(viewBid).action.type === "bid", "raise fallback");
+assert(personaTag({ persona: "degen" }) === "Bluffs for fun", "degen tag");
+assert(personaTag({ type: "heuristic", aggression: 0.2 }) === "Tight caller", "tight");
 
 let i = 0;
 const fakeComplete = async ({ user }) => {
@@ -57,5 +60,19 @@ const fakeComplete = async ({ user }) => {
     totalDice: 8, currentBid: { count: 4, face: 3 }, onesWild: true, whoseTurn: "a",
   });
   assert(r2.action.type === "bid" || r2.action.type === "challenge", "model error falls back");
+
+  const hung = new LLMAgent({
+    id: "h", name: "Hung", persona: "x", timeoutMs: 40,
+    complete: () => new Promise(() => {}),
+  });
+  const t0 = Date.now();
+  const r3 = await hung.act({
+    you: { id: "h", name: "Hung", dice: [2, 3, 4] },
+    table: [{ id: "h", name: "Hung", diceCount: 3, alive: true }, { id: "b", name: "B", diceCount: 5, alive: true }],
+    totalDice: 8, currentBid: { count: 4, face: 3 }, onesWild: true, whoseTurn: "h",
+  });
+  assert(Date.now() - t0 < 400, "hard turn timeout");
+  assert(/timeout/.test(r3.thought), "timeout thought");
+  assert(r3.action && (r3.action.type === "bid" || r3.action.type === "challenge"), "timeout falls back");
   console.log({ winner: r.winnerName, turns, fallbacks, illegalReachedEngine: illegal, balances: r.balances });
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -7,6 +7,7 @@ const { InfluenceBook } = require("../src/influence");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 function eq(a, b, m) { if (Math.abs(a - b) > 1e-6) throw new Error((m || "eq") + `: ${a} != ${b}`); }
+const approx = eq;
 
 (async () => {
   const credits = new CreditBook({ persist: false });
@@ -70,6 +71,7 @@ function eq(a, b, m) { if (Math.abs(a - b) > 1e-6) throw new Error((m || "eq") +
 
   const infBook = new InfluenceBook();
   infBook.apply("a", "aggressive", 10);
+  infBook.freezeAgents(["a"]);
   let hands = 0;
   await runMatch({
     agents: [
@@ -77,14 +79,13 @@ function eq(a, b, m) { if (Math.abs(a - b) > 1e-6) throw new Error((m || "eq") +
       new MockAgent({ id: "b", name: "B", aggression: 0.7 }),
     ],
     credits: new CreditBook({ persist: false }), ante: 1, seed: 11, maxSteps: 400,
-    influence: infBook,
+    influence: infBook, freezeInfluence: true,
     onEvent: (e) => { if (e.type === "hand_start") hands++; },
   });
   assert(hands >= 1, "at least one hand");
-  if (hands > 1) {
-    assert(infBook.snapshot("a").weights.aggressive < 10, "influence decays after opening hand");
-    assert(infBook.snapshot("a").entitlesWinnings === false, "still no claim");
-  }
+  approx(infBook.snapshot("a").weights.aggressive, 10, "locked influence does not decay in match");
+  assert(infBook.snapshot("a").locked === true, "still frozen");
+  assert(infBook.snapshot("a").entitlesWinnings === false, "still no claim");
 
   console.log("arena ok");
 })().catch((e) => { console.error(e); process.exit(1); });

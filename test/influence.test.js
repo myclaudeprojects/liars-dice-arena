@@ -40,6 +40,20 @@ tiny.decayHand("x");
 eq(tiny.snapshot("x").total, 0, "below floor cleared");
 eq(tiny.snapshot("x").dominant, null, "no dominant after fade");
 
+const lockBook = new InfluenceBook();
+lockBook.apply("cold-hands", "defensive", 3);
+lockBook.freezeAgents(["cold-hands"]);
+assert(lockBook.snapshot("cold-hands").locked === true, "frozen flag");
+approx(lockBook.snapshot("cold-hands").weights.defensive, 3, "frozen keeps weight");
+let lockedApply = false;
+try { lockBook.apply("cold-hands", "chaos", 1); } catch (e) { lockedApply = /locked/.test(e.message); }
+assert(lockedApply, "no paid influence after freeze");
+lockBook.decayHand("cold-hands");
+approx(lockBook.snapshot("cold-hands").weights.defensive, 3, "frozen skips decay");
+lockBook.thawAgents(["cold-hands"]);
+lockBook.resetAgents(["cold-hands"]);
+eq(lockBook.snapshot("cold-hands").total, 0, "reset after thaw");
+
 const mid = 0.5;
 const none = effectivePlay(0.5, book.snapshot("nobody"), () => mid);
 approx(none.aggression, 0.5, "no live influence");

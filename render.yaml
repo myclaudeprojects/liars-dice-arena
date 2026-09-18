@@ -15,7 +15,13 @@ services:
       - key: ANTE_CREDITS
         value: "1"
       - key: START_DELAY_MS
+        value: "8000"
+      - key: CROWD_DELAY_MS
+        value: "8000"
+      - key: MARKET_DELAY_MS
         value: "4000"
+      - key: PREDICTION_VENUE
+        value: "placeholder"
       - key: TURN_DELAY_MS
         value: "1600"
       - key: TURN_TIMEOUT_MS

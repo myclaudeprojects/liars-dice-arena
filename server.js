@@ -1,5 +1,5 @@
 // server.js — Live arena. Serves the spectator UI, streams every event over
-// SSE, and runs many parallel tables (start delay → credit match → settlement).
+// SSE, and runs many parallel tables (crowd → lock → partner market → credit match → settlement).
 // Spectators watch, tip creators (USDC gifts), and buy agent tokens.
 // Agents play with free Arena Credits. Platform USDC prizes go to creators.
 // There is no spectator wagering pool and no USDC ante pot.
@@ -19,6 +19,7 @@ const { TipBook, assertTipAmount } = require("./src/tips");
 const { CreditBook } = require("./src/credits");
 const { prizeRules } = require("./src/prizes");
 const { InfluenceBook, assertInfluence, influenceList } = require("./src/influence");
+const { OracleBook, assertTipsOpen, matchIdFor, parseMatchId, PHASES } = require("./src/lifecycle");
 const llm = require("./src/llm");
 const { Stats } = require("./src/stats");
 const argus = require("./src/argus");
@@ -39,9 +40,11 @@ const TURN_DELAY_MS = envNum("TURN_DELAY_MS", 1000);
 const TURN_TIMEOUT_MS = envNum("TURN_TIMEOUT_MS", 6000);
 const REVEAL_DELAY_MS = envNum("REVEAL_DELAY_MS", 3000); // time for the flip sequence to play out
 const DEAL_DELAY_MS = envNum("DEAL_DELAY_MS", 1000);
-const START_DELAY_MS = envNum("START_DELAY_MS", 4000);
+const START_DELAY_MS = envNum("CROWD_DELAY_MS", envNum("START_DELAY_MS", 8000));
+const MARKET_DELAY_MS = envNum("MARKET_DELAY_MS", 4000);
 const ANTE = econ.assertAnteCredits(envNum("ANTE_CREDITS", envNum("ANTE", econ.DEFAULT_ANTE_CREDITS)));
 const MIN_TIP = envNum("MIN_TIP", envNum("MIN_STAKE", econ.MIN_TIP));
+const PREDICTION_VENUE = String(process.env.PREDICTION_VENUE || "placeholder");
 
 // ---- world state --------------------------------------------------------
 // Money adapter: MOCK=1 always wins (local previews). Else self-custodied
@@ -61,6 +64,7 @@ const mockTokenBuys = {}; // agentId -> mock purchases (demo only; not on chain)
 const tips = new TipBook();
 const credits = new CreditBook();
 const influence = new InfluenceBook();
+const oracle = new OracleBook();
 
 function parseReq(req) {
   const u = new URL(req.url, "http://local");
@@ -112,10 +116,12 @@ function instantiate(rec) {
 }
 
 const tables = new TableManager({
-  wallet, registry, stats, credits, influence, instantiate,
+  wallet, registry, stats, credits, influence, oracle, instantiate,
   ante: ANTE, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT, liveChain: LIVE_CHAIN,
-  startDelayMs: START_DELAY_MS, turnDelayMs: TURN_DELAY_MS, revealDelayMs: REVEAL_DELAY_MS,
+  startDelayMs: START_DELAY_MS, crowdDelayMs: START_DELAY_MS, marketDelayMs: MARKET_DELAY_MS,
+  turnDelayMs: TURN_DELAY_MS, revealDelayMs: REVEAL_DELAY_MS,
   dealDelayMs: DEAL_DELAY_MS, minTip: MIN_TIP, shouldReleaseTxClaim,
+  predictionVenue: PREDICTION_VENUE,
   staggerMs: Math.max(1500, Math.round(START_DELAY_MS / Math.max(1, TABLE_COUNT)) * 4),
 });
 
@@ -126,12 +132,16 @@ function lobbyState() {
     tables: tables.list(),
     tableCount: tables.tables.length,
     ante: ANTE, unit: "credits", minTip: MIN_TIP,
-    walletKind: wallet.kind, live: LIVE_CHAIN, startDelayMs: START_DELAY_MS,
+    walletKind: wallet.kind, live: LIVE_CHAIN,     startDelayMs: START_DELAY_MS, crowdDelayMs: START_DELAY_MS, marketDelayMs: MARKET_DELAY_MS,
     noSpectatorPool: true, noUsdcPot: true,
+    ldaDoesNotCustodyBets: true, ldaPaysWinnersFromLosers: false,
     tipSplit: { creatorBps: econ.TIP_CREATOR_BPS, houseBps: econ.TIP_HOUSE_BPS },
     prize: prizeRules(),
     influences: influenceList(),
     entitlesWinnings: false,
+    phases: PHASES,
+    predictionVenue: PREDICTION_VENUE,
+    tipsOpen: feat ? feat.tipsOpen() : false,
   };
 }
 
@@ -139,8 +149,10 @@ function chainView() {
   return wallet.chainInfo ? wallet.chainInfo() : null;
 }
 
-function tipMeta(rec) {
+function tipMeta(rec, table) {
   const creator = rec?.ownerAddress || (rec?.house ? econ.PRIZE_WALLET : null);
+  const t = table || tables.findTableFeaturing(rec.id);
+  const open = t ? t.tipsOpen() : false;
   return {
     gift: true,
     notABet: true,
@@ -156,6 +168,10 @@ function tipMeta(rec) {
     fundingAddress: creator,
     choices: influenceList(),
     current: influence.snapshot(rec.id),
+    tipsOpen: open,
+    phase: t ? t.phase : "build",
+    matchId: t ? t.matchId : null,
+    crowdOnly: true,
   };
 }
 
@@ -171,6 +187,8 @@ async function placeTip(rec, body = {}) {
   const tipperId = String(body.from || body.address || body.tipperId || "spectator").slice(0, 64);
   const claimedAmt = Number(body.amount);
   const inf = assertInfluence(body.influence);
+  const t = tables.findTableFeaturing(rec.id, tableId);
+  assertTipsOpen(t ? t.phase : "build");
 
   const broadcastTip = (row, extra = {}) => {
     const t = tables.findTableFeaturing(rec.id, tableId);
@@ -215,7 +233,7 @@ async function placeTip(rec, body = {}) {
         explorer: wallet.explorerUrl(body.txHash),
         creatorBps: econ.TIP_CREATOR_BPS, houseBps: econ.TIP_HOUSE_BPS,
         entitlesWinnings: false, toCredits: false, toPrize: false, toPot: false,
-        note: "Tip is a gift to the creator wallet. It shifts live persona weights and does not fund credits or prizes. You are never entitled to winnings.",
+        note: "Crowd-phase gift to the creator wallet. It shifts pre-lock persona weights and does not fund credits or prizes. You are never entitled to winnings.",
       };
     } catch (e) {
       if (shouldReleaseTxClaim(e)) tips.releaseTx(body.txHash);
@@ -239,7 +257,7 @@ async function placeTip(rec, body = {}) {
     creatorAddress: dest.address, tx, explorer: wallet.explorerUrl(tx),
     balance: bal, creatorBps: econ.TIP_CREATOR_BPS, houseBps: econ.TIP_HOUSE_BPS,
     entitlesWinnings: false, toCredits: false, toPrize: false, toPot: false,
-    note: "Demo tip: 100% to the creator (mock wallets, not on chain). Live persona influence, not credits, not a prize, not a match stake. You are never entitled to winnings.",
+    note: "Demo crowd-phase tip: 100% to the creator (mock wallets, not on chain). Pre-lock influence only. Not credits, not a prize, not a match stake. You are never entitled to winnings.",
   };
 }
 
@@ -427,13 +445,14 @@ async function agentsApi(req, res, urlPath, q) {
     }
 
     if (parts.length === 3 && req.method === "GET") {
+      const table = tables.findTableFeaturing(rec.id, q.get("table"));
       return json(res, 200, {
         ok: true, agent: decorate(registry.publicView(rec)),
         credits: credits.balance(rec.id), unit: "credits", redeemable: false,
         holdings: holdingsOf(rec),
         tables: tables.featuring(rec.id),
         buy: argus.buyView(rec.token, { house: rec.house, name: rec.name, id: rec.id }),
-        tip: tipMeta(rec),
+        tip: tipMeta(rec, table),
         influence: influence.snapshot(rec.id),
         influences: influenceList(),
         live: LIVE_CHAIN,
@@ -442,6 +461,11 @@ async function agentsApi(req, res, urlPath, q) {
         tipSplit: { creatorBps: econ.TIP_CREATOR_BPS, houseBps: econ.TIP_HOUSE_BPS },
         prize: prizeRules(),
         noSpectatorPool: true, noUsdcPot: true,
+        ldaDoesNotCustodyBets: true,
+        market: table ? table.market : null,
+        matchId: table ? table.matchId : null,
+        phase: table ? table.phase : "build",
+        lockedConfigHash: table && table.lockedConfig ? table.lockedConfig.lockedConfigHash : null,
       });
     }
 
@@ -552,9 +576,15 @@ const server = http.createServer(async (req, res) => {
       tokenTax: argus.AGENT_TOKEN_ECONOMICS,
       turnTimeoutMs: TURN_TIMEOUT_MS,
       startDelayMs: START_DELAY_MS,
+      crowdDelayMs: START_DELAY_MS,
+      marketDelayMs: MARKET_DELAY_MS,
       noSpectatorPool: true, noUsdcPot: true,
+      ldaDoesNotCustodyBets: true,
+      ldaPaysWinnersFromLosers: false,
       influences: influenceList(),
       entitlesWinnings: false,
+      phases: PHASES,
+      predictionVenue: PREDICTION_VENUE,
       chainId: wallet.chainId || null,
       chain: chainView(),
     });
@@ -598,7 +628,27 @@ const server = http.createServer(async (req, res) => {
       tableCount: tables.tables.length, tableSize: TABLE_SIZE, ante: ANTE, unit: "credits",
       walletKind: wallet.kind, live: LIVE_CHAIN, startDelayMs: START_DELAY_MS,
       noSpectatorPool: true, noUsdcPot: true, prize: prizeRules(),
+      ldaDoesNotCustodyBets: true, predictionVenue: PREDICTION_VENUE,
     });
+  }
+
+  if (url === "/api/oracle" && req.method === "GET") {
+    const tid = q.get("table");
+    const matchNo = q.get("match");
+    if (tid && matchNo) {
+      const rec = oracle.get(matchIdFor(tid, matchNo));
+      if (!rec) return json(res, 404, { ok: false, error: "No such match." });
+      return json(res, 200, { ok: true, ...rec });
+    }
+    return json(res, 200, { ok: true, matches: oracle.list({ tableId: tid || undefined }), oracleVersion: 1 });
+  }
+
+  if ((url.startsWith("/api/oracle/") || url.startsWith("/api/matches/")) && req.method === "GET") {
+    const id = decodeURIComponent(url.split("/").slice(3).join("/") || url.split("/").pop());
+    const parsed = parseMatchId(id);
+    const rec = oracle.get(id) || (parsed ? oracle.get(matchIdFor(parsed.tableId, parsed.matchNo)) : null);
+    if (!rec) return json(res, 404, { ok: false, error: "No such match." });
+    return json(res, 200, { ok: true, ...rec });
   }
 
   const tableParts = url.split("/").filter(Boolean); // api, tables, t-1, events
@@ -606,8 +656,19 @@ const server = http.createServer(async (req, res) => {
     const table = tables.get(tableParts[2]);
     if (!table) return json(res, 404, { ok: false, error: "No such table." });
     const action = tableParts[3] || "";
-    if (!action && req.method === "GET") return json(res, 200, { ok: true, table: table.summary(), state: table.publicState() });
+    if (!action && req.method === "GET") {
+      return json(res, 200, {
+        ok: true, table: table.summary(), state: table.publicState(),
+        oracle: table.matchId ? oracle.get(table.matchId) : null,
+        market: table.market,
+      });
+    }
     if (action === "events" && req.method === "GET") return table.subscribe(req, res);
+    if (action === "oracle" && req.method === "GET") {
+      const rec = table.matchId ? oracle.get(table.matchId) : null;
+      if (!rec) return json(res, 404, { ok: false, error: "No oracle record yet." });
+      return json(res, 200, { ok: true, ...rec });
+    }
     return json(res, 404, { ok: false, error: "Unknown table endpoint." });
   }
 

@@ -1,8 +1,6 @@
-// influence.js — Spectator tips shift how an agent plays, then decay.
-//
-// Money still goes 100% to the creator. Influence is a live persona weight,
-// never a claim on winnings, credits, or pots. Weighted by tip size; fades
-// across hands so one tip cannot lock a seat forever.
+// influence.js — Crowd-phase tips shift how an agent will play, then LOCK
+// freezes the weights for the match. Money still goes 100% to the creator.
+// Influence is never a claim on winnings, credits, or pots.
 
 const { round6 } = require("./economics");
 
@@ -125,13 +123,14 @@ function influencePrompt(snap) {
   const parts = INFLUENCE_IDS
     .filter((id) => snap.weights[id] >= INFLUENCE_FLOOR)
     .map((id) => `${INFLUENCES[id].label} ${snap.weights[id].toFixed(2)}`);
-  return `SPECTATOR INFLUENCE (live, weighted by tip size, decays each hand). Tippers are never entitled to winnings. Lean ${snap.label} — ${snap.blurb}. Weights: ${parts.join(", ")}.`;
+  return `SPECTATOR INFLUENCE (crowd-phase weights, locked for this match). Tippers are never entitled to winnings. Lean ${snap.label} — ${snap.blurb}. Weights: ${parts.join(", ")}.`;
 }
 
 class InfluenceBook {
   constructor({ decay = INFLUENCE_DECAY_PER_HAND } = {}) {
     this.decay = decay;
     this.byAgent = new Map();
+    this.frozen = new Map();
   }
 
   _row(id) {
@@ -140,7 +139,14 @@ class InfluenceBook {
     return this.byAgent.get(k);
   }
 
+  isFrozen(agentId) {
+    return this.frozen.has(String(agentId));
+  }
+
   apply(agentId, influence, amount) {
+    if (this.isFrozen(agentId)) {
+      throw new Error("This agent's personality is locked for the match. No further paid influence.");
+    }
     const k = assertInfluence(influence);
     const amt = round6(Number(amount));
     if (!(amt > 0) || !Number.isFinite(amt)) throw new Error("bad_amount");
@@ -149,7 +155,30 @@ class InfluenceBook {
     return this.snapshot(agentId);
   }
 
+  freezeAgents(ids) {
+    const out = {};
+    for (const id of ids || []) {
+      const snap = snapshotFromWeights(this._row(id));
+      snap.locked = true;
+      this.frozen.set(String(id), snap);
+      out[id] = snap;
+    }
+    return out;
+  }
+
+  thawAgents(ids) {
+    for (const id of ids || []) this.frozen.delete(String(id));
+  }
+
+  resetAgents(ids) {
+    for (const id of ids || []) {
+      this.byAgent.set(String(id), emptyWeights());
+      this.frozen.delete(String(id));
+    }
+  }
+
   decayHand(agentId) {
+    if (this.isFrozen(agentId)) return this.snapshot(agentId);
     const row = this._row(agentId);
     for (const id of INFLUENCE_IDS) {
       const next = round6(row[id] * this.decay);
@@ -163,6 +192,8 @@ class InfluenceBook {
   }
 
   snapshot(agentId) {
+    const frozen = this.frozen.get(String(agentId));
+    if (frozen) return { ...frozen, locked: true };
     return snapshotFromWeights(this._row(agentId));
   }
 }

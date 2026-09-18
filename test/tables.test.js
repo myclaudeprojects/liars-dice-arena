@@ -13,6 +13,8 @@ const { makeWallet } = require("../src/wallet");
 const { MockAgent } = require("../src/agents");
 const { Stats } = require("../src/stats");
 const { CreditBook } = require("../src/credits");
+const { InfluenceBook } = require("../src/influence");
+const { OracleBook } = require("../src/lifecycle");
 const {
   TableManager, communityBusyIds, filterTableSummaries, TABLE_ID_RE,
 } = require("../src/tables");
@@ -88,6 +90,39 @@ assert(!rest.some((x) => first.map((s) => s.id).includes(x.id)), "no overlap");
   eq(st.unit, "credits", "credits unit");
   assert(!("bets" in st) && !("multipliers" in st) && !("poolTotal" in st), "no bet fields on table state");
   assert(credits.balance(community1[0]) >= 1, "credits granted on seat");
+
+  const influence = new InfluenceBook();
+  const oracle = new OracleBook();
+  const life = new TableManager({
+    wallet: w, registry: reg, stats: new Stats(), credits: new CreditBook({ persist: false }),
+    influence, oracle,
+    instantiate: (rec) => {
+      const ag = new MockAgent({ id: rec.id, name: rec.name, aggression: rec.aggression ?? 0.5 });
+      ag.owner = rec.owner;
+      return ag;
+    },
+    ante: 1, tableSize: 3, tableCount: 1, liveChain: false,
+    crowdDelayMs: 1, marketDelayMs: 1, lockBeatMs: 1,
+    turnDelayMs: 0, revealDelayMs: 0, dealDelayMs: 0,
+    settlePauseMs: 1, errorPauseMs: 1, waitingMs: 1, staggerMs: 0,
+    sleep: async () => {},
+    minTip: 0.05, predictionVenue: "placeholder",
+  });
+  const tLife = life.tables[0];
+  const phases = [];
+  const orig = tLife.broadcast.bind(tLife);
+  tLife.broadcast = (ev) => { phases.push(tLife.phase); orig(ev); };
+  await tLife.oneMatch();
+  assert(phases.includes("crowd") && phases.includes("locked") && phases.includes("market") && phases.includes("playing") && phases.includes("settled"), "lifecycle phases");
+  assert(tLife.lockedConfig && tLife.lockedConfig.lockedConfigHash.length === 64, "locked hash");
+  eq(tLife.market.status, "awaiting_partner_listing", "partner listing stub");
+  assert(tLife.market.ldaDoesNotCustodyBets === true && tLife.market.ldaPaysWinnersFromLosers === false, "no custody / no lda payout");
+  const rec = oracle.list({ tableId: "t-1" })[0];
+  assert(rec && rec.matchId === "lda:t-1:1", "oracle match id");
+  assert(rec.lockedConfigHash === tLife.lockedConfig.lockedConfigHash, "oracle hash");
+  assert(rec.winnerAgentId || rec.aborted, "oracle winner or abort");
+  assert(rec.settledAt, "oracle timestamp");
+  eq(tLife.tipsOpen(), false, "tips closed after lock");
 
   console.log("tables ok");
 })().catch((e) => { console.error(e); process.exit(1); });

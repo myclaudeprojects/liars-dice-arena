@@ -116,6 +116,10 @@ body.sheet-open{overflow:hidden}
 .persona{font-size:12px;color:var(--mute)}
 .agent-sheet-stats span,.agent-sheet-hold span{font-size:11px;color:#5c5a52;letter-spacing:.03em;text-transform:uppercase}
 .agent-sheet-buy[hidden],.agent-sheet-tip[hidden]{display:none!important}
+.agent-sheet-market{background:#fff;border:1px solid #d9cfb8;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px}
+.agent-sheet-market[hidden]{display:none!important}
+.agent-sheet-market h3{font:600 16px/1.2 var(--serif);margin:0 0 8px}
+.agent-sheet-market .kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #efe6d3;font-size:13px}
 .influence-picks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 10px}
 .influence-picks .inf{text-align:left;border:2px solid #d9cfb8;border-radius:12px;background:#fff;padding:10px 12px;min-height:56px;cursor:pointer;font:inherit;color:inherit}
 .influence-picks .inf b{display:block;font:600 14px/1.2 var(--sans)}

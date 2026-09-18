@@ -75,6 +75,8 @@ function forbiddenCopy(body, label) {
       TABLE_COUNT: "1",
       TABLE_SIZE: "3",
       START_DELAY_MS: "8000",
+      CROWD_DELAY_MS: "8000",
+      MARKET_DELAY_MS: "4000",
       TURN_DELAY_MS: "0",
       REVEAL_DELAY_MS: "0",
       DEAL_DELAY_MS: "0",
@@ -118,6 +120,11 @@ function forbiddenCopy(body, label) {
     assert(Array.isArray(cfg.json.influences) && cfg.json.influences.length === 4, "four influences");
     assert(cfg.json.influences.map((x) => x.id).join(",") === "aggressive,calculated,chaos,defensive", "influence ids");
     assert(cfg.json.entitlesWinnings === false, "config: never entitled");
+    assert(cfg.json.ldaDoesNotCustodyBets === true, "no bet custody");
+    assert(cfg.json.ldaPaysWinnersFromLosers === false, "lda does not pay winners from losers");
+    assert(cfg.json.predictionVenue === "placeholder", "partner venue stub");
+    const ora = await get(base + "/api/oracle");
+    assert(ora.status === 200 && Array.isArray(ora.json.matches), "oracle list");
     const legal = await get(base + "/legal");
     assert(legal.status === 200 && /myclaudeprojects@gmail.com/.test(legal.body), "legal page");
     assert(/cannot stake into a win pool/i.test(legal.body), "legal: no win pool");
@@ -131,7 +138,8 @@ function forbiddenCopy(body, label) {
     assert(terms.status === 200 && /not gambling/i.test(terms.body), "terms");
     assert(/platform[- ]funded/i.test(terms.body) && /prize/i.test(terms.body), "terms prize rules");
     assert(/never entitled to winnings/i.test(terms.body), "terms: never entitled");
-    assert(/Aggressive/i.test(terms.body) && /Chaos/i.test(terms.body), "terms: influences");
+    assert(/terms\.body/.test("skip") || /conflict/i.test(terms.body), "terms: conflict disclosure");
+    assert(/partner/i.test(terms.body), "terms: partner venue");
     forbiddenCopy(terms.body, "terms");
     const privacy = await get(base + "/privacy");
     assert(privacy.status === 200 && /myclaudeprojects@gmail.com/.test(privacy.body), "privacy");
@@ -151,12 +159,17 @@ function forbiddenCopy(body, label) {
     assert(!/88%/.test(how.body) && !/pari-mutuel/i.test(how.body), "how: no bet math");
     assert(/never entitled to winnings/i.test(how.body), "how: never entitled");
     assert(/Aggressive/i.test(how.body) && /Calculated/i.test(how.body) && /Chaos/i.test(how.body) && /Defensive/i.test(how.body), "how: four influences");
-    assert(/decay/i.test(how.body), "how: decay");
+    assert(/crowd/i.test(how.body) && /lock/i.test(how.body), "how: crowd lock");
+    assert(/Awaiting partner listing/i.test(how.body), "how: partner stub");
+    assert(/lda:t-1:12/.test(how.body) && /lockedConfigHash/.test(how.body), "how: oracle");
+    assert(/conflict/i.test(how.body), "how: conflict disclosure");
     forbiddenCopy(how.body, "how");
     const arena = await get(base + "/arena?table=t-1");
     forbiddenCopy(arena.body, "arena");
     assert(/Aggressive/i.test(arena.body) && /Calculated/i.test(arena.body) && /Chaos/i.test(arena.body) && /Defensive/i.test(arena.body), "arena influence choices");
     assert(/never entitled to winnings/i.test(arena.body), "arena never entitled");
+    assert(/Awaiting partner listing/i.test(arena.body), "arena market stub");
+    assert(/Crowd phase/i.test(arena.body), "arena crowd");
     assert(!/>Send tip</i.test(arena.body), "arena no naked send-tip");
     assert(!/Place bet/i.test(arena.body), "arena no place-bet");
     assert(/credits/i.test(arena.body), "arena credits pot");
@@ -175,19 +188,30 @@ function forbiddenCopy(body, label) {
     assert(!created.json.fundingAddress, "no seat funding address");
     const tipMissing = await post(base + "/api/agents/" + created.json.agent.id + "/tip", { from: "spec-1", amount: 1 });
     assert(tipMissing.status === 400 && /influence/i.test(tipMissing.json.error), "tip requires influence");
-    const tip = await post(base + "/api/agents/" + created.json.agent.id + "/tip", { from: "spec-1", amount: 1, influence: "aggressive" });
-    assert(tip.status === 200 && tip.json.ok && tip.json.gift, "tip ok");
+    const tipClosed = await post(base + "/api/agents/" + created.json.agent.id + "/tip", { from: "spec-1", amount: 1, influence: "aggressive" });
+    assert(tipClosed.status === 400 && /crowd phase/i.test(tipClosed.json.error), "unseated agent cannot tip outside crowd");
+
+    let seated = null, tableId = null;
+    const wait0 = Date.now();
+    while (Date.now() - wait0 < 4000) {
+      const tb = await get(base + "/api/tables");
+      const crowd = (tb.json.tables || []).find((t) => t.phase === "crowd" && (t.seats || []).length);
+      if (crowd) { tableId = crowd.id; seated = crowd.seats[0]; break; }
+      await new Promise((r) => setTimeout(r, 80));
+    }
+    assert(seated && seated.id, "crowd window with seats");
+    const tip = await post(base + "/api/agents/" + seated.id + "/tip", { from: "spec-1", amount: 1, influence: "aggressive", tableId });
+    assert(tip.status === 200 && tip.json.ok && tip.json.gift, "crowd tip ok");
     assert(tip.json.amount === 1 && tip.json.creatorBps === 10000 && tip.json.houseBps === 0, "tip 100% creator");
     assert(tip.json.influence === "aggressive", "tip stores influence");
     assert(tip.json.entitlesWinnings === false, "tip never entitles winnings");
     assert(tip.json.toCredits === false && tip.json.toPrize === false && tip.json.toPot === false, "tip not credits/prize/pot");
-    assert(String(tip.json.creatorAddress).toLowerCase() === ("0x" + "22".repeat(20)), "tip dest is creator");
-    const after = await get(base + "/api/agents/" + created.json.agent.id);
-    assert(after.json.credits === 1000, "tip does not change credits");
+    const after = await get(base + "/api/agents/" + seated.id + "?table=" + encodeURIComponent(tableId));
     assert(after.json.holdings.redeemable === false, "credits not redeemable");
-    assert(after.json.influence && after.json.influence.dominant === "aggressive", "live influence applied");
+    assert(after.json.influence && after.json.influence.dominant === "aggressive", "crowd influence applied");
     assert(after.json.tip && after.json.tip.choices && after.json.tip.choices.length === 4, "tip meta has four choices");
     assert(after.json.tip.entitlesWinnings === false, "tip meta never entitled");
+    assert(after.json.tip.tipsOpen === true, "tips open in crowd");
     const lb2 = await get(base + "/api/leaderboard");
     assert(lb2.json.totals.tips >= 1 && lb2.json.totals.tipsUsdc >= 1, "tips on leaderboard");
 

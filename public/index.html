@@ -217,8 +217,8 @@
   </nav>
   <header>
     <h1 class="t">Live table <span id="tableLabel"></span>
-      <small class="desk">AI agents, hidden dice, free Arena Credits. Click a seat for stats, a personality-influence tip (100% gift to the creator wallet), and that agent’s Argus token — buy is in the panel, not on the felt. Spectators cannot stake into a win pool. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small>
-      <small class="phone">Tap a seat: stats + influence tip + buy token · <a href="/tables">All tables</a></small>
+      <small class="desk">AI agents, hidden dice, free Arena Credits. Crowd-phase influence tips (100% gift to the creator), then lock, then predictions on a partner venue. LDA does not custody bets. Click a seat for stats, pre-lock tip, token, and the prediction panel. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small>
+      <small class="phone">Tap a seat: crowd tip · token · partner market · <a href="/tables">All tables</a></small>
     </h1>
     <div class="chain">Settling on <b>Arc</b> · gas paid in USDC · <span id="walletKind">connecting…</span></div>
   </header>
@@ -239,15 +239,16 @@
 
     <aside>
       <div class="panel"><h2>Dealer's log</h2><div class="log" id="log"></div></div>
-      <div class="panel"><h2>Creator gifts</h2><div id="tipinfo" style="font-size:14px">Pick one influence. 100% of the USDC goes to that creator. You are never entitled to winnings.</div></div>
+      <div class="panel"><h2>Creator gifts</h2><div id="tipinfo" style="font-size:14px">Crowd phase only. Pick one influence. 100% to the creator. You are never entitled to winnings.</div></div>
     </aside>
   </div>
 
   <section class="rail">
     <div class="rail-handle" aria-hidden="true"></div>
-    <div class="railhead"><h2 id="railtitle">Tip with influence</h2><div class="clock" id="clock"></div></div>
-    <div class="hint" id="closednote" style="font-size:13px;color:#5c5a52;margin:6px 0 10px">Click a seat for the full panel, or pick an agent here and one influence. 100% gift to the creator. You are never entitled to winnings. Tips do not fund credits, pots, or prizes.</div>
+    <div class="railhead"><h2 id="railtitle">Crowd phase</h2><div class="clock" id="clock"></div></div>
+    <div class="hint" id="closednote" style="font-size:13px;color:#5c5a52;margin:6px 0 10px">Crowd phase: pick a seat and one influence. After lock, tips close. Predictions (if listed) are on a partner venue — LDA does not custody USDC bets and does not pay winners from losers.</div>
     <div class="picks" id="picks"></div>
+    <div id="crowdrail">
     <div class="influence-picks" id="infpicks" role="radiogroup" aria-label="Pick one influence">
       <button type="button" class="inf" data-inf="aggressive" aria-pressed="false"><b>Aggressive</b><span>Bluff more, challenge more</span></button>
       <button type="button" class="inf" data-inf="calculated" aria-pressed="false"><b>Calculated</b><span>Play tighter / probability-focused</span></button>
@@ -266,9 +267,15 @@
       <button id="tipbtn" disabled>Pick influence</button>
       <span class="me" id="me"></span>
     </div>
+    </div>
+    <div id="marketpanel" class="agent-sheet-market" hidden>
+      <h3>Prediction market</h3>
+      <p id="marketmsg">Awaiting partner listing. Predictions settle on Polymarket US / Kalshi — LDA does not custody bets.</p>
+      <div id="marketcontracts"></div>
+    </div>
     <div class="msg" id="msg"></div>
-    <a class="howlink" href="/how-it-works#tips">How influence tips work →</a>
-    <div class="howto"><b>Tips shift how the seat plays.</b> Choose Aggressive, Calculated, Chaos, or Defensive. 100% of the USDC goes to that creator wallet. You are never entitled to winnings. Weighted by size, decays each hand. There is no spectator win pool. Click a seat for stats, influence, and that agent’s token.</div>
+    <a class="howlink" href="/how-it-works#phases">How phases work →</a>
+    <div class="howto"><b>Crowd → lock → partner market → match.</b> Influence tips only before lock. 100% of the USDC goes to that creator. You are never entitled to winnings. After lock, agents play autonomously on Arena Credits. Predictions are on a partner venue. LDA never pays winners from losers.</div>
     <p class="fairnote">Fair play: dice are rolled here with a published seed in the dealer’s log. Agents never see each other’s dice. Hands are short — a slow reply is replaced so the table never waits. 21+. <a href="/how-it-works">How it works</a></p>
   </section>
 
@@ -473,15 +480,38 @@ function infLabel(id){
   return ({aggressive:'Aggressive',calculated:'Calculated',chaos:'Chaos',defensive:'Defensive'})[id]||null;
 }
 function syncTipCta(){
-  const ready=!!picked && !!infPicked && (!live || !!account);
+  const crowd=phase==='crowd';
+  const ready=crowd && !!picked && !!infPicked && (!live || !!account);
   const nm=picked?(seats.find(s=>s.id===picked)||{}).name:null;
   $('#picked').textContent=nm||'pick a seat';
   $('#infpicked').textContent=infLabel(infPicked)||'pick an influence';
   const btn=$('#tipbtn');
   btn.disabled=!ready;
-  if(!picked) btn.textContent='Pick a seat';
+  if(!crowd) btn.textContent='Locked';
+  else if(!picked) btn.textContent='Pick a seat';
   else if(!infPicked) btn.textContent='Pick influence';
   else btn.textContent='Tip · '+infLabel(infPicked);
+}
+function renderMarket(ev){
+  const panel=$('#marketpanel');
+  const crowd=$('#crowdrail');
+  const m=ev&&ev.market;
+  const afterLock=phase==='locked'||phase==='market'||phase==='playing'||phase==='settled';
+  if(crowd) crowd.hidden=afterLock;
+  if(!panel) return;
+  if(!afterLock){ panel.hidden=true; return; }
+  panel.hidden=false;
+  const msg=$('#marketmsg');
+  const box=$('#marketcontracts');
+  if(m){
+    if(msg) msg.textContent=m.message||'Awaiting partner listing';
+    if(box){
+      box.innerHTML=(m.contracts||[]).map(c=>`<div class="kv"><span>${esc(c.question)}</span><b>${esc(c.settlement)}</b></div>`).join('')
+        +(m.url?`<p><a class="btn primary" href="${esc(m.url)}" target="_blank" rel="noopener">Open on ${esc(m.venueLabel||m.venue)}</a></p>`:'<p class="lede">LDA does not custody USDC bets. Partner listing may be stubbed.</p>');
+    }
+  } else if(msg){
+    msg.textContent='Awaiting partner listing. Predictions settle on Polymarket US / Kalshi — LDA does not custody bets.';
+  }
 }
 function renderPicks(){
   const mine=myAgentIds();
@@ -509,11 +539,35 @@ function applyState(ev){
   if(ev.seats&&ev.seats.length){ const changed=JSON.stringify(ev.seats.map(s=>s.id))!==JSON.stringify(seats.map(s=>s.id)); seats=ev.seats; if(changed) buildSeats(); }
   live=!!ev.live; walletKind=ev.walletKind;
   $('#walletKind').textContent=live?'live on Arc mainnet (tips + prizes)':(walletKind==='circle'?'Circle adapter not wired — not on chain':'mock wallets (no chain)');
-  $('#railtitle').textContent=phase==='playing'?`Match #${ev.matchNo} in play — influence anytime`:phase==='paused'?'Table paused':`Match #${ev.matchNo} · pick an influence`;
-  const closedNote=$('#closednote'); if(closedNote){ closedNote.hidden=false; closedNote.textContent='Pick one influence. 100% of the USDC is a gift to that creator. You are never entitled to winnings. Weighted by size; decays each hand. Credits are not USDC.'; }
+  const titles={
+    crowd:`Match #${ev.matchNo} · crowd phase`,
+    locked:`Match #${ev.matchNo} · locked`,
+    market:`Match #${ev.matchNo} · partner market`,
+    playing:`Match #${ev.matchNo} in play`,
+    settled:`Match #${ev.matchNo} · settled`,
+    paused:'Table paused',
+    waiting:'Waiting for seats',
+  };
+  $('#railtitle').textContent=titles[phase]||`Match #${ev.matchNo||'—'}`;
+  const closedNote=$('#closednote');
+  if(closedNote){
+    closedNote.hidden=false;
+    closedNote.textContent=phase==='crowd'
+      ? 'Crowd phase: pick one influence. 100% gift to the creator. You are never entitled to winnings. Tips close at lock.'
+      : 'Locked. No further paid influence. Predictions (if any) are on a partner venue. LDA does not custody bets and does not pay winners from losers.';
+  }
+  const info=$('#tipinfo');
+  if(info) info.innerHTML=phase==='crowd'
+    ? 'Crowd phase: Aggressive, Calculated, Chaos, or Defensive. 100% to the creator. Never entitled to winnings.'
+    : 'Personality locked. Oracle publishes match id, config hash, winner, timestamp for partners.';
+  renderMarket(ev);
   syncTipCta();
-  const info=$('#tipinfo'); if(info) info.innerHTML='Pick Aggressive, Calculated, Chaos, or Defensive. 100% to the named creator. Never entitled to winnings.';
   renderPicks();
+  const closeAt=ev.crowdCloseAt||ev.marketCloseAt||ev.startCloseAt;
+  if(closeAt){
+    const left=Math.max(0, Math.ceil((closeAt-(Date.now()+clockOffset))/1000));
+    $('#clock').textContent=left?left+'s':'';
+  } else $('#clock').textContent='';
 }
 
 // ---- event stream ----
@@ -524,11 +578,15 @@ es.onmessage=(m)=>{
   switch(ev.type){
     case 'phase':
       applyState(ev);
-      if(ev.phase==='starting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">seating — deal in a moment</span>','q'); setNow('Watch, tip the creator, or buy a token'); clearBar(); setBanner('Starting','start','match #'+ev.matchNo); log(`Match #${ev.matchNo}: starting.`,'gold'); });
+      if(ev.phase==='crowd'||ev.phase==='starting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">crowd phase — influence before lock</span>','q'); setNow('Crowd phase: tip to influence, then we lock'); clearBar(); setBanner('Crowd','start','match #'+ev.matchNo); log(`Match #${ev.matchNo}: crowd phase. Tips close at lock.`,'gold'); });
+      if(ev.phase==='locked') enqueue(async()=>{ setBanner('Locked','start','config frozen'); setNow('Personality locked — no further paid influence'); log(`Match #${ev.matchNo||''} locked. Hash ${esc((ev.lockedConfigHash||'').slice(0,12))}…`,'gold'); });
+      if(ev.phase==='market') enqueue(async()=>{ setBanner('Market','start','partner venue'); setNow('Predictions on a partner venue — LDA does not custody bets'); });
       if(ev.phase==='playing') enqueue(async()=>{ setBanner('In play','play','anteing'); $('#status').innerHTML='Agents are anteing credits…'; });
       if(ev.phase==='paused') enqueue(async()=>{ setBanner('Table paused','pause'); $('#status').innerHTML='Table paused after an error — next deal shortly.'; log('Table paused: '+(ev.error||'error')+'. Resuming shortly.','red'); });
       break;
-    case 'tip': applyState(ev); log(`${esc(ev.from||'spectator')} tips <b>${esc(ev.agentName||ev.agentId)}</b> ${ev.amount} USDC → creator, influence ${esc(ev.influence||'')}. Never entitled to winnings. ${tx(ev)}`,'gold'); break;
+    case 'lock': applyState(ev); log(`Locked ${esc(ev.matchId||'')} · hash ${esc((ev.lockedConfigHash||(ev.locked&&ev.locked.lockedConfigHash)||'').slice(0,16))}… Tips closed.`,'gold'); break;
+    case 'market': applyState(ev); log(`Partner market: ${esc((ev.market&&ev.market.message)||'Awaiting partner listing')}. LDA does not custody bets.`,'gold'); break;
+    case 'tip': applyState(ev); log(`${esc(ev.from||'spectator')} tips <b>${esc(ev.agentName||ev.agentId)}</b> ${ev.amount} USDC → creator, influence ${esc(ev.influence||'')}. Crowd phase only. Never entitled to winnings. ${tx(ev)}`,'gold'); break;
     case 'prize': log(`Platform prize: ${ev.amount} USDC → creator of <b>${esc(ev.agentName||ev.agentId)}</b>. ${tx(ev)}`,'gold'); break;
     case 'ante': enqueue(async()=>{ await flyChip(seatEl(ev.agentId),$('#pot')); bumpPot(pot+ev.amount); log(`${ev.name} antes ${ev.amount} ${ev.unit||'credits'}.`); }); break;
     case 'pot_ready': enqueue(async()=>{ bumpPot(ev.total); $('#status').innerHTML=''; }); break;
@@ -544,6 +602,7 @@ es.onmessage=(m)=>{
 $('#tipbtn').onclick=async()=>{
   const amount=Number($('#stake').value); $('#msg').className='msg';
   if(!picked){ $('#msg').className='msg err'; $('#msg').textContent='Pick an agent first.'; return; }
+  if(phase!=='crowd'){ $('#msg').className='msg err'; $('#msg').textContent='Tips are only open in the crowd phase, before lock.'; return; }
   if(!infPicked){ $('#msg').className='msg err'; $('#msg').textContent='Pick one influence: Aggressive, Calculated, Chaos, or Defensive.'; return; }
   if(live){
     if(!account){ $('#msg').className='msg err'; $('#msg').textContent='Connect your wallet first.'; return; }

@@ -21,7 +21,7 @@ function refundAntes({ agents, credits, ante, onEvent }) {
 
 async function runMatch({
   agents, credits, ante = DEFAULT_ANTE_CREDITS, diceCount = 5, seed = Date.now(),
-  onEvent = () => {}, maxSteps = 1000, influence = null,
+  onEvent = () => {}, maxSteps = 1000, influence = null, freezeInfluence = true,
 } = {}) {
   const book = credits || new CreditBook({ persist: false });
   const anteCredits = assertAnteCredits(ante);
@@ -56,9 +56,9 @@ async function runMatch({
     imageUrl: `/api/agents/${encodeURIComponent(a.id)}/avatar`,
   })), seed, unit: "credits" });
   const emitDeal = () => {
-    // Decay after the opening hand so a tip can actually affect play first,
-    // then fade — one gift cannot lock a persona forever.
-    if (influence && match.handNumber > 1) {
+    // Locked crowd weights stay fixed through the match. Decay is only for
+    // tests of the helper when freezeInfluence is false.
+    if (influence && !freezeInfluence && match.handNumber > 1) {
       influence.decayHands(agents.map((a) => a.id));
     }
     return onEvent({ type: "hand_start", hand: match.handNumber,

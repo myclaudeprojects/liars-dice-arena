@@ -27,7 +27,7 @@
         <div class="agent-sheet-stats" id="as-stats"></div>
         <div class="agent-sheet-hold" id="as-hold"></div>
         <form class="agent-sheet-tip" id="as-tip">
-          <p class="agent-sheet-tip-lede" id="as-tip-lede">Tip this creator — pick <b>one</b> influence. 100% of the USDC is a gift to their wallet. You are never entitled to winnings. Tips do not fund credits, pots, or prizes.</p>
+          <p class="agent-sheet-tip-lede" id="as-tip-lede">Crowd phase only — pick <b>one</b> influence before lock. 100% of the USDC is a gift to the creator wallet. You are never entitled to winnings. Tips do not fund credits, pots, or prizes.</p>
           <div class="influence-picks" id="as-inf" role="radiogroup" aria-label="Pick one influence">
             <button type="button" class="inf" data-inf="aggressive" aria-pressed="false"><b>Aggressive</b><span>Bluff more, challenge more</span></button>
             <button type="button" class="inf" data-inf="calculated" aria-pressed="false"><b>Calculated</b><span>Play tighter / probability-focused</span></button>
@@ -43,6 +43,7 @@
           </div>
           <p class="agent-sheet-msg" id="as-tip-msg"></p>
         </form>
+        <div class="agent-sheet-market" id="as-market" hidden></div>
         <div class="agent-sheet-token" id="as-token"></div>
         <form class="agent-sheet-buy" id="as-form">
           <label for="as-amt">Amount (USDC)</label>
@@ -160,22 +161,33 @@
     const tipCta = root.querySelector("#as-tip-cta");
     const tipMsg = root.querySelector("#as-tip-msg");
     const liveEl = root.querySelector("#as-inf-live");
+    const tipsOpen = tip.tipsOpen === true;
     if (tipForm) {
-      tipForm.hidden = false;
+      tipForm.hidden = !tipsOpen;
       if (tipCta) {
-        delete tipCta.dataset.locked;
-        const chosen = root.querySelector("#as-inf-val").value;
-        tipCta.disabled = !chosen;
-        tipCta.textContent = chosen ? "Tip · " + chosen.charAt(0).toUpperCase() + chosen.slice(1) : "Pick an influence";
+        if (!tipsOpen) {
+          tipCta.disabled = true;
+          tipCta.dataset.locked = "1";
+          tipCta.textContent = "Locked";
+        } else {
+          delete tipCta.dataset.locked;
+          const chosen = root.querySelector("#as-inf-val").value;
+          tipCta.disabled = !chosen;
+          tipCta.textContent = chosen ? "Tip · " + chosen.charAt(0).toUpperCase() + chosen.slice(1) : "Pick an influence";
+        }
       }
-      if (tipMsg && !tipMsg.textContent) {
-        tipMsg.textContent = "You are never entitled to winnings. 100% to the creator wallet.";
+      if (tipMsg) {
+        tipMsg.textContent = tipsOpen
+          ? "Crowd phase. You are never entitled to winnings. 100% to the creator wallet."
+          : (tip.phase === "build"
+            ? "Tips open when this agent is seated in a crowd phase, before lock."
+            : "Locked — no further paid influence. Predictions (if any) are on a partner venue. LDA does not pay winners from losers.");
       }
       const cur = tip.current || j.influence;
       if (liveEl) {
         liveEl.textContent = cur && cur.dominant
-          ? `Live lean: ${cur.label} — ${cur.blurb}. Weighted by tip size; decays each hand.`
-          : "No live influence yet — your tip shifts how this seat plays, then fades.";
+          ? (cur.locked ? `Locked lean: ${cur.label} — ${cur.blurb}.` : `Crowd lean: ${cur.label} — ${cur.blurb}. Weighted by tip size.`)
+          : (tipsOpen ? "No crowd influence yet — your tip shifts the locked config." : "No crowd influence on this seat.");
       }
       const choices = tip.choices;
       if (choices && choices.length) {
@@ -187,6 +199,27 @@
           if (bold) bold.textContent = c.label;
           if (span) span.textContent = c.blurb;
         });
+      }
+    }
+
+    const mkt = j.market;
+    const mEl = root.querySelector("#as-market");
+    if (mEl) {
+      if (mkt) {
+        mEl.hidden = false;
+        const contracts = (mkt.contracts || []).map((c) =>
+          `<div class="kv"><span>${esc(c.question)}</span><b>${esc(c.settlement)}</b></div>`
+        ).join("");
+        const cta = mkt.url
+          ? `<a class="btn primary" href="${esc(mkt.url)}" target="_blank" rel="noopener">Open on ${esc(mkt.venueLabel || mkt.venue)}</a>`
+          : `<p class="agent-sheet-hint">${esc(mkt.message || "Awaiting partner listing")}</p>`;
+        mEl.innerHTML =
+          `<h3>Prediction market</h3>` +
+          `<p>Predictions settle on a partner venue (Polymarket US / Kalshi). LDA does <b>not</b> custody USDC bets and does not pay winners from losers.</p>` +
+          contracts + cta;
+      } else {
+        mEl.hidden = true;
+        mEl.innerHTML = "";
       }
     }
 

@@ -53,8 +53,8 @@
       <div id="hold"></div>
     </section>
     <section class="panel buy" style="grid-column:1/-1">
-      <h2>Tip with influence</h2>
-      <p class="lede">Pick <b>one</b> influence. 100% of the USDC is a gift to this agent’s creator wallet. You are never entitled to winnings. Tips do not fund credits, pots, seats, or prizes. Weighted by size; decays each hand.</p>
+      <h2>Tip with influence (crowd phase)</h2>
+      <p class="lede">Open only before lock. Pick <b>one</b> influence. 100% of the USDC is a gift to this agent’s creator wallet. You are never entitled to winnings. After lock, no further paid influence. LDA does not custody prediction-market bets.</p>
       <form id="tipform">
         <div class="influence-picks" id="infpicks" role="radiogroup" aria-label="Pick one influence">
           <button type="button" class="inf" data-inf="aggressive" aria-pressed="false"><b>Aggressive</b><span>Bluff more, challenge more</span></button>
@@ -68,6 +68,11 @@
         <button type="submit" class="btn primary" id="tipcta" disabled>Pick an influence</button>
       </form>
       <p class="msg" id="tipmsg"></p>
+    </section>
+    <section class="panel" id="marketsec" style="grid-column:1/-1" hidden>
+      <h2>Prediction market</h2>
+      <p class="lede">Predictions settle on a partner venue (Polymarket US / Kalshi). LDA does not custody USDC bets and does not pay winners from losers.</p>
+      <div id="marketbox"></div>
     </section>
     <section class="panel buy" style="grid-column:1/-1">
       <h2>Token</h2>
@@ -129,7 +134,17 @@ async function load(){
     (buy.description?`<p>${esc(buy.description)}</p>`:'');
   $('#hint').textContent=buy.message||'';
   const inf=j.influence||(j.tip&&j.tip.current)||{};
-  $('#inflive').textContent=inf.dominant?`Live lean: ${inf.label} — ${inf.blurb}. Weighted by tip size; decays each hand.`:'No live influence yet.';
+  $('#inflive').textContent=inf.dominant?(inf.locked?`Locked lean: ${inf.label} — ${inf.blurb}.`:`Crowd lean: ${inf.label} — ${inf.blurb}.`): (j.tip&&j.tip.tipsOpen?'No crowd influence yet.':'Tips open in the crowd phase before lock.');
+  const open=j.tip&&j.tip.tipsOpen;
+  window.__ldaTipsOpen=!!open;
+  $('#tipcta').disabled=!open || !$('#infval').value;
+  if(!open) $('#tipcta').textContent='Locked';
+  document.querySelectorAll('#infpicks .inf').forEach((b)=>{ b.disabled=!open; });
+  const m=j.market;
+  if(m){
+    $('#marketsec').hidden=false;
+    $('#marketbox').innerHTML=`<p>${esc(m.message||'Awaiting partner listing')}</p>`+(m.contracts||[]).map(c=>kv(c.question,c.settlement)).join('');
+  }
   $('#tables').href='/tables?agent='+encodeURIComponent(id);
   const house=buy.kind==='house';
   $('#form').hidden=house;
@@ -162,6 +177,7 @@ $('#tipform').onsubmit=async(e)=>{
   }catch(err){ msg.textContent=err.message||'Failed.'; msg.classList.add('err'); }
 };
 document.querySelectorAll('#infpicks .inf').forEach(b=>b.onclick=()=>{
+  if(window.__ldaTipsOpen===false) return;
   const id=b.getAttribute('data-inf');
   $('#infval').value=id;
   document.querySelectorAll('#infpicks .inf').forEach(x=>{

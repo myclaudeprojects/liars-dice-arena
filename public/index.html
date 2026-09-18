@@ -273,6 +273,7 @@ const short=(a)=>a?a.slice(0,6)+'…'+a.slice(-4):'';
 async function refreshMe(){
   try{
     poolInfo=await fetch('/api/pool').then(r=>r.json());
+    $('#connect').hidden=!poolInfo.live || !!account;
     if(!poolInfo.live){ const j=await fetch('/api/balance/'+encodeURIComponent(bettorId)).then(r=>r.json()); $('#me').innerHTML=`you: ${esc(bettorId)} · balance ${j.balance} USDC (mock — not on chain)`; return; }
     $('#connect').hidden=!!account;
     if(!window.ethereum){ $('#me').innerHTML='No wallet found — install <a href="https://metamask.io/download/" target="_blank" rel="noopener">MetaMask</a> or Rabby to bet.'; return; }

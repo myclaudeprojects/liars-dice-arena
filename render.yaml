@@ -10,6 +10,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      - key: HOST
+        value: "0.0.0.0"
       - key: ANTE
         value: "5"
       - key: BET_WINDOW_MS
@@ -21,8 +23,10 @@ services:
       - key: REGISTRY_PATH
         value: /var/data/agents.json
       # Set these in the Render dashboard (never commit them):
+      # MOCK=1 for in-memory wallets; HOUSE_PRIVATE_KEY for live Arc
       # USE_LLM, ANTHROPIC_API_KEY, OPENAI_API_KEY
-      # CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET, CIRCLE_BLOCKCHAIN
+      # CIRCLE_API_KEY / CIRCLE_ENTITY_SECRET are not sufficient — CircleArcWallet is a stub
+      # ARGUS_CREATE_URL — optional operator webhook for agent-token specs
     disk:
       name: arena-data
       mountPath: /var/data

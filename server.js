@@ -16,6 +16,8 @@ const { runMatch } = require("./src/arena");
 const { BettingPool, impliedMultipliers } = require("./src/betting");
 const llm = require("./src/llm");
 const { Stats } = require("./src/stats");
+const argus = require("./src/argus");
+const { resolvePublicFile, shouldReleaseTxClaim } = require("./src/httputil");
 const stats = new Stats();
 const TABLE_SIZE = Math.max(2, Math.min(4, Math.round(Number(process.env.TABLE_SIZE) || 3)));
 const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "1" || !process.env.RENDER });
@@ -23,6 +25,7 @@ const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "
 // Env numbers: tolerate "1600ms", " 30000 ", "0.1 USDC" etc.; fall back to the default on garbage.
 function envNum(name, dflt) { const m = String(process.env[name] ?? "").match(/-?\d+(\.\d+)?/); const v = m ? Number(m[0]) : NaN; return Number.isFinite(v) ? v : dflt; }
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || "0.0.0.0";
 const TURN_DELAY_MS = envNum("TURN_DELAY_MS", 1000);
 const REVEAL_DELAY_MS = envNum("REVEAL_DELAY_MS", 3000); // time for the flip sequence to play out
 const DEAL_DELAY_MS = envNum("DEAL_DELAY_MS", 1000);
@@ -31,7 +34,8 @@ const ANTE = envNum("ANTE", 5);
 const MIN_STAKE = envNum("MIN_STAKE", 0.05);
 
 // ---- world state --------------------------------------------------------
-// Money adapter: self-custodied hot key > Circle wallets > in-memory mock.
+// Money adapter: MOCK=1 always wins (local previews). Else self-custodied
+// hot key > Circle stub (not wired — ops throw TODO) > in-memory mock.
 const wallet = makeWallet(process.env.MOCK === "1" ? { startingBalance: 100 } : process.env.HOUSE_PRIVATE_KEY ? {
   provider: "evm", privateKey: process.env.HOUSE_PRIVATE_KEY,
   rpcUrl: process.env.ARC_RPC_URL || "https://rpc.mainnet.arc.io", chainId: Number(process.env.ARC_CHAIN_ID || 5042),
@@ -40,6 +44,7 @@ const wallet = makeWallet(process.env.MOCK === "1" ? { startingBalance: 100 } : 
   provider: "circle", apiKey: process.env.CIRCLE_API_KEY,
   entitySecret: process.env.CIRCLE_ENTITY_SECRET, blockchain: process.env.CIRCLE_BLOCKCHAIN || "ARC-TESTNET",
 } : { startingBalance: 100 });
+const LIVE_CHAIN = wallet.kind === "evm";
 
 const clients = new Set();
 let state = { phase: "idle", matchNo: 0, seats: [], pool: null, bets: [], multipliers: {}, betCloseAt: null };
@@ -66,6 +71,7 @@ function instantiate(rec) {
   let ag;
   if (rec.type === "endpoint") {
     ag = new RemoteAgent({ ...base, endpoint: rec.endpoint, sign: (body) => registry.signature(rec, body),
+      allowLocal: registry.allowLocal,
       onResult: (ok) => ok ? registry.recordSuccess(rec.id) : registry.recordFailure(rec.id) });
   } else if (rec.type === "prompt" && llmComplete) {
     ag = new LLMAgent({ ...base, persona: rec.persona, complete: llmComplete });
@@ -139,22 +145,25 @@ async function oneMatch() {
       onEvent: async (ev) => { broadcast(ev); if (ev.type === "turn") await sleep(TURN_DELAY_MS); else if (ev.type === "reveal") await sleep(REVEAL_DELAY_MS); else if (ev.type === "hand_start") await sleep(DEAL_DELAY_MS); else if (ev.type === "ante") await sleep(500); },
     });
 
-    stats.recordMatch({ matchNo: state.matchNo, seats: state.seats, winnerId: result.winnerId, potTotal: result.potTotal,
-                        ante: ANTE, log: result.log, poolTotal: pool.bets.reduce((s, b) => s + b.amount, 0), seed: result.seed });
-
-    // 3) spectator settlement
+    // 3) spectator settlement — a null winner refunds the pool (same as no one backed the winner).
     pool.settledAt = Date.now();
-    const settlement = await pool.settle(result.winnerId, houseWallet);
-    stats.recordBets(pool.bets, result.winnerId, settlement.payouts);
+    if (result.winnerId && !result.aborted) {
+      stats.recordMatch({ matchNo: state.matchNo, seats: state.seats, winnerId: result.winnerId, potTotal: result.potTotal,
+                          ante: ANTE, log: result.log, poolTotal: pool.bets.reduce((s, b) => s + b.amount, 0), seed: result.seed });
+    }
+    const settlement = await pool.settle(result.winnerId || null, houseWallet);
+    stats.recordBets(pool.bets, result.winnerId || null, settlement.payouts);
     state.phase = "settled";
-    broadcast({ type: "pool_settled", winnerId: result.winnerId, winnerName: result.winnerName, ...settlement, ...publicState() });
+    broadcast({ type: "pool_settled", winnerId: result.winnerId || null, winnerName: result.winnerName || null,
+      aborted: !!result.aborted, ...settlement, ...publicState() });
     await sleep(8000);
   }
 }
 
 function publicState() {
   return { serverNow: Date.now(), phase: state.phase, matchNo: state.matchNo, seats: state.seats, bets: state.bets,
-           multipliers: state.multipliers, betCloseAt: state.betCloseAt, poolTotal: state.bets.reduce((s, b) => s + b.amount, 0), ante: ANTE, walletKind: wallet.kind };
+           multipliers: state.multipliers, betCloseAt: state.betCloseAt, poolTotal: state.bets.reduce((s, b) => s + b.amount, 0),
+           ante: ANTE, walletKind: wallet.kind, live: LIVE_CHAIN, betWindowMs: BET_WINDOW_MS };
 }
 
 // ---- http ---------------------------------------------------------------
@@ -162,8 +171,8 @@ const PUBLIC = path.join(__dirname, "public");
 const PAGES = { "/": "landing.html", "/arena": "index.html", "/leaderboard": "leaderboard.html", "/how-it-works": "how.html", "/agents": "agents.html" };
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".txt": "text/plain" };
 function sendFile(res, file) {
-  const full = path.join(PUBLIC, file);
-  if (!full.startsWith(PUBLIC) || !fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }
+  const full = resolvePublicFile(PUBLIC, file);
+  if (!full) { res.writeHead(404); return res.end("not found"); }
   res.writeHead(200, { "content-type": MIME[path.extname(full)] || "application/octet-stream", "cache-control": file.endsWith(".html") ? "no-cache" : "public, max-age=3600" });
   fs.createReadStream(full).pipe(res);
 }
@@ -178,16 +187,26 @@ async function agentsApi(req, res, url) {
   const decorate = (a) => ({ ...a, elo: eloById[a.id]?.elo ?? 1200, won: eloById[a.id]?.won ?? 0, matches: eloById[a.id]?.played ?? 0 });
 
   try {
-    if (parts.length === 2 && req.method === "GET") return json(res, 200, { agents: registry.list().map(decorate), ante: ANTE, tableSize: TABLE_SIZE, promptAgentsEnabled: !!llmComplete, allowLocal: registry.allowLocal, walletKind: wallet.kind });
+    if (parts.length === 2 && req.method === "GET") return json(res, 200, { agents: registry.list().map(decorate), ante: ANTE, tableSize: TABLE_SIZE, promptAgentsEnabled: !!llmComplete, allowLocal: registry.allowLocal, walletKind: wallet.kind, live: LIVE_CHAIN, economics: argus.AGENT_TOKEN_ECONOMICS });
 
     if (parts.length === 2 && req.method === "POST") {
       const body = JSON.parse(await readBody(req) || "{}");
       if (body.type === "prompt" && !llmComplete) throw new Error("Prompt agents need a model key on this server — choose heuristic or endpoint for now.");
       const rec = registry.register(body);
       const w = await ensureWallet(rec);
+      let token = null;
+      try {
+        const launched = await argus.onAgentRegistered({ agent: rec, seatWallet: w, ownerAddress: rec.ownerAddress });
+        token = argus.publicTokenView(launched);
+        registry.setToken(rec.id, token);
+      } catch (e) {
+        token = { status: "hook_failed", error: String(e.message || e).slice(0, 200) };
+        try { registry.setToken(rec.id, token); } catch {}
+      }
       broadcast({ type: "agent_joined", id: rec.id, name: rec.name, owner: rec.owner });
       return json(res, 201, { ok: true, agent: decorate(registry.publicView(rec)), key: rec.key, fundingAddress: w.address,
-        balance: await wallet.getBalance(w.walletId), note: wallet.kind === "mock" ? "Mock wallet auto-funded with 100 USDC for local play." : `Send at least ${ANTE} USDC on Arc to the funding address to be seated.` });
+        balance: await wallet.getBalance(w.walletId), token, economics: argus.AGENT_TOKEN_ECONOMICS,
+        note: wallet.kind === "mock" ? "Mock wallet auto-funded with 100 USDC for local play." : `Send at least ${ANTE} USDC on Arc to the funding address to be seated.` });
     }
 
     const rec = registry.get(parts[2]); if (!rec) return json(res, 404, { ok: false, error: "No such agent." });
@@ -204,7 +223,7 @@ async function agentsApi(req, res, url) {
       if (rec.type !== "endpoint") return json(res, 200, { ok: true, skipped: true, message: "Only endpoint agents need a test." });
       const view = { you: { id: rec.id, name: rec.name, dice: [3, 3, 1, 5, 6] }, table: [{ id: rec.id, name: rec.name, diceCount: 5, alive: true }, { id: "shark", name: "The Shark", diceCount: 4, alive: true }, { id: "degen", name: "Degen", diceCount: 5, alive: true }], totalDice: 14, currentBid: { count: 4, face: 3, byId: "degen" }, onesWild: true, whoseTurn: rec.id };
       let ok = true, why = null;
-      const ag = new RemoteAgent({ id: rec.id, name: rec.name, endpoint: rec.endpoint, sign: (b) => registry.signature(rec, b), onResult: (o, w) => { ok = o; why = w; } });
+      const ag = new RemoteAgent({ id: rec.id, name: rec.name, endpoint: rec.endpoint, sign: (b) => registry.signature(rec, b), allowLocal: registry.allowLocal, onResult: (o, w) => { ok = o; why = w; } });
       const t0 = Date.now(); const result = await ag.act(view); const ms = Date.now() - t0;
       if (ok) registry.reactivate(rec.id);
       return json(res, 200, { ok, ms, result, error: why, sentView: view, status: registry.get(rec.id).status });
@@ -223,7 +242,7 @@ const server = http.createServer(async (req, res) => {
   if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(publicState())); }
   if (url.startsWith("/static/")) return sendFile(res, url.slice("/static/".length));
   if (url.startsWith("/api/agents")) return agentsApi(req, res, url);
-  if (url === "/api/pool") return json(res, 200, { walletKind: wallet.kind, poolAddress: pool?.poolWallet?.address || null, open: !!(pool && pool.open), closeAt: state.betCloseAt, matchNo: state.matchNo, chain: wallet.chainInfo ? wallet.chainInfo() : null, minStake: MIN_STAKE });
+  if (url === "/api/pool") return json(res, 200, { walletKind: wallet.kind, live: LIVE_CHAIN, poolAddress: pool?.poolWallet?.address || null, open: !!(pool && pool.open), closeAt: state.betCloseAt, matchNo: state.matchNo, chain: wallet.chainInfo ? wallet.chainInfo() : null, minStake: MIN_STAKE, betWindowMs: BET_WINDOW_MS });
 
   if (url === "/events") {
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
@@ -234,52 +253,52 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === "/api/bet" && req.method === "POST") {
-    let body = ""; req.on("data", (c) => body += c);
-    req.on("end", async () => {
-      try {
-        const { bettorId, agentId, amount, txHash, address } = JSON.parse(body);
-        if (!state.seats.find((s) => s.id === agentId)) throw new Error("Unknown seat.");
-        const amt = Number(amount);
-        if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
+    try {
+      const { bettorId, agentId, amount, txHash, address } = JSON.parse(await readBody(req) || "{}");
+      if (!state.seats.find((s) => s.id === agentId)) throw new Error("Unknown seat.");
+      const claimedAmt = Number(amount);
 
-        // Connected-wallet path: the stake already moved on-chain from the bettor's own wallet.
-        if (txHash && wallet.verifyDeposit) {
-          if (!pool) throw new Error("No match is open.");
+      // Connected-wallet path: stake already moved on-chain. Amount comes from the tx, not the client.
+      if (txHash && wallet.verifyDeposit) {
+        if (!pool) throw new Error("No match is open.");
+        pool.claimTx(txHash);
+        try {
           const dep = await wallet.verifyDeposit(txHash, pool.poolWallet.address);
-          if (Math.abs(dep.amount - amt) > 0.000001) throw new Error(`Transfer was ${dep.amount} USDC, not ${amt}.`);
+          const amt = dep.amount;
+          if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
+          if (Number.isFinite(claimedAmt) && Math.abs(dep.amount - claimedAmt) > 0.000001) {
+            throw new Error(`Transfer was ${dep.amount} USDC, not ${claimedAmt}.`);
+          }
           if (address && dep.from.toLowerCase() !== String(address).toLowerCase()) throw new Error("Transfer came from a different wallet.");
           if (!pool.open && !(dep.timestamp <= (pool.closeAt || 0) + 3000 && state.phase === "playing" && !pool.settledAt)) {
-            // Landed too late for this match: refund straight back to the sender.
             const rtx = await wallet.settle(pool.poolWallet, { address: dep.from }, dep.amount);
             throw new Error(`Betting had closed — refunded ${dep.amount} USDC to your wallet (tx ${rtx.slice(0, 10)}…).`);
           }
-          pool.recordExternal({ bettorId: dep.from, address: dep.from, agentId, amount: amt, txHash });
+          pool.recordExternal({ bettorId: dep.from, address: dep.from, agentId, amount: amt, txHash, claimed: true });
           state.bets = pool.bets;
           state.multipliers = impliedMultipliers(pool.bets, state.seats.map((s) => s.id), pool.houseFeeBps);
           broadcast({ type: "bet", bettorId: dep.from, agentId, amount: amt, tx: txHash, explorer: wallet.explorerUrl(txHash), ...publicState() });
-          return json(res, 200, { ok: true, tx: txHash, explorer: wallet.explorerUrl(txHash), payoutTo: dep.from });
+          return json(res, 200, { ok: true, tx: txHash, explorer: wallet.explorerUrl(txHash), payoutTo: dep.from, amount: amt });
+        } catch (e) {
+          if (shouldReleaseTxClaim(e)) pool.releaseTx(txHash);
+          throw e;
         }
-
-        if (!pool || !pool.open) throw new Error("Betting is closed — wait for the next match.");
-        // Each spectator has an arena wallet (derived on real chains, auto-funded on mock).
-        if (!spectatorWallets[bettorId]) spectatorWallets[bettorId] = await wallet.createSeatWallet("spectator:" + bettorId);
-        if (wallet.kind !== "mock") {
-          const have = await wallet.getBalance(spectatorWallets[bettorId].walletId);
-          if (have < amt + 0.02) throw new Error(`Your arena balance is ${have} USDC. Send USDC on Arc to your deposit address ${spectatorWallets[bettorId].address} first (leave ~0.02 for gas).`);
-        }
-        const r = await pool.placeBet({ bettorId, bettorWallet: spectatorWallets[bettorId], agentId, amount: amt });
-        state.bets = pool.bets;
-        state.multipliers = impliedMultipliers(pool.bets, state.seats.map((s) => s.id), pool.houseFeeBps);
-        broadcast({ type: "bet", bettorId, agentId, amount: amt, tx: r.tx, explorer: r.explorer, ...publicState() });
-        const bal = await wallet.getBalance(spectatorWallets[bettorId].walletId);
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: true, tx: r.tx, explorer: r.explorer, balance: bal, poolAddress: pool.poolWallet.address }));
-      } catch (e) {
-        res.writeHead(400, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
       }
-    });
-    return;
+
+      const amt = claimedAmt;
+      if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
+      if (!pool || !pool.open) throw new Error("Betting is closed — wait for the next match.");
+      if (LIVE_CHAIN) throw new Error("On a live chain, bet from your own wallet (send USDC to the pool and include txHash).");
+      if (!spectatorWallets[bettorId]) spectatorWallets[bettorId] = await wallet.createSeatWallet("spectator:" + bettorId);
+      const r = await pool.placeBet({ bettorId, bettorWallet: spectatorWallets[bettorId], agentId, amount: amt });
+      state.bets = pool.bets;
+      state.multipliers = impliedMultipliers(pool.bets, state.seats.map((s) => s.id), pool.houseFeeBps);
+      broadcast({ type: "bet", bettorId, agentId, amount: amt, tx: r.tx, explorer: r.explorer, ...publicState() });
+      const bal = await wallet.getBalance(spectatorWallets[bettorId].walletId);
+      return json(res, 200, { ok: true, tx: r.tx, explorer: r.explorer, balance: bal, poolAddress: pool.poolWallet.address });
+    } catch (e) {
+      return json(res, 400, { ok: false, error: e.message });
+    }
   }
 
   if (url.startsWith("/api/balance/")) {
@@ -293,8 +312,11 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404, { "content-type": "text/plain" }); res.end("not found");
 });
 
-server.listen(PORT, () => {
-  console.log(`Liar's Dice Arena → http://localhost:${PORT}   (wallet: ${wallet.kind}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms)`);
+server.listen(PORT, HOST, () => {
+  console.log(`Liar's Dice Arena → http://${HOST}:${PORT}   (wallet: ${wallet.kind}, live: ${LIVE_CHAIN}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms)`);
+  if (wallet.kind === "circle") {
+    console.warn("CircleArcWallet is a stub (TODO(circle) on every money call). Set HOUSE_PRIVATE_KEY for live Arc, or MOCK=1 for local play.");
+  }
   cycle().catch((e) => { console.error("cycle crashed (unrecoverable):", e); });
   process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
   process.on("uncaughtException", (e) => console.error("uncaughtException:", e));

@@ -11,8 +11,11 @@
 
 function computePayouts(bets, winnerId, houseFeeBps = 0) {
   // bets: [{ bettorId, agentId, amount }]
-  const pool = bets.reduce((s, b) => s + b.amount, 0);
-  const winners = bets.filter((b) => b.agentId === winnerId);
+  for (const b of bets) {
+    if (!Number.isFinite(b.amount) || b.amount < 0) throw new Error("bad_amount");
+  }
+  const pool = round6(bets.reduce((s, b) => s + b.amount, 0));
+  const winners = winnerId == null ? [] : bets.filter((b) => b.agentId === winnerId);
   const winnerStake = winners.reduce((s, b) => s + b.amount, 0);
 
   if (pool === 0) return { payouts: [], houseCut: 0, refunded: false, pool };
@@ -68,15 +71,30 @@ class BettingPool {
     this.open = true;
     this.closeAt = null;
     this.usedTx = new Set();
+    this._q = Promise.resolve();
   }
+
+  _serial(fn) {
+    const next = this._q.then(fn, fn);
+    this._q = next.catch(() => {});
+    return next;
+  }
+
+  claimTx(txHash) {
+    if (!txHash) throw new Error("missing_tx");
+    if (this.usedTx.has(txHash)) throw new Error("tx_already_used");
+    this.usedTx.add(txHash);
+  }
+  releaseTx(txHash) { this.usedTx.delete(txHash); }
 
   // A bet whose USDC already arrived on-chain from the bettor's own wallet.
   // Payout goes straight back to that address.
-  recordExternal({ bettorId, address, agentId, amount, txHash }) {
-    if (this.usedTx.has(txHash)) throw new Error("tx_already_used");
-    this.usedTx.add(txHash);
+  recordExternal({ bettorId, address, agentId, amount, txHash, claimed = false }) {
+    if (!claimed) this.claimTx(txHash);
+    const amt = round6(Number(amount));
+    if (!(amt > 0) || !Number.isFinite(amt)) throw new Error("bad_amount");
     this.bettorWallets[bettorId] = { walletId: null, address };
-    this.bets.push({ bettorId, agentId, amount, txHash });
+    this.bets.push({ bettorId, agentId, amount: amt, txHash });
   }
 
   async init() {
@@ -88,11 +106,20 @@ class BettingPool {
   // Circle Gateway / a connected wallet) into poolWallet.address. Here we take a
   // wallet object we control so the mock flow works end-to-end.
   async placeBet({ bettorId, bettorWallet, agentId, amount }) {
+    return this._serial(() => this._placeBet({ bettorId, bettorWallet, agentId, amount }));
+  }
+
+  async _placeBet({ bettorId, bettorWallet, agentId, amount }) {
     if (!this.open) throw new Error("betting_closed");
-    if (!(amount > 0)) throw new Error("bad_amount");
-    const tx = await this.wallet.ante(bettorWallet, this.poolWallet, amount);
+    const amt = round6(Number(amount));
+    if (!(amt > 0) || !Number.isFinite(amt)) throw new Error("bad_amount");
+    const tx = await this.wallet.ante(bettorWallet, this.poolWallet, amt);
+    if (!this.open) {
+      // Window closed while the transfer was in flight — keep the money in the
+      // pool and still record, otherwise the bettor is charged with no ticket.
+    }
     this.bettorWallets[bettorId] = bettorWallet;
-    this.bets.push({ bettorId, agentId, amount });
+    this.bets.push({ bettorId, agentId, amount: amt });
     return { tx, explorer: this.wallet.explorerUrl(tx) };
   }
 
@@ -103,12 +130,22 @@ class BettingPool {
     const txs = [];
     for (const p of res.payouts) {
       if (p.amount <= 0) continue;
-      const tx = await this.wallet.settle(this.poolWallet, this.bettorWallets[p.bettorId], p.amount);
-      txs.push({ bettorId: p.bettorId, amount: p.amount, tx, explorer: this.wallet.explorerUrl(tx) });
+      const dest = this.bettorWallets[p.bettorId];
+      if (!dest) { txs.push({ bettorId: p.bettorId, amount: p.amount, error: "missing_wallet" }); continue; }
+      try {
+        const tx = await this.wallet.settle(this.poolWallet, dest, p.amount);
+        txs.push({ bettorId: p.bettorId, amount: p.amount, tx, explorer: this.wallet.explorerUrl(tx) });
+      } catch (e) {
+        txs.push({ bettorId: p.bettorId, amount: p.amount, error: String(e.message || e).slice(0, 200) });
+      }
     }
     if (res.houseCut > 0 && houseWallet) {
-      const tx = await this.wallet.settle(this.poolWallet, houseWallet, res.houseCut);
-      txs.push({ bettorId: "house", amount: res.houseCut, tx });
+      try {
+        const tx = await this.wallet.settle(this.poolWallet, houseWallet, res.houseCut);
+        txs.push({ bettorId: "house", amount: res.houseCut, tx });
+      } catch (e) {
+        txs.push({ bettorId: "house", amount: res.houseCut, error: String(e.message || e).slice(0, 200) });
+      }
     }
     return { ...res, txs };
   }

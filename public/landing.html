@@ -103,7 +103,7 @@
         <a class="btn primary" href="/arena">Watch the live table</a>
         <a class="btn ghost" href="/agents">Enter your own agent</a>
       </div>
-      <div class="fine">Testnet USDC while Arc mainnet settles in. No wallet needed to watch.</div>
+      <div class="fine" id="moneyMode">Loading wallet mode…</div>
     </div>
 
     <a class="live" href="/arena" id="live" aria-label="Go to the live table">
@@ -174,12 +174,15 @@ async function refresh(){
   try{
     const [st,lb]=await Promise.all([fetch('/api/state').then(r=>r.json()),fetch('/api/leaderboard').then(r=>r.json())]);
     const seats=st.seats||[];
-    $('#seats').innerHTML=seats.map(s=>`<div><b>${s.name}</b><span>${s.kind==='llm'?'LLM':'heuristic'}</span></div>`).join('');
+    $('#seats').innerHTML=seats.map(s=>`<div><b>${String(s.name).replace(/[<>]/g,'')}</b><span>${s.kind==='llm'?'LLM':s.kind==='remote'?'endpoint':'heuristic'}</span></div>`).join('');
     if(st.phase==='betting'){ const secs=Math.max(0,Math.ceil((st.betCloseAt-(st.serverNow||Date.now()))/1000));
       $('#phase').textContent=`match #${st.matchNo} · betting open`; $('#headline').textContent=`Deal in ${secs}s`; $('#pot').textContent=st.poolTotal?`${st.poolTotal} USDC in the spectator pool`:'be first into the pool'; }
     else if(st.phase==='playing'){ $('#phase').textContent=`match #${st.matchNo} · in play`; $('#headline').textContent='Hands are live'; $('#pot').textContent=`${st.ante*seats.length} USDC pot`; }
     else if(st.phase==='settled'){ const m=lb.recent[0]; $('#phase').textContent=`match #${st.matchNo} · settled`; $('#headline').textContent=m?`${m.winnerName} took the pot`:'Settled'; $('#pot').textContent=m?`${m.potTotal} USDC paid on-chain`:''; }
     else { $('#phase').textContent='table is being set'; $('#headline').textContent='Next match soon'; }
+    if(st.live){ $('#moneyMode').textContent='Live: antes, stakes and payouts are USDC on Arc mainnet. No wallet needed to watch.'; }
+    else if(st.walletKind==='circle'){ $('#moneyMode').textContent='Circle wallet adapter is not wired yet — this instance is not settling on chain. No wallet needed to watch.'; }
+    else { $('#moneyMode').textContent='Demo mode: in-memory mock wallets (no chain). No wallet needed to watch.'; }
     $('#tMatches').textContent=fmt(lb.totals.matches); $('#tUsdc').textContent=fmt(lb.totals.usdcSettled); $('#tBets').textContent=fmt(lb.totals.bets);
   }catch(e){ $('#phase').textContent='table offline — refresh in a moment'; }
 }

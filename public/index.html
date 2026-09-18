@@ -115,7 +115,7 @@
   .railhead{display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap}
   .railhead h2{font-size:22px;font-weight:600}
   .railhead .clock{font:600 22px/1 var(--serif);color:var(--red);min-width:48px;text-align:right}
-  .picks{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
+  .picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:14px 0}
   @media (max-width:640px){.picks{grid-template-columns:1fr}}
   .pick{border:2px solid #d9cfb8;border-radius:12px;padding:12px 14px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit}
   .pick:hover{border-color:#b9ad95}.pick.sel{border-color:var(--gold);background:#fff6df}
@@ -139,7 +139,7 @@
     .table{display:block;height:auto;min-height:0;padding:0 0 10px;border-width:10px;border-radius:28px}
     .banner{position:static;transform:none;margin:12px auto 4px;width:max-content;max-width:calc(100% - 24px);white-space:normal;text-align:center;font-size:12px;padding:7px 14px}
     .banner b{font-size:14px}
-    #seats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 10px 0}
+    #seats{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:6px;padding:8px 10px 0}
     .seat{position:static;transform:none;width:auto;margin:0;padding:8px 4px 6px;border-radius:12px}
     .seat.shake{animation:shakeM .55s ease-in-out}
     .seat .name{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -177,7 +177,7 @@
     .railhead h2{font-size:15px}
     .railhead .clock{font-size:18px;min-width:40px}
     #closednote{margin:4px 0 8px;font-size:12px}
-    .picks{grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
+    .picks{grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin:8px 0}
     .pick{padding:8px 6px;border-radius:10px;min-height:56px}
     .pick .n{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .pick .m{font-size:11px;margin-top:3px;line-height:1.25}
@@ -256,6 +256,7 @@
 
 <script>
 const $=(s)=>document.querySelector(s);
+const esc=(s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const PIPS={1:[[50,50]],2:[[25,25],[75,75]],3:[[25,25],[50,50],[75,75]],4:[[25,25],[75,25],[25,75],[75,75]],5:[[25,25],[75,25],[50,50],[25,75],[75,75]],6:[[25,25],[75,25],[25,50],[75,50],[25,75],[75,75]]};
@@ -264,7 +265,7 @@ const rnd=()=>1+Math.floor(Math.random()*6);
 
 // ---- state ----
 let seats=[], counts={}, alive={}, pot=0;
-let phase='idle', betCloseAt=null, multipliers={}, picked=null, walletKind='mock', clockOffset=0; // server - client ms
+let phase='idle', betCloseAt=null, multipliers={}, picked=null, walletKind='mock', live=false, betWindowMs=30000, clockOffset=0; // server - client ms
 let bettorId=localStorage.getItem('bettorId'); if(!bettorId){bettorId='spectator-'+Math.random().toString(36).slice(2,8);localStorage.setItem('bettorId',bettorId);}
 $('#me').textContent='you: '+bettorId;
 let poolInfo=null, account=null;
@@ -272,7 +273,7 @@ const short=(a)=>a?a.slice(0,6)+'…'+a.slice(-4):'';
 async function refreshMe(){
   try{
     poolInfo=await fetch('/api/pool').then(r=>r.json());
-    if(poolInfo.walletKind!=='evm'){ const j=await fetch('/api/balance/'+encodeURIComponent(bettorId)).then(r=>r.json()); $('#me').innerHTML=`you: ${bettorId} · balance ${j.balance} USDC (mock)`; return; }
+    if(!poolInfo.live){ const j=await fetch('/api/balance/'+encodeURIComponent(bettorId)).then(r=>r.json()); $('#me').innerHTML=`you: ${esc(bettorId)} · balance ${j.balance} USDC (mock — not on chain)`; return; }
     $('#connect').hidden=!!account;
     if(!window.ethereum){ $('#me').innerHTML='No wallet found — install <a href="https://metamask.io/download/" target="_blank" rel="noopener">MetaMask</a> or Rabby to bet.'; return; }
     if(account){ const hex=await window.ethereum.request({method:'eth_getBalance',params:[account,'latest']}); const bal=Number(BigInt(hex))/1e18; $('#me').innerHTML=`<b>${short(account)}</b> · ${bal.toFixed(4)} USDC on Arc`; }
@@ -303,7 +304,7 @@ const seatEl=(id)=>document.getElementById('seat-'+id);
 function buildSeats(){
   const pos=seats.length===2?['p0','p2']:seats.length===3?['p0','p1','p2']:['p0','p1','p2','p3'];
   $('#seats').innerHTML=seats.map((s,i)=>`<div class="seat ${pos[i]} ${alive[s.id]===false?'out':''}" id="seat-${s.id}">
-    <div class="name">${s.name}</div><div class="kind">${s.owner&&s.owner!=='house'?`by ${s.owner} · `:''}${({llm:'LLM',remote:'endpoint',mock:'heuristic'})[s.kind]||s.kind} · <span class="cnt">${counts[s.id]??5}</span> dice</div>
+    <div class="name">${esc(s.name)}</div><div class="kind">${s.owner&&s.owner!=='house'?`by ${esc(s.owner)} · `:''}${({llm:'LLM',remote:'endpoint',mock:'heuristic'})[s.kind]||esc(s.kind)} · <span class="cnt">${counts[s.id]??5}</span> dice</div>
     <div class="dice" id="dice-${s.id}"></div><div class="thought" id="th-${s.id}"></div></div>`).join('');
   seats.forEach(s=>renderDice(s.id));
 }
@@ -359,14 +360,14 @@ async function turn(ev){
   await sleep(reduced?0:420); clearBar();
   setThought(ev.agentId,ev.thought,false);
   if(ev.action.type==='challenge'){
-    burst('LIAR!'); setNow(ev.name+' calls LIAR on '+ev.bidBefore.count+' × '+ev.bidBefore.face+(ev.thought?'<span class="q">“'+ev.thought+'”</span>':''),'liar');
-    setChip(`<span>Liar!</span><span class="who">${ev.name} calls the ${ev.bidBefore.count} × ${ev.bidBefore.face}</span>`,'liar');
-    log(`<b>${ev.name}</b> calls liar on ${ev.bidBefore.count} × ${ev.bidBefore.face}. <i>${ev.thought}</i>`,'red');
+    burst('LIAR!'); setNow(esc(ev.name)+' calls LIAR on '+ev.bidBefore.count+' × '+ev.bidBefore.face+(ev.thought?'<span class="q">“'+esc(ev.thought)+'”</span>':''),'liar');
+    setChip(`<span>Liar!</span><span class="who">${esc(ev.name)} calls the ${ev.bidBefore.count} × ${ev.bidBefore.face}</span>`,'liar');
+    log(`<b>${esc(ev.name)}</b> calls liar on ${ev.bidBefore.count} × ${ev.bidBefore.face}. <i>${esc(ev.thought||'')}</i>`,'red');
   } else {
-    setNow(ev.name+' bids '+ev.action.count+' × '+ev.action.face+(ev.thought?'<span class="q">“'+ev.thought+'”</span>':''));
+    setNow(esc(ev.name)+' bids '+ev.action.count+' × '+ev.action.face+(ev.thought?'<span class="q">“'+esc(ev.thought)+'”</span>':''));
     await flyChip(seatEl(ev.agentId), $('#bidchip'),{dur:380});
-    setChip(`<span>${ev.action.count} × ${ev.action.face}</span><span class="who">${ev.name}</span>`);
-    log(`<b>${ev.name}</b> bids ${ev.action.count} × ${ev.action.face}. <i>${ev.thought}</i>`);
+    setChip(`<span>${ev.action.count} × ${ev.action.face}</span><span class="who">${esc(ev.name)}</span>`);
+    log(`<b>${esc(ev.name)}</b> bids ${ev.action.count} × ${ev.action.face}. <i>${esc(ev.thought||'')}</i>`);
   }
 }
 
@@ -386,10 +387,10 @@ async function reveal(ev){
   }
   await sleep(reduced?0:250);
   tally.innerHTML = ev.bidWasTrue
-    ? `<b>${ev.actual}</b> ${f}s on the table — <span class="truth">the bid stands.</span> ${ev.loserName} called wrong.`
-    : `<b>${ev.actual}</b> ${f}s on the table — <span class="lie">it was a lie.</span> ${ev.loserName} got caught.`;
-  log(`Reveal: ${ev.actual} × ${f} on the table. ${ev.bidWasTrue?'Bid stands':'Bluff caught'} — ${ev.loserName} drops a die.`, ev.bidWasTrue?'':'red');
-  setNow(ev.bidWasTrue?ev.loserName+' called wrong — loses a die':ev.loserName+' got caught bluffing — loses a die',ev.bidWasTrue?'':'liar');
+    ? `<b>${ev.actual}</b> ${f}s on the table — <span class="truth">the bid stands.</span> ${esc(ev.loserName)} called wrong.`
+    : `<b>${ev.actual}</b> ${f}s on the table — <span class="lie">it was a lie.</span> ${esc(ev.loserName)} got caught.`;
+  log(`Reveal: ${ev.actual} × ${f} on the table. ${ev.bidWasTrue?'Bid stands':'Bluff caught'} — ${esc(ev.loserName)} drops a die.`, ev.bidWasTrue?'':'red');
+  setNow(ev.bidWasTrue?esc(ev.loserName)+' called wrong — loses a die':esc(ev.loserName)+' got caught bluffing — loses a die',ev.bidWasTrue?'':'liar');
   await sleep(reduced?0:450);
   const ls=seatEl(ev.loserId); if(ls){ ls.classList.add('shake'); setTimeout(()=>ls.classList.remove('shake'),600); }
   floatAt(ls,'−1 die');
@@ -401,35 +402,37 @@ async function reveal(ev){
 }
 
 async function settled(ev){
-  setActive(null); $('#tally').textContent=''; setBanner('Settled','win',ev.name+' wins '+ev.amount+' USDC'); setNow(ev.name+' takes the pot — '+ev.amount+' USDC');
-  setChip(`<span>${ev.name} wins</span><span class="who">${ev.amount} USDC</span>`);
+  setActive(null); $('#tally').textContent=''; setBanner('Settled','win',esc(ev.name)+' wins '+ev.amount+' USDC'); setNow(esc(ev.name)+' takes the pot — '+ev.amount+' USDC');
+  setChip(`<span>${esc(ev.name)} wins</span><span class="who">${ev.amount} USDC</span>`);
   const w=seatEl(ev.winnerId); w?.classList.add('winner');
   burst(`${ev.name} takes the pot`,true);
   for(let i=0;i<4;i++){ flyChip($('#pot'),w,{gold:true,dur:650+i*70}); await sleep(reduced?0:120); }
   await sleep(reduced?0:650); bumpPot(0); floatAt(w,`+${ev.amount} USDC`,true);
-  $('#status').innerHTML=`<b>${ev.name}</b> takes the ${ev.amount} USDC pot.`;
-  log(`<b>${ev.name}</b> wins the pot: ${ev.amount} USDC paid on-chain. ${tx(ev)}`,'gold');
+  $('#status').innerHTML=`<b>${esc(ev.name)}</b> takes the ${ev.amount} USDC pot.`;
+  log(`<b>${esc(ev.name)}</b> wins the pot: ${ev.amount} USDC paid on-chain. ${tx(ev)}`,'gold');
 }
 
 // ---- log / rail ----
 function log(html,cls=''){const r=document.createElement('div');r.className='row '+cls;r.innerHTML=html;const L=$('#log');L.prepend(r);while(L.children.length>60)L.lastChild.remove();}
-function tx(ev){return ev.explorer?`<a href="${ev.explorer}" target="_blank" rel="noopener">tx ${ev.tx}</a>`:'';}
+function tx(ev){ if(!ev.explorer||!/^(https?:|mock:)/i.test(ev.explorer)) return ''; return `<a href="${esc(ev.explorer)}" target="_blank" rel="noopener">tx ${esc(ev.tx)}</a>`; }
 setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s'; if($('#banner').classList.contains('bet')) $('#banner').innerHTML='Betting open<b>'+s+'s</b>';} else $('#clock').textContent=''; },250);
 function renderPicks(){
-  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${s.id}" ${phase!=='betting'?'disabled':''}><div class="n">${s.name}</div><div class="m">${m?(m>1?`pays <b>${m.toFixed(2)}×</b> if it wins`:'<b>1.00×</b> — only backer so far; stake returned if it wins'):'no backers yet — first in sets the line'}</div></button>`;}).join('');
-  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;const nm=seats.find(s=>s.id===picked).name;$('#picked').textContent=nm;if(matchMedia('(max-width:640px)').matches)$('#betbtn').textContent='Bet on '+nm;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(walletKind!=='evm'||account));});
+  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${esc(s.id)}" ${phase!=='betting'?'disabled':''}><div class="n">${esc(s.name)}</div><div class="m">${m?(m>1?`pays <b>${m.toFixed(2)}×</b> if it wins`:'<b>1.00×</b> — only backer so far; stake returned if it wins'):'no backers yet — first in sets the line'}</div></button>`;}).join('');
+  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;const nm=seats.find(s=>s.id===picked).name;$('#picked').textContent=nm;if(matchMedia('(max-width:640px)').matches)$('#betbtn').textContent='Bet on '+nm;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(!live||account));});
 }
 function applyState(ev){
   phase=ev.phase; betCloseAt=ev.betCloseAt; multipliers=ev.multipliers||{};
   if(ev.serverNow) clockOffset=ev.serverNow-Date.now();
+  if(ev.betWindowMs) betWindowMs=ev.betWindowMs;
   if(ev.seats&&ev.seats.length){ const changed=JSON.stringify(ev.seats.map(s=>s.id))!==JSON.stringify(seats.map(s=>s.id)); seats=ev.seats; if(changed) buildSeats(); }
-  $('#walletKind').textContent=({evm:'live on Arc mainnet',circle:'Circle wallets',mock:'mock wallets (no chain yet)'})[ev.walletKind]||ev.walletKind;
-  walletKind=ev.walletKind;
+  live=!!ev.live; walletKind=ev.walletKind;
+  $('#walletKind').textContent=live?'live on Arc mainnet':(walletKind==='circle'?'Circle adapter not wired — not on chain':'mock wallets (no chain)');
   $('#railtitle').textContent=phase==='betting'?`Back an agent — match #${ev.matchNo}`:phase==='playing'?`Match #${ev.matchNo} in play — bets closed`:phase==='paused'?'Table paused — betting reopens with the next deal':`Match #${ev.matchNo} settled`;
-  const closedNote=$('#closednote'); if(closedNote){ closedNote.hidden=phase==='betting'; closedNote.textContent=phase==='playing'?'Bets reopen for 30 seconds as soon as this match settles — usually 1–3 minutes. Keep this tab open; the countdown will appear here and the agent buttons will light up.':phase==='settled'?'Next betting window opens in a few seconds.':'Betting opens with the next deal.'; }
-  $('#betbtn').disabled=!(phase==='betting'&&picked&&(walletKind!=='evm'||account));
+  const winSec=Math.round((betWindowMs||30000)/1000);
+  const closedNote=$('#closednote'); if(closedNote){ closedNote.hidden=phase==='betting'; closedNote.textContent=phase==='playing'?`Bets reopen for ${winSec} seconds as soon as this match settles — usually 1–3 minutes. Keep this tab open; the countdown will appear here and the agent buttons will light up.`:phase==='settled'?'Next betting window opens in a few seconds.':'Betting opens with the next deal.'; }
+  $('#betbtn').disabled=!(phase==='betting'&&picked&&(!live||account));
   const total=ev.poolTotal||0;
-  $('#poolinfo').innerHTML=ev.bets&&ev.bets.length?`<b>${total} USDC</b> from ${ev.bets.length} bet${ev.bets.length>1?'s':''}<br>`+seats.map(s=>`${s.name}: ${ev.bets.filter(b=>b.agentId===s.id).reduce((a,b)=>a+b.amount,0)} USDC`).join(' · '):'No bets yet.';
+  $('#poolinfo').innerHTML=ev.bets&&ev.bets.length?`<b>${total} USDC</b> from ${ev.bets.length} bet${ev.bets.length>1?'s':''}<br>`+seats.map(s=>`${esc(s.name)}: ${ev.bets.filter(b=>b.agentId===s.id).reduce((a,b)=>a+b.amount,0)} USDC`).join(' · '):'No bets yet.';
   renderPicks();
 }
 
@@ -439,12 +442,12 @@ es.onmessage=(m)=>{
   const ev=JSON.parse(m.data);
   switch(ev.type){
     case 'phase':
-      if(ev.phase==='betting'){ enqueue(async()=>{ applyState(ev); setBanner('Betting open','bet','30s'); }); } else applyState(ev);
+      if(ev.phase==='betting'){ enqueue(async()=>{ applyState(ev); setBanner('Betting open','bet',Math.round((ev.betWindowMs||betWindowMs||30000)/1000)+'s'); }); } else applyState(ev);
       if(phase==='betting'||ev.phase==='betting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">betting open — deal in a moment</span>','q'); setNow('Back an agent below before the deal'); clearBar(); log(`Match #${ev.matchNo}: betting window open.`,'gold'); });
       if(ev.phase==='playing') enqueue(async()=>{ setBanner('Bets closed','play','anteing'); $('#status').innerHTML='Bets closed. Agents are anteing…'; });
       if(ev.phase==='paused') enqueue(async()=>{ setBanner('Table paused','pause'); $('#status').innerHTML='Table paused after an error — next deal shortly.'; log('Table paused: '+(ev.error||'error')+'. Resuming shortly.','red'); });
       break;
-    case 'bet': applyState(ev); log(`${ev.bettorId} backs <b>${seats.find(s=>s.id===ev.agentId)?.name}</b> with ${ev.amount} USDC. ${tx(ev)}`,'gold'); break;
+    case 'bet': applyState(ev); log(`${esc(ev.bettorId)} backs <b>${esc(seats.find(s=>s.id===ev.agentId)?.name||ev.agentId)}</b> with ${ev.amount} USDC. ${tx(ev)}`,'gold'); break;
     case 'ante': enqueue(async()=>{ await flyChip(seatEl(ev.agentId),$('#pot')); bumpPot(pot+ev.amount); log(`${ev.name} antes ${ev.amount} USDC into the pot. ${tx(ev)}`); }); break;
     case 'funded': log(`House tops up ${ev.name}'s seat. ${tx(ev)}`); break;
     case 'pot_ready': enqueue(async()=>{ bumpPot(ev.total); $('#status').innerHTML=''; }); break;
@@ -455,8 +458,9 @@ es.onmessage=(m)=>{
     case 'settled': enqueue(()=>settled(ev)); break;
     case 'pool_settled': enqueue(async()=>{ applyState(ev);
       const mine=ev.txs.find(t=>t.bettorId===bettorId);
-      if(ev.refunded) log(`Nobody backed ${ev.winnerName}. All stakes refunded.`,'gold');
-      else if(ev.txs.length) log(`Spectator pool paid out: `+ev.txs.filter(t=>t.bettorId!=='house').map(t=>`${t.bettorId} +${t.amount}`).join(', ')+`.`,'gold');
+      if(ev.aborted) log(`Match aborted — antes and stakes refunded.`,'gold');
+      else if(ev.refunded) log(`Nobody backed ${esc(ev.winnerName||'the winner')}. All stakes refunded.`,'gold');
+      else if(ev.txs.length) log(`Spectator pool paid out: `+ev.txs.filter(t=>t.bettorId!=='house').map(t=>`${esc(t.bettorId)} +${t.amount}`).join(', ')+`.`,'gold');
       if(mine){$('#msg').className='msg ok';$('#msg').textContent=`You got ${mine.amount} USDC back.`; refreshMe();}
       else if(ev.bets.some(b=>b.bettorId===bettorId)){$('#msg').className='msg err';$('#msg').textContent=`Your agent lost. Next deal soon.`;}
     }); break;
@@ -465,7 +469,7 @@ es.onmessage=(m)=>{
 
 $('#betbtn').onclick=async()=>{
   const amount=Number($('#stake').value); $('#msg').className='msg';
-  if(poolInfo&&poolInfo.walletKind==='evm'){
+    if(poolInfo&&poolInfo.live){
     if(!account){ $('#msg').className='msg err'; $('#msg').textContent='Connect your wallet first.'; return; }
     if(!poolInfo.poolAddress||!poolInfo.open){ $('#msg').className='msg err'; $('#msg').textContent='Betting is closed — wait for the next window.'; return; }
     try{

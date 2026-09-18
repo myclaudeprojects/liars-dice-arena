@@ -45,7 +45,7 @@ class MockWallet {
     const b = this.balances.get(potW.walletId) ?? 0;
     const pay = Math.min(b, amt);
     this.balances.set(potW.walletId, b - pay);
-    this.balances.set(toW.walletId, (this.balances.get(toW.walletId) ?? 0) + pay);
+    this.balances.set(toW.walletId || toW.address, (this.balances.get(toW.walletId || toW.address) ?? 0) + pay);
     return "0xmocktx_settle_" + Math.random().toString(16).slice(2, 10);
   }
   async ensureFunded() { return null; }
@@ -54,10 +54,40 @@ class MockWallet {
 }
 
 // ---- CircleArcWallet (placeholder) ----------------------------------------
-// Circle developer-controlled wallets are supported by the SDK (see
-// scripts/circle-setup.js) but the arena runs self-custodied via EvmWallet.
+// Circle developer-controlled wallets are the intended custodial path (see
+// scripts/circle-setup.js) but the live arena currently runs self-custodied
+// via EvmWallet (HOUSE_PRIVATE_KEY). This class must not throw in the
+// constructor: a CIRCLE_API_KEY in the environment should not crash boot.
+//
+// Wire these methods against *current* Circle docs before enabling
+// provider:"circle" in production. Signatures change; confirm via
+// developers.circle.com (initiateDeveloperControlledWalletsClient,
+// createWalletSet, createWallets, createTransaction, getWalletTokenBalance).
 class CircleArcWallet {
-  constructor() { throw new Error("CircleArcWallet is not wired; set HOUSE_PRIVATE_KEY to use the self-custodied Arc adapter."); }
+  constructor({ apiKey, entitySecret, blockchain = "ARC-TESTNET", walletSetId, usdcTokenId } = {}) {
+    this.kind = "circle";
+    this.apiKey = apiKey;
+    this.entitySecret = entitySecret;
+    this.blockchain = blockchain || "ARC-TESTNET";
+    this.walletSetId = walletSetId || process.env.CIRCLE_WALLET_SET_ID || null;
+    this.usdcTokenId = usdcTokenId || process.env.CIRCLE_USDC_TOKEN_ID || null;
+    this.wired = false;
+  }
+  _todo(op) {
+    throw new Error(
+      `TODO(circle): CircleArcWallet.${op} is not wired. Set HOUSE_PRIVATE_KEY to use EvmWallet, or implement this method against live Circle Developer-Controlled Wallets docs ` +
+      `(initiateDeveloperControlledWalletsClient, createWallets({ walletSetId, blockchains:[blockchain], count:1, accountType:"EOA"|"SCA" }), createTransaction with the current USDC token id). ` +
+      `Do not hard-code token ids or chain identifiers — pull them from the Circle console / MCP. blockchain=${this.blockchain}`
+    );
+  }
+  async createSeatWallet() { this._todo("createSeatWallet"); }
+  async createPot() { this._todo("createPot"); }
+  async getBalance() { this._todo("getBalance"); }
+  async ante() { this._todo("ante"); }
+  async settle() { this._todo("settle"); }
+  async ensureFunded() { this._todo("ensureFunded"); }
+  explorerUrl(txHash) { return `https://developers.circle.com/tx/${txHash || ""}`; }
+  addressUrl(addr) { return `https://developers.circle.com/address/${addr || ""}`; }
 }
 
 // ---- EvmWallet (real, self-custodied) ---------------------------------------

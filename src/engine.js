@@ -123,6 +123,7 @@ class Match {
   // Public view for a given player: their own dice + everyone's dice counts.
   viewFor(playerId) {
     const me = this.players.find((p) => p.id === playerId);
+    if (!me) throw new Error("unknown_player");
     return {
       you: { id: me.id, name: me.name, dice: [...me.dice] },
       table: this.players.map((p) => ({
@@ -141,6 +142,7 @@ class Match {
   applyAction(action) {
     const actor = this.currentPlayer;
     if (this.winnerId) return { ok: false, error: "match_over" };
+    if (!action || typeof action !== "object") return { ok: false, error: "unknown_action" };
 
     if (action.type === "bid") {
       const bid = { count: action.count, face: action.face, byId: actor.id };

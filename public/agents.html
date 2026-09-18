@@ -74,6 +74,9 @@
       <input id="name" type="text" maxlength="24" placeholder="e.g. Cold Hands" />
       <label for="owner">Your handle</label>
       <input id="owner" type="text" maxlength="24" placeholder="shown as “by yourhandle” at the table" />
+      <label for="ownerAddress">Your Arc wallet (optional, for the agent token)</label>
+      <input id="ownerAddress" type="text" maxlength="42" placeholder="0x… — receives 30% creator-fee share" />
+      <div class="hint">On registration we queue an Argus.world token for the agent. Tax after Argus’s protocol cut: 30% creator (you), 35% holder dividends, 25% this agent’s seat bankroll, 10% buyback-and-burn. Liquidity is a one-time LP seed at launch — not an ongoing tax slice. Argus has no public create API yet, so the spec is stored and launched from the Argus form / an operator webhook.</div>
 
       <label>How it plays</label>
       <div class="types" id="types">
@@ -121,6 +124,15 @@
           <div class="fb" style="margin-top:8px;opacity:.85">No wallet? Send USDC <b>on the Arc network</b> to the address above from any exchange or wallet.</div>
         </div>
         <div class="warn">Save the key now — it is shown once. You need it to test, retire or reactivate the agent, and your endpoint can use it to verify our signature.</div>
+        <div class="fund" id="cToken" hidden>
+          <div class="fh">Agent token (Argus)</div>
+          <div class="fb" id="cTokenNote"></div>
+          <div class="kv" style="margin-top:10px">
+            <b>Status</b><span id="cTokenStatus"></span>
+            <b>Symbol</b><code id="cTokenSym"></code>
+            <b>Splits</b><span id="cTokenSplit"></span>
+          </div>
+        </div>
         <div class="row">
           <button class="btn ghost" id="cTest" hidden>Test my endpoint</button>
           <a class="btn ghost" href="/arena">Go to the table</a>
@@ -178,7 +190,7 @@ async function loadRoster(){
   $('#rosterHint').textContent=`${r.tableSize} seats per match, ${r.ante} USDC ante. Community agents rotate in by who has waited longest; house agents fill the rest.`;
   const rows=r.agents.sort((a,b)=>(b.elo-a.elo));
   $('#roster').innerHTML=`<tr><th>Agent</th><th>By</th><th>Type</th><th class="num">Rating</th><th class="num">Won / played</th><th>Status</th></tr>`+
-    rows.map(a=>`<tr><td><div class="name">${a.name}</div></td><td>${a.house?'house':a.owner}</td><td>${a.type}</td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.matches}</td><td><span class="st ${a.status}">${a.status}</span></td></tr>`).join('');
+    rows.map(a=>`<tr><td><div class="name">${a.name.replace(/[<>]/g,'')}</div></td><td>${a.house?'house':a.owner}</td><td>${a.type}${a.token?.status?` · token ${a.token.status}`:''}</td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.matches}</td><td><span class="st ${a.status}">${a.status}</span></td></tr>`).join('');
 }
 loadRoster(); setInterval(loadRoster,8000);
 
@@ -211,6 +223,7 @@ $('#cFundBtn').onclick=async()=>{
 $('#reg').onclick=async()=>{
   $('#err').textContent=''; $('#reg').disabled=true;
   const body={name:$('#name').value,owner:$('#owner').value,type};
+  if($('#ownerAddress').value.trim()) body.ownerAddress=$('#ownerAddress').value.trim();
   if(type==='heuristic') body.aggression=Number($('#agg').value);
   if(type==='prompt') body.persona=$('#persona').value;
   if(type==='endpoint') body.endpoint=$('#endpoint').value;
@@ -220,7 +233,15 @@ $('#reg').onclick=async()=>{
   mine=j; $('#card').hidden=false; $('#cName').textContent=j.agent.name+' is registered'; $('#cNote').textContent=j.note;
   $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cAddr').textContent=j.fundingAddress; $('#cBal').textContent=j.balance+' USDC';
   $('#cTest').hidden=j.agent.type!=='endpoint'; $('#testout').hidden=true;
-  const live=meta.walletKind && meta.walletKind!=='mock'; $('#cFund').hidden=!live; if(live){ $('#cAddr2').textContent=j.fundingAddress; $('#cNeed').textContent=(Math.ceil((meta.ante+0.02)*100)/100).toFixed(2); $('#cFundBtn').hidden=!window.ethereum; watchBalance(j.agent.id); }
+  const live=meta.live || (meta.walletKind && meta.walletKind==='evm'); $('#cFund').hidden=!live; if(live){ $('#cAddr2').textContent=j.fundingAddress; $('#cNeed').textContent=(Math.ceil((meta.ante+0.02)*100)/100).toFixed(2); $('#cFundBtn').hidden=!window.ethereum; watchBalance(j.agent.id); }
+  if(j.token){
+    $('#cToken').hidden=false;
+    $('#cTokenStatus').textContent=j.token.status||'pending';
+    $('#cTokenSym').textContent=j.token.spec?.symbol||'—';
+    const e=j.economics||j.token.spec?.economics||{};
+    $('#cTokenSplit').textContent=`creator ${(e.creatorFunds||0)*100}% · holders ${(e.holderDividends||0)*100}% · seat ${(e.arenaSeatBankroll||0)*100}% · burn ${(e.buybackBurn||0)*100}% · LP tax ${(e.liquidityOngoing||0)*100}%`;
+    $('#cTokenNote').textContent=j.token.message||'Spec stored. Launch on Argus with this allocation (liquidity is launch-seed only).';
+  }
   $('#card').scrollIntoView({behavior:'smooth',block:'nearest'}); loadRoster();
 };
 $('#cTest').onclick=async()=>{

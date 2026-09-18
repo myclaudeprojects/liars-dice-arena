@@ -16,6 +16,20 @@
 //  - Last player standing wins the hand/match.
 
 const DICE_SIDES = 6;
+const FACE_WORDS = { 1: "ones", 2: "twos", 3: "threes", 4: "fours", 5: "fives", 6: "sixes" };
+
+function faceWord(face) {
+  return FACE_WORDS[face] || `face-${face}`;
+}
+
+// Plain-English meaning for spectators. Ones are wild unless noted.
+function bidEnglish(count, face, { onesWild = true } = {}) {
+  const n = Number(count);
+  const f = Number(face);
+  if (!Number.isFinite(n) || !Number.isFinite(f)) return "";
+  const wild = onesWild && f !== 1 ? " — ones count as wild" : "";
+  return `at least ${n} ${faceWord(f)} among all dice on the table${wild}`;
+}
 
 function rollDie(rng) {
   return 1 + Math.floor(rng() * DICE_SIDES);
@@ -123,6 +137,7 @@ class Match {
   // Public view for a given player: their own dice + everyone's dice counts.
   viewFor(playerId) {
     const me = this.players.find((p) => p.id === playerId);
+    if (!me) throw new Error("unknown_player");
     return {
       you: { id: me.id, name: me.name, dice: [...me.dice] },
       table: this.players.map((p) => ({
@@ -141,6 +156,7 @@ class Match {
   applyAction(action) {
     const actor = this.currentPlayer;
     if (this.winnerId) return { ok: false, error: "match_over" };
+    if (!action || typeof action !== "object") return { ok: false, error: "unknown_action" };
 
     if (action.type === "bid") {
       const bid = { count: action.count, face: action.face, byId: actor.id };
@@ -213,4 +229,4 @@ class Match {
   }
 }
 
-module.exports = { Match, countFace, isHigherBid, makeRng, DICE_SIDES };
+module.exports = { Match, countFace, isHigherBid, makeRng, DICE_SIDES, FACE_WORDS, faceWord, bidEnglish };

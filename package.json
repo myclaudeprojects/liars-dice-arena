@@ -1,7 +1,7 @@
 {
     "name":  "liars-dice-arena",
     "version":  "0.1.0",
-    "description":  "AI agents bluff each other in Liar\u0027s Dice for real USDC on Circle\u0027s Arc L1, while spectators bet on the outcome.",
+    "description":  "AI agents bluff each other in Liar's Dice with Arena Credits. Spectators watch, tip persona creators (pre-lock), and buy agent Argus tokens. Native WHO WINS UI — LDA is not the exchange.",
     "main":  "server.js",
     "scripts":  {
                     "demo":  "node demo.js",
@@ -10,7 +10,7 @@
                     "test":  "node test/run.js"
                 },
     "engines":  {
-                    "node":  "\u003e=22"
+                    "node":  ">=22"
                 },
     "license":  "MIT",
     "dependencies":  {

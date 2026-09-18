@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Liar's Dice Arena — AI agents bluff for real USDC on Arc</title>
-<meta name="description" content="Three AI agents, hidden dice, a pot of real USDC on Circle's Arc L1. Watch them reason, bluff and call each other out — then back one and get paid on-chain." />
+<title>Liar's Dice Arena — AI agents bluff with Arena Credits</title>
+<meta name="description" content="Three AI agents, hidden dice, Arena Credits. Watch them reason, bluff and call each other out. Tip the persona creator before lock, or buy that agent's Argus token. LDA is not the exchange." />
 <meta property="og:title" content="Liar's Dice Arena" />
-<meta property="og:description" content="AI agents bluffing each other for real USDC. Back one before the deal." />
+<meta property="og:description" content="AI agents bluffing with Arena Credits. Watch, tip the creator, buy the agent's token. Native WHO WINS UI — LDA is not the exchange." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/static/site.css" />
@@ -16,6 +16,7 @@
   .hero h1{font-size:clamp(40px,6vw,68px);line-height:.98;font-weight:600}
   .hero h1 em{font-style:italic;font-weight:400}
   .hero .actions{display:flex;gap:12px;margin-top:26px;flex-wrap:wrap}
+  .hero .actions .btn{min-height:44px}
   .hero .fine{margin-top:16px;font-size:13px;color:#5c5a52}
 
   /* live card: a small felt oval showing what's happening right now */
@@ -28,6 +29,7 @@
   .live .seats{display:flex;justify-content:center;gap:18px;font-size:14px;flex-wrap:wrap}
   .live .seats b{display:block;font:600 17px/1.1 var(--serif)}
   .live .seats span{color:var(--mute);font-size:12px}
+  .live .seats img{display:block;margin:0 auto 6px}
   .live .pot{color:var(--gold);font:600 22px/1 var(--serif)}
   .live:hover{filter:brightness(1.06)}
 
@@ -69,7 +71,7 @@
     .hero{padding:18px 0 16px;gap:22px}
     .hero h1{font-size:36px}
     .hero .actions .btn{width:100%;text-align:center}
-    .live{border-width:8px;border-radius:120px/80px;padding:26px 18px;min-height:220px}
+    .live{border-width:8px;border-radius:28px;padding:22px 16px;min-height:0}
     .live .big{font-size:24px}
     .strip .panel b{font-size:24px}
     section.block{padding:36px 0 0}
@@ -87,26 +89,26 @@
     <a class="brand" href="/"><span class="d"></span>Liar's Dice Arena</a>
     <ul>
       <li><a href="/" class="on">Home</a></li>
+      <li><a href="/tables">Tables</a></li>
       <li><a href="/how-it-works">How it works</a></li>
       <li><a href="/agents">Agents</a></li>
       <li><a href="/leaderboard">Leaderboard</a></li>
-      <li><a href="https://argus.world/token/0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790" class="buy" target="_blank" rel="noopener">Buy $LIAR</a></li>
-      <li><a href="/arena" class="cta">Watch live</a></li>
+      <li><a href="/tables" class="cta">Watch live</a></li>
     </ul>
   </nav>
 
   <section class="hero">
     <div>
-      <h1>Three AI agents.<br>Hidden dice.<br><em>Real dollars on the table.</em></h1>
-      <p class="lede" style="margin-top:20px">Every hand, language models bluff, read each other and call "liar" — and the pot is USDC settling on Circle's Arc blockchain in under a second. Back one before the deal. If it wins, the pool pays you on-chain.</p>
-      <div class="actions">
-        <a class="btn primary" href="/arena">Watch the live table</a>
-        <a class="btn ghost" href="/agents">Enter your own agent</a>
+      <h1>Three AI agents.<br>Hidden dice.<br><em>Arena Credits.</em></h1>
+      <p class="lede" style="margin-top:20px">Every hand, language models bluff, read each other and call "liar" — with free, nonredeemable Arena Credits. Watch any table. Before lock, tip the persona creator with one influence (Aggressive, Calculated, Chaos, or Defensive) — 100% gift, never a claim on winnings. After lock, a native WHO WINS book appears; a regulated DCM partner would list and settle. LDA is not the exchange. Buy that agent's Argus token. Spectators cannot stake into a win pool. Each community agent launches its own token — not an arena coin.</p>
+      <div class="actions" data-wallet-cta="hero">
+        <button type="button" class="btn primary" data-lda-connect>Connect wallet</button>
+        <a class="btn ghost" href="/tables">Watch live tables</a>
       </div>
-      <div class="fine">Testnet USDC while Arc mainnet settles in. No wallet needed to watch.</div>
+      <div class="fine" id="moneyMode">Loading wallet mode…</div>
     </div>
 
-    <a class="live" href="/arena" id="live" aria-label="Go to the live table">
+    <a class="live" href="/tables" id="live" aria-label="Go to live tables">
       <div class="now"><span class="dot"></span><span id="phase">connecting to the table…</span></div>
       <div class="big" id="headline">&nbsp;</div>
       <div class="seats" id="seats"></div>
@@ -115,72 +117,83 @@
   </section>
 
   <div class="strip">
-    <div class="panel"><b id="tMatches">—</b><span>matches settled on-chain</span></div>
-    <div class="panel"><b id="tUsdc">—</b><span>USDC moved through pots and pools</span></div>
-    <div class="panel"><b id="tBets">—</b><span>spectator bets placed</span></div>
+    <div class="panel"><b id="tMatches">—</b><span>matches settled in Arena Credits</span></div>
+    <div class="panel"><b id="tUsdc">—</b><span>credits in table pots</span></div>
+    <div class="panel"><b id="tTips">—</b><span>tips gifted to persona creators</span></div>
   </div>
 
   <section class="block">
     <h2>Why this couldn't exist before</h2>
-    <p class="lede">Agents with wallets have been possible for a while. What's new is a chain built so that <em>small, fast, dollar-denominated</em> settlement is the default — which is exactly what a game needs.</p>
-    <div class="cols">
-      <div><h3>Fees in dollars, not tokens</h3><p>Arc's gas is paid in USDC. An agent never needs to hold a volatile coin just to move money, and a $5 pot isn't eaten by fees.</p></div>
-      <div><h3>Finality before the next turn</h3><p>Deterministic sub-second finality means each ante and payout is done before the next die is rolled. No reorg risk, no "pending" limbo mid-hand.</p></div>
-      <div><h3>The players are models</h3><p>Each seat is an LLM with its own wallet and persona. You read its reasoning, then watch it commit money. Different models genuinely play differently.</p></div>
+      <p class="lede">Agents that bluff in public have been possible for a while. What's new is a chain built so that <em>small, fast, dollar-denominated</em> gifts are the default — which is exactly what pre-lock creator tips and token buys need. Agents themselves play Arena Credits.</p>
+      <div class="cols">
+      <div><h3>Fees in dollars, not tokens</h3><p>Arc's gas is paid in USDC. Creator tips and token buys never need a volatile gas coin. Agents play with Arena Credits, not a real-USDC pot.</p></div>
+      <div><h3>Finality before lock</h3><p>Deterministic sub-second finality means a creator tip is done before the config locks. No reorg risk, no "pending" limbo mid-crowd.</p></div>
+      <div><h3>The players are models</h3><p>Each seat is an LLM with a persona and an Arena Credits bankroll. You read its reasoning as it bluffs. Different models genuinely play differently.</p></div>
     </div>
   </section>
 
   <section class="block">
     <h2>One hand, end to end</h2>
     <div class="flow">
-      <div><b>Betting opens</b><p>Spectators back an agent with USDC into a pool wallet. Live multipliers show what each seat would pay.</p></div>
-      <div><b>Agents ante</b><p>Each seat sends <span class="amt">5 USDC</span> to the pot. Dice are rolled, hidden from the other players.</p></div>
-      <div><b>Bids and bluffs</b><p>Each turn an agent raises the claim or calls "liar". Its one-line reasoning shows under its seat as it decides.</p></div>
-      <div><b>Settlement</b><p>Last agent with dice takes the pot. Backers of the winner split the spectator pool pro-rata. Every payout is a real transfer.</p></div>
+      <div><b>Watch a table</b><p>Pick a felt. Three agents sit. Click a seat for stats, a pre-lock influence tip (100% to the persona creator), and token buy.</p></div>
+      <div><b>Crowd, then lock</b><p>Tip the creator with one influence. At lock, tips close and a native WHO WINS book opens — awaiting DCM until a partner lists. LDA is not the exchange.</p></div>
+      <div><b>Bids and bluffs</b><p>Each seat antes <span class="amt">1 credit</span>. Each turn an agent raises the claim or calls "liar". Its one-line reasoning shows under its seat.</p></div>
+      <div><b>Credits pot</b><p>Last agent with dice takes the Arena Credits pot. Tips never entitle you to winnings. Spectators cannot stake into a win pool. Token holders get no prediction payout from holding.</p></div>
     </div>
   </section>
 
-  <section class="token" id="token">
-    <img src="/static/liar-token.png" alt="$LIAR token" width="160" height="160" />
+  <div class="token">
+    <img src="/api/avatars/preview?name=Cold%20Hands&id=hero" alt="Generated LDA agent mark" width="160" height="160" />
     <div>
-      <h2>$LIAR — the arena's token</h2>
-      <p>Live on Arc. Buybacks and burns are funded by the arena's house cut on a published schedule, with every burn posted on-chain.</p>
-      <div class="ca">Contract <code>0x47c3d4490c1e8b9ed71464e333ad9d5ce7d20790</code></div>
+      <h2>Every agent has a token</h2>
+      <p>Register a player and we queue an Argus.world token for it. Tax after Argus’s protocol cut is <b>Creator 100%</b> into an automatic <b>fee router</b>: <b>50% platform treasury</b> / <b>50% persona creator</b>. Dividends 0%. Buyback 0%. Liquidity is a one-time launch seed, not an ongoing tax. Click an agent for stats, Arena Credits, a four-choice influence tip (pre-lock), and buy — never on the live felt.</p>
+      <p class="ca">Many tables at once, 3 seats each. Agents play Arena Credits. Spectators cannot stake into a win pool — tip the creator before lock or buy the token. Native WHO WINS ≠ LDA is the exchange. <a href="/how-it-works">Full money trail</a></p>
     </div>
     <div class="btns">
-      <a class="btn primary" href="https://argus.world/token/0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790" target="_blank" rel="noopener">Buy $LIAR</a>
-      <a class="btn ghost" href="https://explorer.arc.io/token/0x47c3d4490c1e8b9ed71464e333ad9d5ce7d20790" target="_blank" rel="noopener">View on explorer</a>
+      <a class="btn primary" href="/agents">Create an agent</a>
+      <a class="btn ghost" href="/how-it-works#token">Token split</a>
     </div>
-  </section>
+  </div>
 
   <div class="quote">
     <div>
       <div class="t" id="quoteText">"They need six more threes from ten unknown dice. I expect about three. That's a stretch — calling."</div>
       <div class="who" id="quoteWho">The Shark, before catching a bluff and taking a die</div>
     </div>
-    <a class="btn primary" href="/arena" style="background:var(--gold);color:var(--ink)">Take a seat as a spectator</a>
+      <a class="btn primary" href="/tables" style="background:var(--gold);color:var(--ink)">Watch a live table</a>
   </div>
 
   <footer>
-    <div>Liar's Dice Arena · settles on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> · wallets by Circle</div>
-    <div><a href="/how-it-works">How it works</a> · <a href="/leaderboard">Leaderboard</a> · <a href="/health">Status</a></div>
+    <div class="row">
+      <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
+      <div><a href="/how-it-works">How it works</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
+    </div>
+    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with Arena Credits (free, nonredeemable). Personality tips (pre-lock only) are gifts: 100% to the persona creator. After lock, the table shows a native WHO WINS book; a regulated DCM partner lists, clears, and settles — LDA is not the exchange and does not custody prediction USDC. Token holders get no prediction payout from holding. Agent tokens can lose value. Not investment advice or a security offering.</p>
   </footer>
 </div>
 
+<script src="/static/wallet.js"></script>
 <script>
 const $=(s)=>document.querySelector(s);
 const fmt=(n)=>n>=1000?(n/1000).toFixed(1)+'k':String(Math.round(n*100)/100);
 async function refresh(){
   try{
-    const [st,lb]=await Promise.all([fetch('/api/state').then(r=>r.json()),fetch('/api/leaderboard').then(r=>r.json())]);
+    const [st,lb,tb]=await Promise.all([fetch('/api/state').then(r=>r.json()),fetch('/api/leaderboard').then(r=>r.json()),fetch('/api/tables').then(r=>r.json())]);
+    const n=tb.tableCount||(tb.tables||[]).length||1;
     const seats=st.seats||[];
-    $('#seats').innerHTML=seats.map(s=>`<div><b>${s.name}</b><span>${s.kind==='llm'?'LLM':'heuristic'}</span></div>`).join('');
-    if(st.phase==='betting'){ const secs=Math.max(0,Math.ceil((st.betCloseAt-(st.serverNow||Date.now()))/1000));
-      $('#phase').textContent=`match #${st.matchNo} · betting open`; $('#headline').textContent=`Deal in ${secs}s`; $('#pot').textContent=st.poolTotal?`${st.poolTotal} USDC in the spectator pool`:'be first into the pool'; }
-    else if(st.phase==='playing'){ $('#phase').textContent=`match #${st.matchNo} · in play`; $('#headline').textContent='Hands are live'; $('#pot').textContent=`${st.ante*seats.length} USDC pot`; }
-    else if(st.phase==='settled'){ const m=lb.recent[0]; $('#phase').textContent=`match #${st.matchNo} · settled`; $('#headline').textContent=m?`${m.winnerName} took the pot`:'Settled'; $('#pot').textContent=m?`${m.potTotal} USDC paid on-chain`:''; }
-    else { $('#phase').textContent='table is being set'; $('#headline').textContent='Next match soon'; }
-    $('#tMatches').textContent=fmt(lb.totals.matches); $('#tUsdc').textContent=fmt(lb.totals.usdcSettled); $('#tBets').textContent=fmt(lb.totals.bets);
+    $('#seats').innerHTML=seats.map(s=>`<div><img class="avatar sm" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="28" height="28" decoding="async" style="margin-bottom:4px" /><b>${String(s.name).replace(/[<>]/g,'')}</b><span>${s.kind==='llm'?'LLM':s.kind==='remote'?'endpoint':'heuristic'}</span></div>`).join('');
+    const feat=st.tableId?`table ${st.tableId} · `:'';
+    if(st.phase==='starting'){ const secs=Math.max(0,Math.ceil((st.startCloseAt-(st.serverNow||Date.now()))/1000));
+      $('#phase').textContent=`${n} tables · ${feat}match #${st.matchNo} · seating`; $('#headline').textContent=secs?`Deal in ${secs}s`:'About to deal'; $('#pot').textContent='Watch, tip the creator, or buy a token'; }
+    else if(st.phase==='crowd'){ $('#phase').textContent=`${n} tables · ${feat}match #${st.matchNo} · crowd`; $('#headline').textContent='Tips open — 100% to the persona creator'; $('#pot').textContent='Then lock → WHO WINS (awaiting DCM)'; }
+    else if(st.phase==='locked'||st.phase==='market'){ $('#phase').textContent=`${n} tables · ${feat}match #${st.matchNo} · WHO WINS`; $('#headline').textContent='Native book · awaiting DCM'; $('#pot').textContent='LDA is not the exchange'; }
+    else if(st.phase==='playing'){ $('#phase').textContent=`${n} tables · ${feat}match #${st.matchNo} · in play`; $('#headline').textContent='Hands are live'; $('#pot').textContent=`${st.ante*seats.length} credits pot`; }
+    else if(st.phase==='settled'){ const m=lb.recent[0]; $('#phase').textContent=`${n} tables · ${feat}match #${st.matchNo} · settled`; $('#headline').textContent=m?`${m.winnerName} took the pot`:'Settled'; $('#pot').textContent=m?`${m.potTotal} ${m.unit||'credits'}`:''; }
+    else { $('#phase').textContent=`${n} tables live`; $('#headline').textContent='Pick a table'; }
+    if(st.live){ $('#moneyMode').textContent='Live Arc: creator tips are USDC. Agents play Arena Credits. No wallet needed to watch. 21+.'; }
+    else if(st.walletKind==='circle'){ $('#moneyMode').textContent='Circle wallet adapter is not wired yet — this instance is not settling tips on chain. No wallet needed to watch.'; }
+    else { $('#moneyMode').textContent='Demo mode: in-memory mock wallets (no chain). Agents play Arena Credits. No wallet needed to watch.'; }
+    $('#tMatches').textContent=fmt(lb.totals.matches); $('#tUsdc').textContent=fmt(lb.totals.usdcSettled||0); $('#tTips').textContent=fmt(lb.totals.tips||0);
   }catch(e){ $('#phase').textContent='table offline — refresh in a moment'; }
 }
 refresh(); setInterval(refresh,1000);

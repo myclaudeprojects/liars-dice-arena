@@ -1,9 +1,9 @@
 // demo.js — Watch a full match right now. No API keys, no chain.
 //   node demo.js
-// Swap MockAgent -> LLMAgent and MockWallet -> CircleArcWallet when ready.
+// Agents play Arena Credits. Swap MockAgent -> LLMAgent when ready.
 
 const { MockAgent } = require("./src/agents");
-const { makeWallet } = require("./src/wallet");
+const { CreditBook } = require("./src/credits");
 const { runMatch } = require("./src/arena");
 
 const C = {
@@ -19,10 +19,10 @@ const C = {
 function print(ev) {
   switch (ev.type) {
     case "ante":
-      console.log(C.dim(`  💰 ${ev.name} antes ${ev.amount} USDC  ${C.dim(ev.explorer)}`));
+      console.log(C.dim(`  💰 ${ev.name} antes ${ev.amount} credits`));
       break;
     case "pot_ready":
-      console.log(C.bold(`  🏆 Pot: ${ev.total} USDC\n`));
+      console.log(C.bold(`  🏆 Table pot: ${ev.total} credits (Arena Credits only)\n`));
       break;
     case "match_start":
       console.log(C.bold("  Seats: ") + ev.seats.map((s) => `${s.name}[${s.kind}]`).join("  vs  ") + "\n");
@@ -46,28 +46,28 @@ function print(ev) {
       console.log(C.red(`   (illegal ${JSON.stringify(ev.action)}: ${ev.error} — forced challenge)`));
       break;
     case "settled":
-      console.log(C.green(C.bold(`\n  🎉 ${ev.name} wins ${ev.amount} USDC`)) + C.dim(`   ${ev.explorer}`));
+      console.log(C.green(C.bold(`\n  🎉 ${ev.name} wins ${ev.amount} credits`)));
       break;
   }
 }
 
 (async () => {
-  const wallet = makeWallet({ startingBalance: 100 });
+  const credits = new CreditBook({ persist: false, starting: 20 });
   const agents = [
     new MockAgent({ id: "claude", name: "Claude", aggression: 0.45 }),
     new MockAgent({ id: "gpt", name: "GPT", aggression: 0.7 }),
     new MockAgent({ id: "llama", name: "Llama", aggression: 0.3 }),
   ];
 
-  console.log(C.bold("\n════ LIAR'S DICE ARENA — on Arc ════\n"));
+  console.log(C.bold("\n════ LIAR'S DICE ARENA — Arena Credits ════\n"));
   const result = await runMatch({
-    agents, wallet, ante: 5, seed: 7,
+    agents, credits, ante: 1, seed: 7,
     onEvent: print,
   });
 
-  console.log(C.bold("\n  Final balances:"));
+  console.log(C.bold("\n  Final seats:"));
   for (const ag of agents) {
-    console.log(`   ${ag.name}: ${result.balances[ag.id]} USDC`);
+    console.log(`   ${ag.name}: ${result.balances[ag.id]} credits`);
   }
   console.log();
 })();

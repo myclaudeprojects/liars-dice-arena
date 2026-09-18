@@ -1,12 +1,17 @@
-// wallet.js — The ONLY place that touches money. Everything else is chain-agnostic.
+// wallet.js — The ONLY place that touches on-chain USDC.
 //
-// The game needs these operations:
+// Agents ante USDC from seat wallets into a per-match pot. Spectators tip
+// USDC into the seat. Argus token buys deep-link off this adapter.
+// There is no spectator win pool.
+//
+// Operations used here:
 //   createSeatWallet(label)              -> { walletId, address }
-//   createPot()                          -> { walletId, address }
+//   createPot(label)                     -> { walletId, address }
 //   getBalance(walletId)                 -> number (USDC)
-//   ante(fromWallet, potWallet, amt)     -> txHash  (agent pays into the pot)
-//   settle(potWallet, winnerWallet, amt) -> txHash  (pot pays the winner)
-//   ensureFunded(wallet, amt)            -> txHash|null (house tops up its own seats)
+//   ante(fromWallet, toWallet, amt)      -> txHash  (seat → pot, or spectator → seat)
+//   settle(fromWallet, toWallet, amt)    -> txHash  (pot → seat / creator)
+//   credit(wallet, amt)                  -> txHash  (mock top-up)
+//   ensureFunded(wallet, needed)         -> txHash|null  (house seats only)
 // Wallets are always passed as objects { walletId, address }.
 //
 // MockWallet   — in memory, auto-funded, zero keys. Used for local play.
@@ -27,37 +32,80 @@ class MockWallet {
     this.balances.set(walletId, this.startingBalance);
     return { walletId, address, name };
   }
-  async createPot() {
-    const walletId = `mock_pot_${++this.n}`;
+  async createPot(label = "pot") {
+    const walletId = `mock_pot_${++this.n}_${String(label).replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 40)}`;
     const address = "0xpot" + (this.n.toString(16).padStart(37, "0"));
     this.balances.set(walletId, 0);
-    return { walletId, address };
+    return { walletId, address, name: String(label) };
   }
   async getBalance(walletId) { return this.balances.get(walletId) ?? 0; }
   async ante(fromW, toW, amt) {
     const b = this.balances.get(fromW.walletId) ?? 0;
     if (b < amt) throw new Error("insufficient_balance");
     this.balances.set(fromW.walletId, b - amt);
-    this.balances.set(toW.walletId, (this.balances.get(toW.walletId) ?? 0) + amt);
+    const toId = toW.walletId || toW.address;
+    this.balances.set(toId, (this.balances.get(toId) ?? 0) + amt);
     return "0xmocktx_ante_" + Math.random().toString(16).slice(2, 10);
   }
   async settle(potW, toW, amt) {
     const b = this.balances.get(potW.walletId) ?? 0;
     const pay = Math.min(b, amt);
     this.balances.set(potW.walletId, b - pay);
-    this.balances.set(toW.walletId, (this.balances.get(toW.walletId) ?? 0) + pay);
+    this.balances.set(toW.walletId || toW.address, (this.balances.get(toW.walletId || toW.address) ?? 0) + pay);
     return "0xmocktx_settle_" + Math.random().toString(16).slice(2, 10);
   }
-  async ensureFunded() { return null; }
+  async credit(w, amt) {
+    const id = w.walletId || w.address;
+    this.balances.set(id, (this.balances.get(id) ?? 0) + Number(amt));
+    return "0xmocktx_credit_" + Math.random().toString(16).slice(2, 10);
+  }
+  async ensureFunded(w, needed) {
+    const bal = this.balances.get(w.walletId) ?? 0;
+    if (bal >= needed) return null;
+    this.balances.set(w.walletId, Number(needed) * 3);
+    return "0xmocktx_fund_" + Math.random().toString(16).slice(2, 10);
+  }
   explorerUrl(txHash) { return `mock://tx/${txHash}`; }
   addressUrl(addr) { return `mock://address/${addr}`; }
 }
 
 // ---- CircleArcWallet (placeholder) ----------------------------------------
-// Circle developer-controlled wallets are supported by the SDK (see
-// scripts/circle-setup.js) but the arena runs self-custodied via EvmWallet.
+// Circle developer-controlled wallets are the intended custodial path (see
+// scripts/circle-setup.js) but the live arena currently runs self-custodied
+// via EvmWallet (HOUSE_PRIVATE_KEY). This class must not throw in the
+// constructor: a CIRCLE_API_KEY in the environment should not crash boot.
+//
+// Wire these methods against *current* Circle docs before enabling
+// provider:"circle" in production. Signatures change; confirm via
+// developers.circle.com (initiateDeveloperControlledWalletsClient,
+// createWalletSet, createWallets, createTransaction, getWalletTokenBalance).
 class CircleArcWallet {
-  constructor() { throw new Error("CircleArcWallet is not wired; set HOUSE_PRIVATE_KEY to use the self-custodied Arc adapter."); }
+  constructor({ apiKey, entitySecret, blockchain = "ARC", walletSetId, usdcTokenId } = {}) {
+    this.kind = "circle";
+    this.apiKey = apiKey;
+    this.entitySecret = entitySecret;
+    // Money paths are Arc mainnet. Circle's setup script uses "ARC" for mainnet;
+    // confirm the live identifier in the Circle console — do not default to testnet.
+    this.blockchain = blockchain || "ARC";
+    this.walletSetId = walletSetId || process.env.CIRCLE_WALLET_SET_ID || null;
+    this.usdcTokenId = usdcTokenId || process.env.CIRCLE_USDC_TOKEN_ID || null;
+    this.wired = false;
+  }
+  _todo(op) {
+    throw new Error(
+      `TODO(circle): CircleArcWallet.${op} is not wired. Set HOUSE_PRIVATE_KEY to use EvmWallet, or implement this method against live Circle Developer-Controlled Wallets docs ` +
+      `(initiateDeveloperControlledWalletsClient, createWallets({ walletSetId, blockchains:[blockchain], count:1, accountType:"EOA"|"SCA" }), createTransaction with the current USDC token id). ` +
+      `Do not hard-code token ids or chain identifiers — pull them from the Circle console / MCP. blockchain=${this.blockchain}`
+    );
+  }
+  async createSeatWallet() { this._todo("createSeatWallet"); }
+  async createPot() { this._todo("createPot"); }
+  async getBalance() { this._todo("getBalance"); }
+  async ante() { this._todo("ante"); }
+  async settle() { this._todo("settle"); }
+  async ensureFunded() { this._todo("ensureFunded"); }
+  explorerUrl(txHash) { return `https://developers.circle.com/tx/${txHash || ""}`; }
+  addressUrl(addr) { return `https://developers.circle.com/address/${addr || ""}`; }
 }
 
 // ---- EvmWallet (real, self-custodied) ---------------------------------------
@@ -69,6 +117,9 @@ class CircleArcWallet {
 class EvmWallet {
   constructor({ privateKey, rpcUrl = "https://rpc.mainnet.arc.io", chainId = 5042, explorer = "https://explorer.arc.io", gasReserve = 0.02 }) {
     if (!privateKey) throw new Error("HOUSE_PRIVATE_KEY required");
+    if (Number(chainId) !== 5042) {
+      console.warn(`EvmWallet chainId=${chainId} is not Arc mainnet (5042). Money paths are specified as mainnet-only.`);
+    }
     const ethers = require("ethers");
     this.ethers = ethers;
     this.kind = "evm";
@@ -172,7 +223,7 @@ class EvmWallet {
     const block = await this.provider.getBlock(rc.blockNumber);
     return { from: tx.from, amount: this._fromWei(tx.value), timestamp: block.timestamp * 1000, blockNumber: rc.blockNumber };
   }
-  // What the browser needs to add Arc + pay the pool.
+  // What the browser needs to add Arc + send a tip to a seat.
   chainInfo() { return { chainId: this.chainId, chainIdHex: "0x" + this.chainId.toString(16), rpcUrl: this.rpcUrl, explorer: this.explorer, name: this.chainId === 5042 ? "Arc" : "Arc Testnet" }; }
   explorerUrl(txHash) { return `${this.explorer}/tx/${txHash}`; }
   addressUrl(addr) { return `${this.explorer}/address/${addr}`; }

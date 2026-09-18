@@ -11,6 +11,8 @@
 // game loop free of any vendor specifics.
 
 const { DICE_SIDES, isHigherBid } = require("./engine");
+const { assertSafeAgentUrl } = require("./registry");
+const { effectivePlay, influencePrompt } = require("./influence");
 
 // Expected number of dice showing `face` among `unknownDice` dice we can't see,
 // with ones wild. Each unknown die matches a given non-1 face with prob 2/6
@@ -39,9 +41,17 @@ class MockAgent {
     this.kind = "mock";
   }
 
+  influenceSnap(view) {
+    if (view && view.influence) return view.influence;
+    if (typeof this.influenceOf === "function") return this.influenceOf();
+    return null;
+  }
+
   async act(view) {
     const { you, currentBid, totalDice, onesWild } = view;
     const unknown = totalDice - you.dice.length;
+    const play = effectivePlay(this.aggression, this.influenceSnap(view));
+    const aggression = play.aggression;
 
     // Decide whether to challenge the current bid.
     if (currentBid) {
@@ -52,7 +62,8 @@ class MockAgent {
       // Simple believability score:
       const slack = exp - need;                          // >0 means plausible
       // Challenge more readily when slack is very negative; aggression lowers threshold.
-      const challengeThreshold = -1.0 - this.aggression; // e.g. -1.0 to -2.0
+      // Live influence (Aggressive / Defensive / Chaos) shifts challengeEase.
+      const challengeThreshold = -1.0 - aggression - play.challengeEase; // e.g. -1.0 to -2.0
       if (slack < challengeThreshold) {
         return {
           action: { type: "challenge" },
@@ -75,8 +86,9 @@ class MockAgent {
     if (currentBid) {
       if (targetCount < currentBid.count ||
           (targetCount === currentBid.count && bestFace <= currentBid.face)) {
-        // bump minimally, sometimes bluff a bit higher based on aggression
-        targetCount = currentBid.count + (Math.random() < this.aggression ? 1 : 0);
+        // bump minimally, sometimes bluff a bit higher based on aggression / bidNudge
+        const push = Math.random() < aggression || Math.random() < Math.max(0, play.bidNudge);
+        targetCount = currentBid.count + (push ? 1 : 0);
         bestFace = currentBid.count === targetCount
           ? Math.min(DICE_SIDES, currentBid.face + 1)
           : bestFace;
@@ -84,6 +96,9 @@ class MockAgent {
           targetCount = currentBid.count + 1;
         }
       }
+    }
+    if (play.bidNudge > 0.15 && Math.random() < play.bidNudge) {
+      targetCount = Math.min(totalDice, targetCount + 1);
     }
     targetCount = Math.min(targetCount, totalDice);
     if (currentBid && !isHigherBid(currentBid, { count: targetCount, face: bestFace })) {
@@ -101,21 +116,31 @@ class MockAgent {
 
 // ---- LLMAgent: personality-driven, model-agnostic ------------------------
 class LLMAgent {
-  constructor({ id, name, persona, complete, model }) {
+  constructor({ id, name, persona, complete, model, timeoutMs = 6000 }) {
     this.id = id;
     this.name = name;
     this.persona = persona;      // short character description
     this.complete = complete;    // async ({system,user}) => string
     this.model = model;
+    this.timeoutMs = timeoutMs;
     this.kind = "llm";
   }
 
+  influenceSnap(view) {
+    if (view && view.influence) return view.influence;
+    if (typeof this.influenceOf === "function") return this.influenceOf();
+    return null;
+  }
+
   async act(view) {
-    const system = buildSystemPrompt(this.persona);
+    const system = buildSystemPrompt(this.persona, influencePrompt(this.influenceSnap(view)));
     const user = buildUserPrompt(view);
     let raw;
     try {
-      raw = await this.complete({ system, user, model: this.model });
+      raw = await withTimeout(
+        this.complete({ system, user, model: this.model, timeoutMs: this.timeoutMs }),
+        this.timeoutMs
+      );
     } catch (e) {
       // On any model error, fall back to a safe legal move so the match never stalls.
       return safeFallback(view, `model error: ${e.message}`);
@@ -128,10 +153,23 @@ class LLMAgent {
 
 function faceName(f) { return String(f); }
 
-function buildSystemPrompt(persona) {
-  return `You are a player in a live game of Liar's Dice, betting real USDC on the Arc blockchain. Spectators are watching.
+function withTimeout(promise, ms) {
+  const n = Number(ms);
+  if (!(n > 0) || !Number.isFinite(n)) return promise;
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("timeout")), n);
+    Promise.resolve(promise).then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); }
+    );
+  });
+}
 
-${persona}
+function buildSystemPrompt(persona, extra = "") {
+  const inf = extra ? `\n\n${extra}` : "";
+  return `You are a player in a live game of Liar's Dice. You ante free, nonredeemable Arena Credits into a table pot. Spectators may watch, tip your creator with one influence (Aggressive, Calculated, Chaos, or Defensive), and buy your token — they cannot stake on the outcome and are never entitled to winnings. Credits are not money.
+
+${persona}${inf}
 
 RULES: Each die is 1-6. A bid claims "there are at least COUNT dice showing FACE" across ALL dice on the table. Ones are wild (count as any face). Each bid must be strictly higher than the last (higher count, or same count + higher face). Instead of bidding you may challenge the last bid ("call liar"): all dice reveal; if the real total meets the bid, the challenger loses a die, else the bidder does. Losers drop a die; last player with dice wins the pot.
 
@@ -142,7 +180,9 @@ or
 }
 
 function buildUserPrompt(view) {
-  const { you, table, currentBid, totalDice, onesWild } = view;
+  const you = view.you || { id: "?", name: "?", dice: [] };
+  const table = view.table || [];
+  const { currentBid, totalDice, onesWild } = view;
   const others = table.filter((t) => t.id !== you.id && t.alive)
     .map((t) => `${t.name}(${t.diceCount} dice)`).join(", ");
   return `Your dice: [${you.dice.join(", ")}]
@@ -164,7 +204,7 @@ function parseAction(raw, view) {
     const end = cleaned.lastIndexOf("}");
     obj = JSON.parse(cleaned.slice(start, end + 1));
   } catch { return null; }
-  if (!obj || !obj.action) return null;
+  if (!obj || !obj.action || typeof obj.action !== "object") return null;
   const thought = typeof obj.thought === "string" ? obj.thought.slice(0, 200) : "";
   const a = obj.action;
   if (a.type === "challenge") {
@@ -202,14 +242,16 @@ function safeFallback(view, why) {
 //   x-arena-agent: the agent id
 // Reply within `timeoutMs` with {"thought":"...","action":{...}} (same shape as LLMAgent).
 class RemoteAgent {
-  constructor({ id, name, endpoint, sign, timeoutMs = 6000, onResult = () => {} }) {
+  constructor({ id, name, endpoint, sign, timeoutMs = 6000, onResult = () => {}, allowLocal = false }) {
     this.id = id; this.name = name; this.endpoint = endpoint; this.sign = sign;
     this.timeoutMs = timeoutMs; this.onResult = onResult; this.kind = "remote";
+    this.allowLocal = allowLocal;
   }
   async act(view) {
     const body = JSON.stringify({ agentId: this.id, view });
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
+      await assertSafeAgentUrl(this.endpoint, { allowLocal: this.allowLocal });
       const r = await fetch(this.endpoint, {
         method: "POST", signal: ctrl.signal, redirect: "error",
         headers: { "content-type": "application/json", "x-arena-agent": this.id, "x-arena-signature": this.sign(body) },
@@ -227,4 +269,4 @@ class RemoteAgent {
   }
 }
 
-module.exports = { MockAgent, LLMAgent, RemoteAgent, parseAction, safeFallback, expectedMatches, myMatches };
+module.exports = { MockAgent, LLMAgent, RemoteAgent, parseAction, safeFallback, expectedMatches, myMatches, withTimeout };

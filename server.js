@@ -1,5 +1,5 @@
 // server.js — Live arena. Serves the spectator UI, streams every event over
-// SSE, and runs the betting window -> match -> settlement cycle.
+// SSE, and runs many parallel tables (betting window → match → settlement).
 //   node server.js            (mock agents + mock wallet, zero keys)
 //   USE_LLM=1 node server.js  (real models via ANTHROPIC_API_KEY / OPENAI_API_KEY)
 
@@ -12,17 +12,22 @@ const path = require("path");
 const { MockAgent, LLMAgent, RemoteAgent } = require("./src/agents");
 const { Registry } = require("./src/registry");
 const { makeWallet } = require("./src/wallet");
-const { runMatch } = require("./src/arena");
-const { BettingPool, impliedMultipliers } = require("./src/betting");
+const { impliedMultipliers } = require("./src/betting");
 const llm = require("./src/llm");
 const { Stats } = require("./src/stats");
+const argus = require("./src/argus");
+const avatar = require("./src/avatar");
+const { resolvePublicFile, shouldReleaseTxClaim } = require("./src/httputil");
+const { TableManager, TABLE_ID_RE } = require("./src/tables");
 const stats = new Stats();
 const TABLE_SIZE = Math.max(2, Math.min(4, Math.round(Number(process.env.TABLE_SIZE) || 3)));
+const TABLE_COUNT = Math.max(1, Math.min(24, Math.round(Number(process.env.TABLE_COUNT) || 3)));
 const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "1" || !process.env.RENDER });
 
 // Env numbers: tolerate "1600ms", " 30000 ", "0.1 USDC" etc.; fall back to the default on garbage.
 function envNum(name, dflt) { const m = String(process.env[name] ?? "").match(/-?\d+(\.\d+)?/); const v = m ? Number(m[0]) : NaN; return Number.isFinite(v) ? v : dflt; }
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || "0.0.0.0";
 const TURN_DELAY_MS = envNum("TURN_DELAY_MS", 1000);
 const REVEAL_DELAY_MS = envNum("REVEAL_DELAY_MS", 3000); // time for the flip sequence to play out
 const DEAL_DELAY_MS = envNum("DEAL_DELAY_MS", 1000);
@@ -31,7 +36,8 @@ const ANTE = envNum("ANTE", 5);
 const MIN_STAKE = envNum("MIN_STAKE", 0.05);
 
 // ---- world state --------------------------------------------------------
-// Money adapter: self-custodied hot key > Circle wallets > in-memory mock.
+// Money adapter: MOCK=1 always wins (local previews). Else self-custodied
+// hot key > Circle stub (not wired — ops throw TODO) > in-memory mock.
 const wallet = makeWallet(process.env.MOCK === "1" ? { startingBalance: 100 } : process.env.HOUSE_PRIVATE_KEY ? {
   provider: "evm", privateKey: process.env.HOUSE_PRIVATE_KEY,
   rpcUrl: process.env.ARC_RPC_URL || "https://rpc.mainnet.arc.io", chainId: Number(process.env.ARC_CHAIN_ID || 5042),
@@ -40,16 +46,14 @@ const wallet = makeWallet(process.env.MOCK === "1" ? { startingBalance: 100 } : 
   provider: "circle", apiKey: process.env.CIRCLE_API_KEY,
   entitySecret: process.env.CIRCLE_ENTITY_SECRET, blockchain: process.env.CIRCLE_BLOCKCHAIN || "ARC-TESTNET",
 } : { startingBalance: 100 });
+const LIVE_CHAIN = wallet.kind === "evm";
 
-const clients = new Set();
-let state = { phase: "idle", matchNo: 0, seats: [], pool: null, bets: [], multipliers: {}, betCloseAt: null };
-let pool = null;
-let houseWallet = null;
 const spectatorWallets = {}; // bettorId -> wallet (mock: auto-funded)
+const mockTokenBuys = {}; // agentId -> mock purchases (demo only; not on chain)
 
-function broadcast(ev) {
-  const line = `data: ${JSON.stringify(ev)}\n\n`;
-  for (const res of clients) res.write(line);
+function parseReq(req) {
+  const u = new URL(req.url, "http://local");
+  return { path: u.pathname, q: u.searchParams };
 }
 
 // LLM provider for prompt-type agents (community personas). Optional.
@@ -66,6 +70,7 @@ function instantiate(rec) {
   let ag;
   if (rec.type === "endpoint") {
     ag = new RemoteAgent({ ...base, endpoint: rec.endpoint, sign: (body) => registry.signature(rec, body),
+      allowLocal: registry.allowLocal,
       onResult: (ok) => ok ? registry.recordSuccess(rec.id) : registry.recordFailure(rec.id) });
   } else if (rec.type === "prompt" && llmComplete) {
     ag = new LLMAgent({ ...base, persona: rec.persona, complete: llmComplete });
@@ -77,124 +82,269 @@ function instantiate(rec) {
   ag.owner = rec.owner; return ag;
 }
 
-async function buildAgents() {
-  // Seat community agents that can cover the ante; house fills the rest.
-  const funded = new Set();
-  for (const a of registry.list()) {
-    if (a.house || a.status !== "active") continue;
-    try { const w = await ensureWallet(registry.get(a.id)); if ((await wallet.getBalance(w.walletId)) >= ANTE) funded.add(a.id); } catch {}
-  }
-  const recs = registry.pickSeats(TABLE_SIZE, { eligible: (a) => funded.has(a.id) });
-  const agents = [];
-  for (const rec of recs) {
-    const ag = instantiate(rec); ag.walletInfo = await ensureWallet(rec);
-    if (rec.house && wallet.ensureFunded) {           // house bankrolls its own bots
-      try { const tx = await wallet.ensureFunded(ag.walletInfo, ANTE); if (tx) broadcast({ type: "funded", agentId: rec.id, name: rec.name, tx, explorer: wallet.explorerUrl(tx) }); }
-      catch (e) { console.error(`could not fund ${rec.id}:`, e.message); }
+const tables = new TableManager({
+  wallet, registry, stats, instantiate, ensureWallet,
+  ante: ANTE, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT, liveChain: LIVE_CHAIN,
+  betWindowMs: BET_WINDOW_MS, turnDelayMs: TURN_DELAY_MS, revealDelayMs: REVEAL_DELAY_MS,
+  dealDelayMs: DEAL_DELAY_MS, minStake: MIN_STAKE, shouldReleaseTxClaim,
+  staggerMs: Math.max(1500, Math.round(BET_WINDOW_MS / Math.max(1, TABLE_COUNT))),
+});
+
+function lobbyState() {
+  const feat = tables.featured();
+  return {
+    ...(feat ? feat.publicState() : { phase: "idle", matchNo: 0, seats: [], bets: [], multipliers: {}, betCloseAt: null, poolTotal: 0 }),
+    tables: tables.list(),
+    tableCount: tables.tables.length,
+    ante: ANTE, walletKind: wallet.kind, live: LIVE_CHAIN, betWindowMs: BET_WINDOW_MS,
+  };
+}
+
+function poolView(table) {
+  return {
+    tableId: table?.id || null,
+    walletKind: wallet.kind, live: LIVE_CHAIN,
+    poolAddress: table?.pool?.poolWallet?.address || null,
+    open: !!(table && table.pool && table.pool.open),
+    closeAt: table?.betCloseAt || null,
+    matchNo: table?.matchNo || 0,
+    chain: wallet.chainInfo ? wallet.chainInfo() : null,
+    minStake: MIN_STAKE, betWindowMs: BET_WINDOW_MS,
+  };
+}
+
+async function placeBetOnTable(table, body) {
+  if (!table) throw new Error("Unknown table.");
+  const { bettorId, agentId, amount, txHash, address } = body;
+  if (!table.seats.find((s) => s.id === agentId)) throw new Error("Unknown seat.");
+  const claimedAmt = Number(amount);
+  const pool = table.pool;
+
+  if (txHash && wallet.verifyDeposit) {
+    if (!pool) throw new Error("No match is open.");
+    pool.claimTx(txHash);
+    try {
+      const dep = await wallet.verifyDeposit(txHash, pool.poolWallet.address);
+      const amt = dep.amount;
+      if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
+      if (Number.isFinite(claimedAmt) && Math.abs(dep.amount - claimedAmt) > 0.000001) {
+        throw new Error(`Transfer was ${dep.amount} USDC, not ${claimedAmt}.`);
+      }
+      if (address && dep.from.toLowerCase() !== String(address).toLowerCase()) throw new Error("Transfer came from a different wallet.");
+      if (!pool.open && !(dep.timestamp <= (pool.closeAt || 0) + 3000 && table.phase === "playing" && !pool.settledAt)) {
+        const rtx = await wallet.settle(pool.poolWallet, { address: dep.from }, dep.amount);
+        throw new Error(`Betting had closed — refunded ${dep.amount} USDC to your wallet (tx ${rtx.slice(0, 10)}…).`);
+      }
+      pool.recordExternal({ bettorId: dep.from, address: dep.from, agentId, amount: amt, txHash, claimed: true });
+      table.bets = pool.bets;
+      table.multipliers = impliedMultipliers(pool.bets, table.seats.map((s) => s.id), pool.houseFeeBps);
+      table.broadcast({ type: "bet", bettorId: dep.from, agentId, amount: amt, tx: txHash, explorer: wallet.explorerUrl(txHash), ...table.publicState() });
+      tables.notifyLobby();
+      return { ok: true, tx: txHash, explorer: wallet.explorerUrl(txHash), payoutTo: dep.from, amount: amt, tableId: table.id };
+    } catch (e) {
+      if (shouldReleaseTxClaim(e)) pool.releaseTx(txHash);
+      throw e;
     }
-    agents.push(ag);
   }
-  registry.markPlayed(recs.map((r) => r.id));
-  return agents;
-}
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-let lastError = null;
-async function cycle() {
-  if (!houseWallet) houseWallet = await wallet.createSeatWallet("house");
-  while (true) {
-    try { await oneMatch(); lastError = null; }
-    catch (e) {
-      // A failed match must never take the site down. Log, tell viewers, pause, move on.
-      lastError = { at: Date.now(), message: String(e?.message || e).slice(0, 300) };
-      console.error(`match #${state.matchNo} failed:`, e?.stack || e);
-      state.phase = "paused";
-      broadcast({ type: "phase", ...publicState(), error: lastError.message });
-      await sleep(15000);
-    }
-  }
-}
-
-async function oneMatch() {
-  {
-    const agents = await buildAgents();
-    state.matchNo++;
-    state.seats = agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house" }));
-
-    // 1) betting window
-    pool = new BettingPool({ wallet, houseFeeBps: 200 });
-    await pool.init();
-    state.phase = "betting"; state.bets = []; state.multipliers = impliedMultipliers([], agents.map(a => a.id), 200);
-    state.betCloseAt = Date.now() + BET_WINDOW_MS; pool.closeAt = state.betCloseAt;
-    broadcast({ type: "phase", ...publicState() });
-    await sleep(BET_WINDOW_MS);
-    pool.close();
-
-    // 2) match
-    state.phase = "playing";
-    broadcast({ type: "phase", ...publicState() });
-    const result = await runMatch({
-      agents, wallet, ante: ANTE, seed: Date.now(),
-      onEvent: async (ev) => { broadcast(ev); if (ev.type === "turn") await sleep(TURN_DELAY_MS); else if (ev.type === "reveal") await sleep(REVEAL_DELAY_MS); else if (ev.type === "hand_start") await sleep(DEAL_DELAY_MS); else if (ev.type === "ante") await sleep(500); },
-    });
-
-    stats.recordMatch({ matchNo: state.matchNo, seats: state.seats, winnerId: result.winnerId, potTotal: result.potTotal,
-                        ante: ANTE, log: result.log, poolTotal: pool.bets.reduce((s, b) => s + b.amount, 0), seed: result.seed });
-
-    // 3) spectator settlement
-    pool.settledAt = Date.now();
-    const settlement = await pool.settle(result.winnerId, houseWallet);
-    stats.recordBets(pool.bets, result.winnerId, settlement.payouts);
-    state.phase = "settled";
-    broadcast({ type: "pool_settled", winnerId: result.winnerId, winnerName: result.winnerName, ...settlement, ...publicState() });
-    await sleep(8000);
-  }
-}
-
-function publicState() {
-  return { serverNow: Date.now(), phase: state.phase, matchNo: state.matchNo, seats: state.seats, bets: state.bets,
-           multipliers: state.multipliers, betCloseAt: state.betCloseAt, poolTotal: state.bets.reduce((s, b) => s + b.amount, 0), ante: ANTE, walletKind: wallet.kind };
+  const amt = claimedAmt;
+  if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
+  if (!pool || !pool.open) throw new Error("Betting is closed — wait for the next match.");
+  if (LIVE_CHAIN) throw new Error("On a live chain, bet from your own wallet (send USDC to the pool and include txHash).");
+  if (!spectatorWallets[bettorId]) spectatorWallets[bettorId] = await wallet.createSeatWallet("spectator:" + bettorId);
+  const r = await pool.placeBet({ bettorId, bettorWallet: spectatorWallets[bettorId], agentId, amount: amt });
+  table.bets = pool.bets;
+  table.multipliers = impliedMultipliers(pool.bets, table.seats.map((s) => s.id), pool.houseFeeBps);
+  table.broadcast({ type: "bet", bettorId, agentId, amount: amt, tx: r.tx, explorer: r.explorer, ...table.publicState() });
+  tables.notifyLobby();
+  const bal = await wallet.getBalance(spectatorWallets[bettorId].walletId);
+  return { ok: true, tx: r.tx, explorer: r.explorer, balance: bal, poolAddress: pool.poolWallet.address, tableId: table.id };
 }
 
 // ---- http ---------------------------------------------------------------
 const PUBLIC = path.join(__dirname, "public");
-const PAGES = { "/": "landing.html", "/arena": "index.html", "/leaderboard": "leaderboard.html", "/how-it-works": "how.html", "/agents": "agents.html" };
+const PAGES = {
+  "/": "landing.html", "/arena": "index.html", "/tables": "tables.html",
+  "/leaderboard": "leaderboard.html", "/how-it-works": "how.html", "/agents": "agents.html",
+};
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".txt": "text/plain" };
 function sendFile(res, file) {
-  const full = path.join(PUBLIC, file);
-  if (!full.startsWith(PUBLIC) || !fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }
+  const full = resolvePublicFile(PUBLIC, file);
+  if (!full) { res.writeHead(404); return res.end("not found"); }
   res.writeHead(200, { "content-type": MIME[path.extname(full)] || "application/octet-stream", "cache-control": file.endsWith(".html") ? "no-cache" : "public, max-age=3600" });
   fs.createReadStream(full).pipe(res);
 }
 
 function json(res, code, obj) { res.writeHead(code, { "content-type": "application/json", "cache-control": "no-cache" }); res.end(JSON.stringify(obj)); }
-function readBody(req) { return new Promise((r) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > 20000) req.destroy(); }); req.on("end", () => r(b)); }); }
+function readBody(req, max = 20000) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let n = 0;
+    let done = false;
+    const finish = (fn, v) => { if (done) return; done = true; fn(v); };
+    req.on("data", (c) => {
+      n += c.length;
+      if (n > max) { req.destroy(); finish(reject, new Error("Body too large.")); return; }
+      chunks.push(c);
+    });
+    req.on("end", () => finish(resolve, Buffer.concat(chunks).toString("utf8")));
+    req.on("error", (e) => finish(reject, e));
+  });
+}
 function bearer(req) { const h = req.headers.authorization || ""; return h.startsWith("Bearer ") ? h.slice(7) : null; }
 
-async function agentsApi(req, res, url) {
-  const parts = url.split("/").filter(Boolean); // api, agents, :id?, :action?
+function sendAvatarBytes(res, { buf, mime, generated }) {
+  res.writeHead(200, {
+    "content-type": mime,
+    "cache-control": generated ? "public, max-age=86400" : "public, max-age=3600",
+    "content-length": buf.length,
+    "x-content-type-options": "nosniff",
+  });
+  res.end(buf);
+}
+
+function siteOrigin() { return process.env.PUBLIC_BASE_URL || process.env.SITE_ORIGIN || null; }
+
+function stampTokenImage(rec, image) {
+  const tok = rec?.token;
+  if (!tok?.spec?.metadata) return tok;
+  tok.spec.metadata.image = image;
+  if (tok.spec.metadata.argusForm) tok.spec.metadata.argusForm.image = image;
+  return tok;
+}
+
+async function agentsApi(req, res, urlPath) {
+  const parts = urlPath.split("/").filter(Boolean); // api, agents, :id?, :action?
   const lb = stats.leaderboard(); const eloById = Object.fromEntries(lb.agents.map((a) => [a.id, a]));
-  const decorate = (a) => ({ ...a, elo: eloById[a.id]?.elo ?? 1200, won: eloById[a.id]?.won ?? 0, matches: eloById[a.id]?.played ?? 0 });
+  const seated = tables.seatedIndex();
+  const decorate = (a) => ({
+    ...a,
+    elo: eloById[a.id]?.elo ?? 1200, won: eloById[a.id]?.won ?? 0, matches: eloById[a.id]?.played ?? 0,
+    seatedAt: seated[a.id] || [],
+    buy: argus.buyView(a.token, { house: a.house, name: a.name, id: a.id }),
+  });
 
   try {
-    if (parts.length === 2 && req.method === "GET") return json(res, 200, { agents: registry.list().map(decorate), ante: ANTE, tableSize: TABLE_SIZE, promptAgentsEnabled: !!llmComplete, allowLocal: registry.allowLocal, walletKind: wallet.kind });
+    if (parts.length === 2 && req.method === "GET") {
+      return json(res, 200, {
+        agents: registry.list().map(decorate), ante: ANTE, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT,
+        promptAgentsEnabled: !!llmComplete, allowLocal: registry.allowLocal, walletKind: wallet.kind, live: LIVE_CHAIN,
+        economics: argus.AGENT_TOKEN_ECONOMICS,
+        onboarding: {
+          live: LIVE_CHAIN, mock: wallet.kind === "mock", walletKind: wallet.kind,
+          injected: true,
+          walletConnect: false,
+          todos: ["TODO(wallet): WalletConnect v2 + Arc is not wired — use an injected wallet (MetaMask/Rabby in-app) or mock demo connect"],
+        },
+      });
+    }
 
     if (parts.length === 2 && req.method === "POST") {
       const body = JSON.parse(await readBody(req) || "{}");
+      const persona = String(body.persona || "").trim();
+      if (!body.type) body.type = (persona.length >= 20 && llmComplete) ? "prompt" : "heuristic";
       if (body.type === "prompt" && !llmComplete) throw new Error("Prompt agents need a model key on this server — choose heuristic or endpoint for now.");
       const rec = registry.register(body);
+      // Optional image URL at create — never fail the happy path if ingest dies.
+      let imageWarning = null;
+      if (body.imageUrl) {
+        try {
+          const av = await avatar.ingestFromUrl(rec.id, body.imageUrl, { allowLocal: registry.allowLocal });
+          registry.setAvatar(rec.id, av);
+          rec.avatar = av;
+        } catch (e) {
+          imageWarning = String(e.message || e).slice(0, 180);
+        }
+      }
       const w = await ensureWallet(rec);
-      broadcast({ type: "agent_joined", id: rec.id, name: rec.name, owner: rec.owner });
+      let token = null;
+      try {
+        const launched = await argus.onAgentRegistered({
+          agent: rec, seatWallet: w, ownerAddress: rec.ownerAddress,
+          deployerAddress: wallet.house?.address || process.env.HOUSE_ADDRESS || null,
+          houseAddress: wallet.house?.address || process.env.HOUSE_ADDRESS || null,
+          siteOrigin: siteOrigin(),
+        });
+        token = argus.publicTokenView(launched);
+        registry.setToken(rec.id, token);
+      } catch (e) {
+        token = { status: "hook_failed", error: String(e.message || e).slice(0, 200) };
+        try { registry.setToken(rec.id, token); } catch {}
+      }
+      tables.notifyLobby();
+      const tokenOk = token && token.status && token.status !== "hook_failed" && token.status !== "webhook_failed";
+      const launchMsg = wallet.kind === "mock"
+        ? "Demo: token spec stored (30/35/25/10). No chain call — Argus has no public create API."
+        : (token?.status === "webhook_posted"
+          ? "Operator webhook accepted the token spec. Creator = your connected wallet."
+          : (token?.message || "Argus has no public create API. Spec is stored; finish launch on argus.world (creator = you)."));
       return json(res, 201, { ok: true, agent: decorate(registry.publicView(rec)), key: rec.key, fundingAddress: w.address,
-        balance: await wallet.getBalance(w.walletId), note: wallet.kind === "mock" ? "Mock wallet auto-funded with 100 USDC for local play." : `Send at least ${ANTE} USDC on Arc to the funding address to be seated.` });
+        balance: await wallet.getBalance(w.walletId), token, economics: argus.AGENT_TOKEN_ECONOMICS,
+        tablesUrl: `/tables?agent=${encodeURIComponent(rec.id)}`,
+        agentUrl: `/agent/${encodeURIComponent(rec.id)}`,
+        buy: argus.buyView(token, { house: false, name: rec.name, id: rec.id }),
+        mock: wallet.kind === "mock", live: LIVE_CHAIN,
+        note: wallet.kind === "mock" ? "Mock wallet auto-funded with 100 USDC for local play." : `Send at least ${ANTE} USDC on Arc to the funding address to be seated.`,
+        launch: {
+          mock: wallet.kind === "mock", live: LIVE_CHAIN,
+          status: token?.status || "unknown",
+          argusUrl: argus.tokenPageUrl(token),
+          message: launchMsg,
+          steps: [
+            { id: "register", ok: true, label: "Agent registered" },
+            { id: "seat", ok: true, label: wallet.kind === "mock" ? "Demo seat wallet funded" : "Seat wallet created" },
+            { id: "token", ok: tokenOk, status: token?.status || null, label: tokenOk ? "Argus token queued (30/35/25/10, creator = you)" : "Token hook failed — spec still saved" },
+          ],
+        },
+        imageWarning,
+      });
     }
 
     const rec = registry.get(parts[2]); if (!rec) return json(res, 404, { ok: false, error: "No such agent." });
 
+    if (parts[3] === "avatar" && req.method === "GET") {
+      const up = avatar.readUpload(rec.avatar);
+      if (up) {
+        const buf = fs.readFileSync(up.full);
+        return sendAvatarBytes(res, { buf, mime: up.mime, generated: false });
+      }
+      const svg = avatar.svg({ name: rec.name, id: rec.id });
+      return sendAvatarBytes(res, { buf: Buffer.from(svg, "utf8"), mime: "image/svg+xml; charset=utf-8", generated: true });
+    }
+
     if (parts.length === 3 && req.method === "GET") {
       const w = rec.wallet ? await wallet.getBalance(rec.wallet.walletId).catch(() => null) : null;
-      return json(res, 200, { ok: true, agent: decorate(registry.publicView(rec)), balance: w });
+      return json(res, 200, {
+        ok: true, agent: decorate(registry.publicView(rec)), balance: w,
+        tables: tables.featuring(rec.id),
+        buy: argus.buyView(rec.token, { house: rec.house, name: rec.name, id: rec.id }),
+        live: LIVE_CHAIN,
+        mockPurchases: LIVE_CHAIN ? undefined : (mockTokenBuys[rec.id] || []),
+      });
+    }
+
+    if (parts[3] === "buy" && req.method === "POST") {
+      const body = JSON.parse(await readBody(req) || "{}");
+      const buy = argus.buyView(rec.token, { house: rec.house, name: rec.name, id: rec.id });
+      if (rec.house) {
+        return json(res, 200, { ok: true, mock: false, live: LIVE_CHAIN, delegated: true, buy,
+          message: buy.message });
+      }
+      if (LIVE_CHAIN) {
+        return json(res, 200, {
+          ok: true, mock: false, live: true, delegated: true, buy,
+          buyUrl: buy.argusUrl,
+          message: buy.address
+            ? "Open Argus to buy this agent's token on Arc. In-app swap is not wired."
+            : "Token is queued at registration — launch on Argus, then the CA will show here.",
+        });
+      }
+      const amt = Number(body.amount);
+      if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Amount must be between ${MIN_STAKE} and 1000 USDC.`);
+      const quote = argus.quoteMockBuy(amt, { symbol: buy.symbol || rec.name });
+      const purchase = { ...quote, buyer: String(body.buyer || "spectator").slice(0, 64), at: Date.now(), agentId: rec.id };
+      (mockTokenBuys[rec.id] ||= []).push(purchase);
+      return json(res, 200, { ok: true, mock: true, live: false, purchase, buy, agentId: rec.id });
     }
 
     // Everything below needs the owner's key.
@@ -204,10 +354,35 @@ async function agentsApi(req, res, url) {
       if (rec.type !== "endpoint") return json(res, 200, { ok: true, skipped: true, message: "Only endpoint agents need a test." });
       const view = { you: { id: rec.id, name: rec.name, dice: [3, 3, 1, 5, 6] }, table: [{ id: rec.id, name: rec.name, diceCount: 5, alive: true }, { id: "shark", name: "The Shark", diceCount: 4, alive: true }, { id: "degen", name: "Degen", diceCount: 5, alive: true }], totalDice: 14, currentBid: { count: 4, face: 3, byId: "degen" }, onesWild: true, whoseTurn: rec.id };
       let ok = true, why = null;
-      const ag = new RemoteAgent({ id: rec.id, name: rec.name, endpoint: rec.endpoint, sign: (b) => registry.signature(rec, b), onResult: (o, w) => { ok = o; why = w; } });
+      const ag = new RemoteAgent({ id: rec.id, name: rec.name, endpoint: rec.endpoint, sign: (b) => registry.signature(rec, b), allowLocal: registry.allowLocal, onResult: (o, w) => { ok = o; why = w; } });
       const t0 = Date.now(); const result = await ag.act(view); const ms = Date.now() - t0;
       if (ok) registry.reactivate(rec.id);
       return json(res, 200, { ok, ms, result, error: why, sentView: view, status: registry.get(rec.id).status });
+    }
+    if (parts[3] === "avatar" && req.method === "POST") {
+      const body = JSON.parse(await readBody(req, 450000) || "{}");
+      let recAvatar;
+      if (body.kind === "generated" || body.reset) {
+        recAvatar = { kind: "generated", updatedAt: Date.now() };
+      } else if (body.image) {
+        const { buf, mime } = avatar.decodeDataUrl(body.image);
+        recAvatar = avatar.saveUpload(rec.id, buf, mime);
+      } else if (body.imageUrl) {
+        recAvatar = await avatar.ingestFromUrl(rec.id, body.imageUrl, { allowLocal: registry.allowLocal });
+      } else {
+        throw new Error("Send an image data URL, imageUrl, or kind=generated.");
+      }
+      registry.setAvatar(rec.id, recAvatar);
+      const fresh = registry.get(rec.id);
+      const image = avatar.publicUrl(rec.id, recAvatar, { siteOrigin: siteOrigin() });
+      const tok = stampTokenImage(fresh, image);
+      if (tok) registry.setToken(rec.id, tok);
+      return json(res, 200, {
+        ok: true,
+        avatar: registry.publicView(registry.get(rec.id)).avatar,
+        imageUrl: image,
+        todos: ["TODO(argus): if the live create form only accepts a file, GET this image URL and attach it — no Argus image API is documented"],
+      });
     }
     if (parts[3] === "retire" && req.method === "POST") { registry.retire(rec.id); return json(res, 200, { ok: true }); }
     if (parts[3] === "reactivate" && req.method === "POST") { registry.reactivate(rec.id); return json(res, 200, { ok: true }); }
@@ -216,70 +391,84 @@ async function agentsApi(req, res, url) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = req.url.split("?")[0];
+  const { path: url, q } = parseReq(req);
   if (PAGES[url]) return sendFile(res, PAGES[url]);
-  if (url === "/health") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, phase: state.phase, matchNo: state.matchNo, wallet: wallet.kind, clients: clients.size, house: wallet.houseBalance ? await wallet.houseBalance().catch(() => null) : null, lastError })); }
+  if (url.startsWith("/agent/")) {
+    const id = decodeURIComponent(url.slice("/agent/".length).split("/")[0] || "");
+    res.writeHead(302, { location: `/tables?agent=${encodeURIComponent(id)}` });
+    return res.end();
+  }
+  if (url === "/health") {
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({
+      ok: true, tables: tables.health(), tableCount: tables.tables.length,
+      wallet: wallet.kind, clients: tables.clientCount(),
+      house: wallet.houseBalance ? await wallet.houseBalance().catch(() => null) : null,
+      lastError: tables.tables.map((t) => t.lastError).find(Boolean) || null,
+    }));
+  }
   if (url === "/api/leaderboard") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(stats.leaderboard())); }
-  if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(publicState())); }
+  if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(lobbyState())); }
   if (url.startsWith("/static/")) return sendFile(res, url.slice("/static/".length));
+  if (url === "/api/avatars/preview" && req.method === "GET") {
+    const name = String(q.get("name") || "Agent").slice(0, 24);
+    const id = String(q.get("id") || "").slice(0, 40);
+    const svg = avatar.svg({ name, id });
+    res.writeHead(200, {
+      "content-type": "image/svg+xml; charset=utf-8",
+      "cache-control": "no-cache",
+      "x-content-type-options": "nosniff",
+    });
+    return res.end(svg);
+  }
   if (url.startsWith("/api/agents")) return agentsApi(req, res, url);
-  if (url === "/api/pool") return json(res, 200, { walletKind: wallet.kind, poolAddress: pool?.poolWallet?.address || null, open: !!(pool && pool.open), closeAt: state.betCloseAt, matchNo: state.matchNo, chain: wallet.chainInfo ? wallet.chainInfo() : null, minStake: MIN_STAKE });
+
+  if (url === "/api/tables" && req.method === "GET") {
+    return json(res, 200, {
+      tables: tables.list({ agent: q.get("agent"), owner: q.get("owner"), q: q.get("q") }),
+      tableCount: tables.tables.length, tableSize: TABLE_SIZE, ante: ANTE,
+      walletKind: wallet.kind, live: LIVE_CHAIN, betWindowMs: BET_WINDOW_MS,
+    });
+  }
+
+  const tableParts = url.split("/").filter(Boolean); // api, tables, t-1, events|pool|bet
+  if (tableParts[0] === "api" && tableParts[1] === "tables" && tableParts[2] && TABLE_ID_RE.test(tableParts[2])) {
+    const table = tables.get(tableParts[2]);
+    if (!table) return json(res, 404, { ok: false, error: "No such table." });
+    const action = tableParts[3] || "";
+    if (!action && req.method === "GET") return json(res, 200, { ok: true, table: table.summary(), state: table.publicState() });
+    if (action === "events" && req.method === "GET") return table.subscribe(req, res);
+    if (action === "pool" && req.method === "GET") return json(res, 200, poolView(table));
+    if (action === "bet" && req.method === "POST") {
+      try { return json(res, 200, await placeBetOnTable(table, JSON.parse(await readBody(req) || "{}"))); }
+      catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+    }
+    return json(res, 404, { ok: false, error: "Unknown table endpoint." });
+  }
+
+  if (url === "/api/pool") {
+    const table = tables.findTableForBet({ tableId: q.get("table"), agentId: q.get("agent") });
+    return json(res, 200, poolView(table));
+  }
 
   if (url === "/events") {
-    res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
-    res.write(`data: ${JSON.stringify({ type: "phase", ...publicState() })}\n\n`);
-    clients.add(res);
-    req.on("close", () => clients.delete(res));
-    return;
+    const tid = q.get("table");
+    if (tid) {
+      const table = tables.get(tid);
+      if (!table) return json(res, 404, { ok: false, error: "No such table." });
+      return table.subscribe(req, res);
+    }
+    return tables.subscribeLobby(req, res);
   }
 
   if (url === "/api/bet" && req.method === "POST") {
-    let body = ""; req.on("data", (c) => body += c);
-    req.on("end", async () => {
-      try {
-        const { bettorId, agentId, amount, txHash, address } = JSON.parse(body);
-        if (!state.seats.find((s) => s.id === agentId)) throw new Error("Unknown seat.");
-        const amt = Number(amount);
-        if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
-
-        // Connected-wallet path: the stake already moved on-chain from the bettor's own wallet.
-        if (txHash && wallet.verifyDeposit) {
-          if (!pool) throw new Error("No match is open.");
-          const dep = await wallet.verifyDeposit(txHash, pool.poolWallet.address);
-          if (Math.abs(dep.amount - amt) > 0.000001) throw new Error(`Transfer was ${dep.amount} USDC, not ${amt}.`);
-          if (address && dep.from.toLowerCase() !== String(address).toLowerCase()) throw new Error("Transfer came from a different wallet.");
-          if (!pool.open && !(dep.timestamp <= (pool.closeAt || 0) + 3000 && state.phase === "playing" && !pool.settledAt)) {
-            // Landed too late for this match: refund straight back to the sender.
-            const rtx = await wallet.settle(pool.poolWallet, { address: dep.from }, dep.amount);
-            throw new Error(`Betting had closed — refunded ${dep.amount} USDC to your wallet (tx ${rtx.slice(0, 10)}…).`);
-          }
-          pool.recordExternal({ bettorId: dep.from, address: dep.from, agentId, amount: amt, txHash });
-          state.bets = pool.bets;
-          state.multipliers = impliedMultipliers(pool.bets, state.seats.map((s) => s.id), pool.houseFeeBps);
-          broadcast({ type: "bet", bettorId: dep.from, agentId, amount: amt, tx: txHash, explorer: wallet.explorerUrl(txHash), ...publicState() });
-          return json(res, 200, { ok: true, tx: txHash, explorer: wallet.explorerUrl(txHash), payoutTo: dep.from });
-        }
-
-        if (!pool || !pool.open) throw new Error("Betting is closed — wait for the next match.");
-        // Each spectator has an arena wallet (derived on real chains, auto-funded on mock).
-        if (!spectatorWallets[bettorId]) spectatorWallets[bettorId] = await wallet.createSeatWallet("spectator:" + bettorId);
-        if (wallet.kind !== "mock") {
-          const have = await wallet.getBalance(spectatorWallets[bettorId].walletId);
-          if (have < amt + 0.02) throw new Error(`Your arena balance is ${have} USDC. Send USDC on Arc to your deposit address ${spectatorWallets[bettorId].address} first (leave ~0.02 for gas).`);
-        }
-        const r = await pool.placeBet({ bettorId, bettorWallet: spectatorWallets[bettorId], agentId, amount: amt });
-        state.bets = pool.bets;
-        state.multipliers = impliedMultipliers(pool.bets, state.seats.map((s) => s.id), pool.houseFeeBps);
-        broadcast({ type: "bet", bettorId, agentId, amount: amt, tx: r.tx, explorer: r.explorer, ...publicState() });
-        const bal = await wallet.getBalance(spectatorWallets[bettorId].walletId);
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: true, tx: r.tx, explorer: r.explorer, balance: bal, poolAddress: pool.poolWallet.address }));
-      } catch (e) {
-        res.writeHead(400, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
+    try {
+      const body = JSON.parse(await readBody(req) || "{}");
+      const table = tables.findTableForBet({ tableId: body.tableId || q.get("table"), agentId: body.agentId });
+      return json(res, 200, await placeBetOnTable(table, body));
+    } catch (e) {
+      return json(res, 400, { ok: false, error: e.message });
+    }
   }
 
   if (url.startsWith("/api/balance/")) {
@@ -293,9 +482,12 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404, { "content-type": "text/plain" }); res.end("not found");
 });
 
-server.listen(PORT, () => {
-  console.log(`Liar's Dice Arena → http://localhost:${PORT}   (wallet: ${wallet.kind}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms)`);
-  cycle().catch((e) => { console.error("cycle crashed (unrecoverable):", e); });
+server.listen(PORT, HOST, () => {
+  console.log(`Liar's Dice Arena → http://${HOST}:${PORT}   (wallet: ${wallet.kind}, live: ${LIVE_CHAIN}, tables: ${TABLE_COUNT}×${TABLE_SIZE}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms)`);
+  if (wallet.kind === "circle") {
+    console.warn("CircleArcWallet is a stub (TODO(circle) on every money call). Set HOUSE_PRIVATE_KEY for live Arc, or MOCK=1 for local play.");
+  }
+  tables.start().catch((e) => { console.error("tables start crashed (unrecoverable):", e); });
   process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
   process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
 });

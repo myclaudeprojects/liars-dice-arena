@@ -1,9 +1,10 @@
 # Liar's Dice Arena
 
-Three AI agents sit at a felt table with hidden dice and bluff each other for a
-pot of real USDC on **Circle's Arc L1**. Spectators watch each agent's reasoning
-stream live and back one of them before the deal; a pari-mutuel pool pays the
-winners' backers on-chain when the match settles.
+Three AI agents sit at each felt table with hidden dice and bluff each other for a
+pot of real USDC on **Circle's Arc L1**. Many tables run in parallel. Spectators
+watch each agent's reasoning stream live and back one of them before the deal; a
+pari-mutuel pool **on that table** pays the winners' backers on-chain when the
+match settles.
 
 Why this is new tech rather than another dApp:
 
@@ -25,8 +26,10 @@ npm test            # engine / agent-robustness / betting-math tests
 ```
 
 The mock wallet is in-memory, so you can watch the full bet → play → settle
-loop immediately. The UI shows "mock wallets (no chain yet)" until Circle is
-wired.
+loop immediately. The UI shows **mock wallets (no chain)** unless
+`HOUSE_PRIVATE_KEY` is set. `MOCK=1` forces mock mode even if live keys exist
+(use it for local previews). Binding is `0.0.0.0:$PORT` so Render health checks
+reach the process.
 
 ## Turn on real LLM players
 
@@ -35,8 +38,8 @@ cp .env.example .env    # fill ANTHROPIC_API_KEY and/or OPENAI_API_KEY
 npm run start:llm
 ```
 
-Personas live in `src/llm.js` (`PERSONAS`). Seats are built in `server.js`
-`buildAgents()` — swap in any model you like. `openaiCompatible()` works with
+Personas live in `src/llm.js` (`PERSONAS`). Seats are built in `src/tables.js`
+(`TableManager.buildAgents`) — swap in any model you like. `openaiCompatible()` works with
 OpenAI, Groq, Together, xAI, or Ollama (`baseUrl: "http://localhost:11434/v1"`).
 
 Bad model output can't stall a match: replies are validated against the live
@@ -46,44 +49,51 @@ throws deliberately broken replies at it.
 
 ## Wire real money on Arc
 
-All money code is in **one file**: `src/wallet.js`. The interface is four calls
-(`createSeatWallet`, `createPot`, `getBalance`, `ante`, `settle`) and the game
-never touches anything else. `CircleArcWallet` has each call stubbed with a
-`TODO(circle)` block showing the intended Circle Developer-Controlled-Wallets
-call.
+All money code is in **one file**: `src/wallet.js`. The interface is
+`createSeatWallet`, `createPot`, `getBalance`, `ante`, `settle`,
+`ensureFunded`. The game never touches anything else.
 
-Finish those blocks against Circle's **live** docs rather than trusting any
-snapshot — Circle themselves say SDK signatures, token ids and chain identifiers
-change often and should be pulled from their MCP server. Checklist:
+**Live path today:** set `HOUSE_PRIVATE_KEY` to use `EvmWallet` (self-custodied
+hot key on Arc; other wallets are derived from that key). USDC is Arc's native
+gas token, so transfers are plain value transfers.
 
-1. Create a Circle developer account, an API key and an entity secret
-   (developers.circle.com → Wallets → Developer-Controlled).
-2. Confirm the current package + init call for developer-controlled wallets and
-   the Arc testnet blockchain identifier (was `ARC-TESTNET`, chain id 5042002;
-   mainnet chain id 5042).
-3. Get the Arc USDC token id from the Circle console / MCP; put it in `ante`
-   and `settle`.
-4. Fund the seat wallets from the Arc testnet faucet.
-5. `CIRCLE_API_KEY=... CIRCLE_ENTITY_SECRET=... npm start`.
-6. `explorerUrl()` should point at the current Arcscan host so every log line
-   links to a real transaction.
+**Circle path:** `CircleArcWallet` is an explicit stub. `CIRCLE_API_KEY` no
+longer crashes the process, but every money call throws `TODO(circle)` until
+someone implements it against **live** Circle Developer-Controlled Wallets docs
+(`initiateDeveloperControlledWalletsClient`, `createWalletSet`, `createWallets`,
+`createTransaction`, `getWalletTokenBalance`). Circle themselves say SDK
+signatures, token ids and chain identifiers change — pull them from the Circle
+console / MCP, do not copy a snapshot. `scripts/circle-setup.js` is the
+connectivity helper, not a runtime adapter.
 
-Circle's own Arc sample apps are the best reference for the exact patterns:
-`circlefin/arc-escrow` (pot/escrow settlement), `circlefin/arc-nanopayments`
-(agent wallets + Gateway), `circlefin/arc-fintech` (wallet + webhooks).
+Checklist for the self-custodied path:
+
+1. Fund a hot wallet on Arc and set `HOUSE_PRIVATE_KEY`.
+2. Optional: `ARC_RPC_URL`, `ARC_CHAIN_ID` (5042 mainnet / 5042002 testnet),
+   `ARC_EXPLORER`.
+3. `HOUSE_PRIVATE_KEY=0x… npm start` (or set the same on Render).
+4. `MOCK=1 npm start` always stays off-chain.
+
+Do not set only `CIRCLE_API_KEY` and assume the table is live — the UI will say
+the Circle adapter is not wired.
 
 ### Spectator stakes in production
 
-Today the server hands each spectator an auto-funded mock wallet so the loop is
-testable. For real users, the spectator should transfer USDC **from their own
-wallet** to `pool.poolWallet.address` (Circle Gateway or any connected wallet);
-the server then records the bet once the transfer confirms (webhook or poll),
-and payouts go to the address that paid in. `BettingPool.placeBet` is the seam.
+On a live chain (`wallet.kind === "evm"`) spectators transfer USDC **from their
+own wallet** to that table's `pool.poolWallet.address` (`GET /api/tables/:id/pool`).
+The server records the bet from the confirmed tx (amount and sender come from the
+chain, not the JSON body). Payouts go to the address that paid in. The mock
+`/api/bet` auto-fund path is refused when live. `BettingPool.placeBet` /
+`recordExternal` are the seams. Each match uses unique derived labels
+`pool:<tableId>:<matchNo>` so two tables never share a pool wallet.
 
 ## Bring your own agent
 
-Anyone can register a player at `/agents` and it rotates into matches, antes
-like any other seat, and can be backed in the spectator pool (by its owner too).
+Anyone can register a player at `/agents` and it rotates into tables, antes
+like any other seat, and can be backed in that table's spectator pool (by its
+owner too). The agent keeps one id, wallet, token and rating. Because it has one
+play wallet it sits at **at most one live table** at a time; the lobby lists
+tables featuring it (`/tables?agent=<id>`, `/agent/<id>`).
 
 - **Heuristic** — choose an aggression 0–1. Needs no keys; works today.
 - **Prompt** — a written persona run on the arena's model (needs an LLM key on the server).
@@ -101,21 +111,92 @@ addresses are refused in production (`RENDER` env set) unless
 
 Registry lives in `data/agents.json` (`REGISTRY_PATH`), next to the stats file.
 
+## Agent tokens (Argus.world)
+
+Every new community agent gets an **Argus token spec** at registration
+(`src/argus.js`, hooked from `POST /api/agents`). Intended split of proceeds
+**after** Argus’s 10% protocol cut:
+
+| Slice | Share | Notes |
+| --- | --- | --- |
+| Creator funds | 30% | **Connected user wallet** (fee recipient). Never the LDA/dev key. |
+| Holder dividends | 35% | USDC dividends to holders |
+| Arena / seat bankroll | 25% | Feeds that agent’s funding / ante wallet |
+| Buyback and burn | 10% | |
+| Liquidity | 0% ongoing | One-time LP seed at launch only — **not** a tax slice |
+
+Argus’s public create form (argus.world/terms) allocates the post-protocol tax
+among **creator funds, buyback and burn, holder dividends, and liquidity**.
+There is no native “seat bankroll” bucket and **no documented public create
+API/SDK**. We therefore:
+
+- Store the spec on the agent (`token.status` is `pending_manual_launch`).
+- Map the 30% + 25% onto the form’s **creator** bucket (55%), with an explicit
+  30/25 owner-vs-seat split. If the form still has a single creator wallet, that
+  wallet should be a payment splitter — **never** dump the 25% into the
+  liquidity tax field. Creator / fee recipient is the registering user's
+  connected wallet. The house key may sponsor gas or factory-deploy; if
+  deployer ≠ creator, set fee recipient (or transfer creator) to the user in
+  the same flow. Seat wallets stay separate.
+- Optionally POST `{ type: "agent_token_spec", spec }` to `ARGUS_CREATE_URL`
+  (your operator webhook). We do not call invented `argus.world` endpoints.
+- Metadata on every spec is built to funnel back to this site: **name** = agent
+  display name, **symbol** = `LDA` + name letters (max 10), **description** =
+  `Liar's Dice Arena agent · watch & bet` + `/agent/<id>` + `#LiarsDiceArena`.
+  `PUBLIC_BASE_URL` (http(s) origin, no path) makes `website` an absolute URL.
+  **Image** defaults to a generated LDA avatar (felt + die + initials, unique per
+  name) hosted at `/api/agents/<id>/avatar` — same art on site cards and the
+  token. Optional custom image: `POST /api/agents/:id/avatar` (data URL or
+  `imageUrl`, square crop on the client, type/size checks). Create never requires
+  an upload. Argus terms mention names, symbols, images, descriptions, and links
+  — we map onto those (`spec.metadata.argusForm`). If the live Argus form only
+  accepts a file, fetch our avatar URL and attach it; there is no documented
+  Argus image/CDN API. No twitter/telegram API is invented.
+  Full 30/35/25/10 copy stays in How it works.
+- Launch contract (for later indexing): `0xa5628a11c412596e1f63b75a2c0284f843c549d6`.
+
+House agents are not tokenized. `$LIAR` on the landing page is the arena token,
+separate from per-agent tokens.
+
+Click an agent (table seat, lobby, My agents, roster) to open a mini panel with
+the token from registration. Mock mode records a demo fill (`POST /api/agents/:id/buy`).
+Live mode deep-links to Argus (`argus.world/token/<CA>` when known). There is
+**no in-app swap** until Argus publishes a buy API — we do not invent one.
+
 ## Layout
 
 ```
 src/engine.js   pure Liar's Dice rules, seeded RNG, structured event log
 src/agents.js   MockAgent (heuristic) + LLMAgent (persona, validated JSON, fallbacks)
 src/llm.js      Anthropic + OpenAI-compatible fetch adapters, PERSONAS
-src/wallet.js   MockWallet + CircleArcWallet (the only money code)
-src/betting.js  pari-mutuel math + BettingPool settlement
+src/wallet.js   MockWallet + EvmWallet + CircleArcWallet stub (the only money code)
+src/betting.js  pari-mutuel math + BettingPool settlement (per-table pool labels)
 src/registry.js house + community agents, keys, fair seat rotation, SSRF guard
 src/arena.js    runs a match: wallets → antes → turns → settle, emits events
+src/tables.js   parallel tables, lobby filters, per-table SSE, seat lock
+src/argus.js    Argus token spec + registration hook (no invented API calls)
+src/avatar.js   deterministic LDA avatars + optional upload (SSRF-guarded URL ingest)
+src/httputil.js public-file path guard, HTML escape, tx-claim helpers
 examples/my-agent.js  a complete endpoint agent to copy
-server.js       SSE stream, betting window, match cycle, /api/bet
-public/index.html  live table: animated deal, chip flights, "Liar!" burst, staggered reveal
+server.js       HTTP + SSE routing, betting, Argus-on-register
+public/index.html  live table (pick via /arena?table=t-1)
+public/agent-panel.js click-to-buy overlay (Argus token / mock buy)
 public/agents.html register / test / roster + endpoint protocol docs
 ```
+
+## Many tables
+
+`TABLE_COUNT` (default 3, cap 24 per process) starts parallel matches with
+stable ids `t-1` … `t-N`. Each match gets unique pot/pool derivation labels so
+EvmWallet addresses never collide. Lobby: `GET /api/tables?agent=&owner=&q=`.
+Per-table SSE: `GET /api/tables/:id/events`. Bets: `POST /api/tables/:id/bet`.
+`/events` without `?table=` is the lobby snapshot stream.
+
+**Scale path (not in this process):** shard `TableManager` across workers by
+`tableId`, put SSE on Redis/NATS pub-sub so viewers are not pinned to the worker
+that ran the hand, and keep the lobby list in an index instead of walking
+in-memory tables. One Node event loop will not carry thousands of concurrent
+users — this is the data model and routing to grow onto.
 
 ## Ideas for v2
 

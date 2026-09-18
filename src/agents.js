@@ -12,6 +12,7 @@
 
 const { DICE_SIDES, isHigherBid } = require("./engine");
 const { assertSafeAgentUrl } = require("./registry");
+const { effectivePlay, influencePrompt } = require("./influence");
 
 // Expected number of dice showing `face` among `unknownDice` dice we can't see,
 // with ones wild. Each unknown die matches a given non-1 face with prob 2/6
@@ -40,9 +41,17 @@ class MockAgent {
     this.kind = "mock";
   }
 
+  influenceSnap(view) {
+    if (view && view.influence) return view.influence;
+    if (typeof this.influenceOf === "function") return this.influenceOf();
+    return null;
+  }
+
   async act(view) {
     const { you, currentBid, totalDice, onesWild } = view;
     const unknown = totalDice - you.dice.length;
+    const play = effectivePlay(this.aggression, this.influenceSnap(view));
+    const aggression = play.aggression;
 
     // Decide whether to challenge the current bid.
     if (currentBid) {
@@ -53,7 +62,8 @@ class MockAgent {
       // Simple believability score:
       const slack = exp - need;                          // >0 means plausible
       // Challenge more readily when slack is very negative; aggression lowers threshold.
-      const challengeThreshold = -1.0 - this.aggression; // e.g. -1.0 to -2.0
+      // Live influence (Aggressive / Defensive / Chaos) shifts challengeEase.
+      const challengeThreshold = -1.0 - aggression - play.challengeEase; // e.g. -1.0 to -2.0
       if (slack < challengeThreshold) {
         return {
           action: { type: "challenge" },
@@ -76,8 +86,9 @@ class MockAgent {
     if (currentBid) {
       if (targetCount < currentBid.count ||
           (targetCount === currentBid.count && bestFace <= currentBid.face)) {
-        // bump minimally, sometimes bluff a bit higher based on aggression
-        targetCount = currentBid.count + (Math.random() < this.aggression ? 1 : 0);
+        // bump minimally, sometimes bluff a bit higher based on aggression / bidNudge
+        const push = Math.random() < aggression || Math.random() < Math.max(0, play.bidNudge);
+        targetCount = currentBid.count + (push ? 1 : 0);
         bestFace = currentBid.count === targetCount
           ? Math.min(DICE_SIDES, currentBid.face + 1)
           : bestFace;
@@ -85,6 +96,9 @@ class MockAgent {
           targetCount = currentBid.count + 1;
         }
       }
+    }
+    if (play.bidNudge > 0.15 && Math.random() < play.bidNudge) {
+      targetCount = Math.min(totalDice, targetCount + 1);
     }
     targetCount = Math.min(targetCount, totalDice);
     if (currentBid && !isHigherBid(currentBid, { count: targetCount, face: bestFace })) {
@@ -112,8 +126,14 @@ class LLMAgent {
     this.kind = "llm";
   }
 
+  influenceSnap(view) {
+    if (view && view.influence) return view.influence;
+    if (typeof this.influenceOf === "function") return this.influenceOf();
+    return null;
+  }
+
   async act(view) {
-    const system = buildSystemPrompt(this.persona);
+    const system = buildSystemPrompt(this.persona, influencePrompt(this.influenceSnap(view)));
     const user = buildUserPrompt(view);
     let raw;
     try {
@@ -145,10 +165,11 @@ function withTimeout(promise, ms) {
   });
 }
 
-function buildSystemPrompt(persona) {
-  return `You are a player in a live game of Liar's Dice, betting real USDC on the Arc blockchain. Spectators are watching.
+function buildSystemPrompt(persona, extra = "") {
+  const inf = extra ? `\n\n${extra}` : "";
+  return `You are a player in a live game of Liar's Dice. You ante free, nonredeemable Arena Credits into a table pot. Spectators may watch, tip your creator with one influence (Aggressive, Calculated, Chaos, or Defensive), and buy your token — they cannot stake on the outcome and are never entitled to winnings. Credits are not money.
 
-${persona}
+${persona}${inf}
 
 RULES: Each die is 1-6. A bid claims "there are at least COUNT dice showing FACE" across ALL dice on the table. Ones are wild (count as any face). Each bid must be strictly higher than the last (higher count, or same count + higher face). Instead of bidding you may challenge the last bid ("call liar"): all dice reveal; if the real total meets the bid, the challenger loses a die, else the bidder does. Losers drop a die; last player with dice wins the pot.
 

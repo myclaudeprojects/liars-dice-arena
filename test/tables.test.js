@@ -3,28 +3,27 @@ const fs = require("fs");
 const path = require("path");
 process.env.REGISTRY_PATH = path.join(os.tmpdir(), "lda-tables-reg-" + process.pid + ".json");
 process.env.STATS_PATH = path.join(os.tmpdir(), "lda-tables-stats-" + process.pid + ".json");
+process.env.CREDITS_PATH = path.join(os.tmpdir(), "lda-tables-credits-" + process.pid + ".json");
 try { fs.unlinkSync(process.env.REGISTRY_PATH); } catch {}
 try { fs.unlinkSync(process.env.STATS_PATH); } catch {}
+try { fs.unlinkSync(process.env.CREDITS_PATH); } catch {}
 
 const { Registry } = require("../src/registry");
 const { makeWallet } = require("../src/wallet");
-const { BettingPool } = require("../src/betting");
 const { MockAgent } = require("../src/agents");
 const { Stats } = require("../src/stats");
+const { CreditBook } = require("../src/credits");
 const {
-  TableManager, tableLabels, communityBusyIds, filterTableSummaries, TABLE_ID_RE,
+  TableManager, communityBusyIds, filterTableSummaries, TABLE_ID_RE,
 } = require("../src/tables");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${a} !== ${b}`); }
 
-eq(tableLabels("t-1", 4).pot, "pot:t-1:4", "pot label");
-eq(tableLabels("t-2", 4).pool, "pool:t-2:4", "pool label");
-assert(tableLabels("t-1", 1).pot !== tableLabels("t-2", 1).pot, "pots unique per table");
 assert(TABLE_ID_RE.test("t-3") && !TABLE_ID_RE.test("global") && !TABLE_ID_RE.test("t-x"), "table id re");
 
 const filtered = filterTableSummaries([
-  { id: "t-1", phase: "betting", seats: [{ id: "cold-hands", name: "Cold Hands", owner: "alice" }] },
+  { id: "t-1", phase: "starting", seats: [{ id: "cold-hands", name: "Cold Hands", owner: "alice" }] },
   { id: "t-2", phase: "playing", seats: [{ id: "shark", name: "The Shark", owner: "house" }] },
 ], { agent: "cold-hands" });
 eq(filtered.length, 1, "filter agent");
@@ -52,37 +51,30 @@ assert(!rest.some((x) => first.map((s) => s.id).includes(x.id)), "no overlap");
 
 (async () => {
   const w = makeWallet({ startingBalance: 80 });
-  const p1 = new BettingPool({ wallet: w, potLabel: "pool:t-1:1" });
-  const p2 = new BettingPool({ wallet: w, potLabel: "pool:t-2:1" });
-  await p1.init(); await p2.init();
-  assert(p1.poolWallet.walletId !== p2.poolWallet.walletId, "distinct pool wallets");
+  const credits = new CreditBook({ persist: false });
 
   const mgr = new TableManager({
-    wallet: w, registry: reg, stats: new Stats(),
+    wallet: w, registry: reg, stats: new Stats(), credits,
     instantiate: (rec) => { const ag = new MockAgent({ id: rec.id, name: rec.name, aggression: rec.aggression ?? 0.5 }); ag.owner = rec.owner; return ag; },
-    ensureWallet: async (rec) => rec.wallet || w.createSeatWallet(rec.id),
     ante: 1, tableSize: 2, tableCount: 3, liveChain: false,
-    betWindowMs: 5, turnDelayMs: 0, revealDelayMs: 0, dealDelayMs: 0,
+    startDelayMs: 5, turnDelayMs: 0, revealDelayMs: 0, dealDelayMs: 0,
     settlePauseMs: 1, errorPauseMs: 1, waitingMs: 1, staggerMs: 0,
     sleep: async () => {},
-    minStake: 0.05,
+    minTip: 0.05,
   });
   eq(mgr.tables.length, 3, "three tables");
   eq(mgr.tables[0].id, "t-1", "stable ids");
   assert(mgr.get("t-2") && !mgr.get("nope"), "get");
+  assert(mgr.findTableForBet === undefined, "no bet routing helper");
+  assert(typeof mgr.seatWallet !== "function", "no seat wallet helper");
 
-  // Seat two tables under the lock; community agents must not collide.
-  for (const rec of [a, b, c]) {
-    const ww = await w.createSeatWallet(rec.id);
-    reg.setWallet(rec.id, ww);
-  }
   const t1 = await mgr.seatLock.run(() => mgr.buildAgents(mgr.tables[0]));
   mgr.tables[0].seats = t1.map((ag) => ({ id: ag.id, name: ag.name, owner: ag.owner || "house" }));
   mgr.tables[0].busyIds = mgr.tables[0].seats.filter((s) => s.owner !== "house").map((s) => s.id);
   mgr.tables[0].phase = "playing";
   const t2 = await mgr.seatLock.run(() => mgr.buildAgents(mgr.tables[1]));
   mgr.tables[1].seats = t2.map((ag) => ({ id: ag.id, name: ag.name, owner: ag.owner || "house" }));
-  mgr.tables[1].phase = "betting";
+  mgr.tables[1].phase = "starting";
   const community1 = t1.filter((ag) => ag.owner !== "house").map((ag) => ag.id);
   const community2 = t2.filter((ag) => ag.owner !== "house").map((ag) => ag.id);
   assert(community1.every((id) => !community2.includes(id)), "community exclusive across tables");
@@ -90,12 +82,12 @@ assert(!rest.some((x) => first.map((s) => s.id).includes(x.id)), "no overlap");
   assert(t1.some((ag) => ag.owner === "house") || t2.some((ag) => ag.owner === "house"), "house fills remaining seats");
   assert(mgr.featuring(community1[0]).some((t) => t.id === "t-1"), "featuring finds creator table");
   eq(mgr.list({ agent: community1[0] }).length, 1, "list filter by seated agent");
-  assert(mgr.findTableForBet({ agentId: community1[0] }).id === "t-1", "bet routing to featuring table");
-
-  const labels = tableLabels("t-1", 9);
-  const matchPool = new BettingPool({ wallet: w, potLabel: labels.pool });
-  await matchPool.init();
-  assert(String(matchPool.poolWallet.name || matchPool.poolWallet.walletId).includes("t-1"), "pool label in mock wallet");
+  assert(mgr.findTableFeaturing(community1[0]).id === "t-1", "tip routing to featuring table");
+  const st = mgr.tables[0].publicState();
+  assert(st.noSpectatorPool === true && st.noUsdcPot === true, "public state flags no pool / no USDC pot");
+  eq(st.unit, "credits", "credits unit");
+  assert(!("bets" in st) && !("multipliers" in st) && !("poolTotal" in st), "no bet fields on table state");
+  assert(credits.balance(community1[0]) >= 1, "credits granted on seat");
 
   console.log("tables ok");
 })().catch((e) => { console.error(e); process.exit(1); });

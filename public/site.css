@@ -115,8 +115,16 @@ body.sheet-open{overflow:hidden}
 .fairnote{font-size:13px;color:#5c5a52;margin-top:8px;line-height:1.45}
 .persona{font-size:12px;color:var(--mute)}
 .agent-sheet-stats span,.agent-sheet-hold span{font-size:11px;color:#5c5a52;letter-spacing:.03em;text-transform:uppercase}
-.agent-sheet-buy[hidden]{display:none!important}
-.agent-sheet-buy label{display:block;font-size:13px;color:#5c5a52;margin-bottom:6px}
+.agent-sheet-buy[hidden],.agent-sheet-tip[hidden]{display:none!important}
+.influence-picks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 10px}
+.influence-picks .inf{text-align:left;border:2px solid #d9cfb8;border-radius:12px;background:#fff;padding:10px 12px;min-height:56px;cursor:pointer;font:inherit;color:inherit}
+.influence-picks .inf b{display:block;font:600 14px/1.2 var(--sans)}
+.influence-picks .inf span{display:block;font-size:12px;color:#5c5a52;margin-top:3px;line-height:1.3}
+.influence-picks .inf.sel{border-color:var(--gold);background:#fff6df}
+.influence-picks .inf:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.agent-sheet-tip-lede,.agent-sheet-live{font-size:13px;color:#5c5a52;line-height:1.4;margin:0 0 8px}
+.agent-sheet-live{margin:0 0 4px}
+.agent-sheet-buy label,.agent-sheet-tip label{display:block;font-size:13px;color:#5c5a52;margin:12px 0 6px}
 .agent-sheet-row{display:flex;gap:8px;align-items:stretch}
 .agent-sheet-row input{flex:1;font:inherit;padding:10px 12px;border:2px solid #d9cfb8;border-radius:10px;min-height:44px;min-width:0;font-size:16px}
 .agent-sheet-row .btn{min-height:44px;white-space:nowrap;flex:0 0 auto}

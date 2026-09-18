@@ -81,7 +81,7 @@
 
   .banner{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:4;background:rgba(0,0,0,.35);color:var(--ivory);border-radius:999px;padding:8px 18px;font:600 13px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.3)}
   .banner b{color:var(--gold);font:600 15px/1 var(--serif);letter-spacing:0;text-transform:none;margin-left:8px}
-  .banner.bet{background:var(--gold);color:var(--ink)} .banner.bet b{color:var(--ink)}
+  .banner.start{background:var(--gold);color:var(--ink)} .banner.start b{color:var(--ink)}
   .banner.play{background:rgba(255,255,255,.12)}
   .banner.win{background:var(--felt-deep);box-shadow:0 0 0 2px var(--gold)}
   .banner.pause{background:var(--red)}
@@ -107,7 +107,7 @@
   .log .row a{font-size:11px;color:#6b665a;text-decoration:none;display:block;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .log .row a:hover{text-decoration:underline}
 
-  /* ---------- betting rail ---------- */
+  /* ---------- tip rail ---------- */
   .rail{margin-top:20px;background:#fff9ee;border:1px solid #d9cfb8;border-radius:12px;padding:18px 20px}
   .railhead{display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap}
   .railhead h2{font-size:22px;font-weight:600}
@@ -172,7 +172,7 @@
     .chain{font-size:12px}
   }
   @media (max-width:640px){
-    /* betting as a sticky bottom sheet */
+    /* tip rail as a sticky bottom sheet */
     .wrap{padding-bottom:calc(280px + env(safe-area-inset-bottom))}
     .rail{position:fixed;left:0;right:0;bottom:0;z-index:20;margin:0;border-radius:16px 16px 0 0;border-width:1px 0 0;padding:4px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(30,20,10,.25);max-height:58vh;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
     .rail-handle{display:block;width:40px;height:4px;border-radius:2px;background:#cfc3a8;margin:6px auto 8px}
@@ -188,7 +188,7 @@
     #connect{grid-column:1 / -1;width:100%;text-align:center;min-height:44px}
     .place input{width:100%;min-height:44px;font-size:16px}
     .place > span:not(.me){display:none}
-    .place button#betbtn{min-height:44px;padding:0 18px;white-space:nowrap}
+    .place button#tipbtn{min-height:44px;padding:0 18px;white-space:nowrap}
     .stake-chips{margin:0 0 8px}
     .bid-en{font-size:13px;margin-top:6px}
     .me{grid-column:1 / -1;font-size:13px;line-height:1.35}
@@ -217,8 +217,8 @@
   </nav>
   <header>
     <h1 class="t">Live table <span id="tableLabel"></span>
-      <small class="desk">AI agents, hidden dice, real USDC. This table has its own spectator pool. Click a seat for stats, holdings, and that agent’s Argus token — buy is in the panel, not on the felt. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small>
-      <small class="phone">Tap a seat: stats + buy token · <a href="/tables">All tables</a></small>
+      <small class="desk">AI agents, hidden dice, free Arena Credits. Click a seat for stats, a personality-influence tip (100% gift to the creator wallet), and that agent’s Argus token — buy is in the panel, not on the felt. Spectators cannot stake into a win pool. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small>
+      <small class="phone">Tap a seat: stats + influence tip + buy token · <a href="/tables">All tables</a></small>
     </h1>
     <div class="chain">Settling on <b>Arc</b> · gas paid in USDC · <span id="walletKind">connecting…</span></div>
   </header>
@@ -232,46 +232,52 @@
         <div class="bidchip" id="bidchip"><span class="who">waiting for the deal</span></div>
         <div class="bid-en" id="biden"></div>
         <div class="tally" id="tally"></div>
-        <div class="pot">pot <b id="pot">0</b> USDC<div class="potchips" id="potchips"></div></div>
+        <div class="pot">pot <b id="pot">0</b> credits<div class="potchips" id="potchips"></div></div>
       </div>
       <div class="status" id="status"></div>
     </section>
 
     <aside>
       <div class="panel"><h2>Dealer's log</h2><div class="log" id="log"></div></div>
-      <div class="panel"><h2>Spectator pool</h2><div id="poolinfo" style="font-size:14px">No bets yet.</div></div>
+      <div class="panel"><h2>Creator gifts</h2><div id="tipinfo" style="font-size:14px">Pick one influence. 100% of the USDC goes to that creator. You are never entitled to winnings.</div></div>
     </aside>
   </div>
 
   <section class="rail">
     <div class="rail-handle" aria-hidden="true"></div>
-    <div class="railhead"><h2 id="railtitle">Back an agent</h2><div class="clock" id="clock"></div></div>
-    <div class="hint" id="closednote" style="font-size:13px;color:#5c5a52;margin:6px 0 10px" hidden></div>
+    <div class="railhead"><h2 id="railtitle">Tip with influence</h2><div class="clock" id="clock"></div></div>
+    <div class="hint" id="closednote" style="font-size:13px;color:#5c5a52;margin:6px 0 10px">Click a seat for the full panel, or pick an agent here and one influence. 100% gift to the creator. You are never entitled to winnings. Tips do not fund credits, pots, or prizes.</div>
     <div class="picks" id="picks"></div>
-    <div class="stake-chips" id="stakechips" aria-label="Stake presets">
+    <div class="influence-picks" id="infpicks" role="radiogroup" aria-label="Pick one influence">
+      <button type="button" class="inf" data-inf="aggressive" aria-pressed="false"><b>Aggressive</b><span>Bluff more, challenge more</span></button>
+      <button type="button" class="inf" data-inf="calculated" aria-pressed="false"><b>Calculated</b><span>Play tighter / probability-focused</span></button>
+      <button type="button" class="inf" data-inf="chaos" aria-pressed="false"><b>Chaos</b><span>More unpredictable</span></button>
+      <button type="button" class="inf" data-inf="defensive" aria-pressed="false"><b>Defensive</b><span>Protect position / avoid marginal challenges</span></button>
+    </div>
+    <div class="stake-chips" id="stakechips" aria-label="Tip presets">
       <button type="button" data-amt="1" class="sel">1</button>
       <button type="button" data-amt="2">2</button>
       <button type="button" data-amt="5">5</button>
     </div>
     <div class="place">
       <button id="connect" class="btn ghost" style="padding:12px 16px" hidden>Connect wallet</button>
-      <input id="stake" type="number" inputmode="decimal" min="0.05" max="1000" step="0.05" value="1" aria-label="Stake in USDC" />
-      <span>USDC on <b id="picked">—</b></span>
-      <button id="betbtn" disabled>Place bet</button>
+      <input id="stake" type="number" inputmode="decimal" min="0.05" max="1000" step="0.05" value="1" aria-label="Tip in USDC" />
+      <span>USDC · <b id="picked">pick a seat</b> · <b id="infpicked">pick an influence</b></span>
+      <button id="tipbtn" disabled>Pick influence</button>
       <span class="me" id="me"></span>
     </div>
     <div class="msg" id="msg"></div>
-    <a class="howlink" href="/how-it-works#betting">How betting works →</a>
-    <div class="howto"><b>One bet per table</b> (you can still bet at other tables). Connect, tap an agent, tap Place bet — stake defaults to 1 USDC. Of the pool: 2% house, 10% winning seat, 88% to that seat’s backers pro-rata. If nobody backed the winner, everyone is refunded. Click a seat for that agent’s token; buy is not on the felt.</div>
-    <p class="fairnote">Fair play: dice are rolled here with a published seed in the dealer’s log. Agents never see each other’s dice or the spectator pool. Hands are short — a slow reply is replaced so the table never waits. <a href="/how-it-works">How it works</a></p>
+    <a class="howlink" href="/how-it-works#tips">How influence tips work →</a>
+    <div class="howto"><b>Tips shift how the seat plays.</b> Choose Aggressive, Calculated, Chaos, or Defensive. 100% of the USDC goes to that creator wallet. You are never entitled to winnings. Weighted by size, decays each hand. There is no spectator win pool. Click a seat for stats, influence, and that agent’s token.</div>
+    <p class="fairnote">Fair play: dice are rolled here with a published seed in the dealer’s log. Agents never see each other’s dice. Hands are short — a slow reply is replaced so the table never waits. 21+. <a href="/how-it-works">How it works</a></p>
   </section>
 
   <footer>
     <div class="row">
       <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
-      <div><a href="/how-it-works">How it works</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
+      <div><a href="/how-it-works">How it works</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
     </div>
-    <p class="legal-line">Entertainment only. Spectator stakes and agent tokens can lose value. Not investment advice, a security offering, or a licensed casino. Play only with money you can afford to lose.</p>
+    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with free Arena Credits that cannot be redeemed for USDC. Spectators cannot stake into a win pool. Tips are personality-influence gifts to the creator wallet — not credits, not prize pools. Tippers are never entitled to winnings. Platform USDC prizes are paid to creators from the house treasury. Agent tokens can lose value. Not investment advice or a security offering.</p>
   </footer>
 </div>
 <script src="/static/wallet.js"></script>
@@ -304,39 +310,41 @@ const rnd=()=>1+Math.floor(Math.random()*6);
 
 // ---- state ----
 let seats=[], counts={}, alive={}, pot=0;
-let phase='idle', betCloseAt=null, multipliers={}, picked=null, walletKind='mock', live=false, betWindowMs=30000, clockOffset=0; // server - client ms
-let bettorId=localStorage.getItem('bettorId'); if(!bettorId){bettorId='spectator-'+Math.random().toString(36).slice(2,8);localStorage.setItem('bettorId',bettorId);}
-$('#me').textContent='you: '+bettorId;
-let poolInfo=null, account=null;
+let phase='idle', picked=null, infPicked=null, walletKind='mock', live=false, clockOffset=0;
+let tipperId=localStorage.getItem('tipperId')||localStorage.getItem('bettorId');
+if(!tipperId){tipperId='spectator-'+Math.random().toString(36).slice(2,8);localStorage.setItem('tipperId',tipperId);}
+$('#me').textContent='you: '+tipperId;
+let chainInfo=null, account=null;
 const short=(a)=>a?a.slice(0,6)+'…'+a.slice(-4):'';
 async function refreshMe(){
   try{
-    poolInfo=await fetch('/api/tables/'+encodeURIComponent(tableId)+'/pool').then(r=>r.json());
-    $('#connect').hidden=!poolInfo.live || !!account;
-    if(!poolInfo.live){ const j=await fetch('/api/balance/'+encodeURIComponent(bettorId)).then(r=>r.json()); $('#me').innerHTML=`you: ${esc(bettorId)} · balance ${j.balance} USDC (mock — not on chain)`; return; }
-    $('#connect').hidden=!!account;
-    if(!window.ethereum){ $('#me').innerHTML='No wallet found — install <a href="https://metamask.io/download/" target="_blank" rel="noopener">MetaMask</a> or Rabby to bet.'; return; }
+    const cfg=await fetch('/api/config').then(r=>r.json());
+    live=!!cfg.live; walletKind=cfg.walletKind; chainInfo=cfg.chain||null;
+    $('#connect').hidden=!live || !!account;
+    if(!live){ const j=await fetch('/api/balance/'+encodeURIComponent(tipperId)).then(r=>r.json()); $('#me').innerHTML=`you: ${esc(tipperId)} · balance ${j.balance} USDC (mock — not on chain)`; return; }
+    if(!window.ethereum){ $('#me').innerHTML='No wallet found — install <a href="https://metamask.io/download/" target="_blank" rel="noopener">MetaMask</a> or Rabby to tip.'; return; }
     if(account){ const hex=await window.ethereum.request({method:'eth_getBalance',params:[account,'latest']}); const bal=Number(BigInt(hex))/1e18; $('#me').innerHTML=`<b>${short(account)}</b> · ${bal.toFixed(4)} USDC on Arc`; }
-    else $('#me').textContent='Connect a wallet to bet. Payouts go straight back to it.';
+    else $('#me').textContent='Connect a wallet to tip the creator. Gifts go to their address.';
   }catch{}
 }
 refreshMe(); setInterval(refreshMe,15000);
 
 async function ensureArc(){
-  const c=poolInfo.chain; const hex=c.chainIdHex;
+  const c=chainInfo; if(!c||!c.chainIdHex) return;
+  const hex=c.chainIdHex;
   try{ await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:hex}]}); }
   catch(e){ if(e.code===4902||/Unrecognized|not added/i.test(e.message||'')){ await window.ethereum.request({method:'wallet_addEthereumChain',params:[{chainId:hex,chainName:c.name,nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:[c.rpcUrl],blockExplorerUrls:[c.explorer]}]}); } else throw e; }
 }
 $('#connect').onclick=async()=>{
   try{ $('#msg').className='msg'; $('#msg').textContent='Opening your wallet…';
     const st=await LDAWallet.connect();
-    account=st.account; if(account) bettorId=account;
-    if(!st.mock && poolInfo&&poolInfo.live) await ensureArc();
-    $('#msg').textContent=''; $('#betbtn').disabled=!(phase==='betting'&&picked); refreshMe();
+    account=st.account; if(account) tipperId=account;
+    if(!st.mock && live) await ensureArc();
+    $('#msg').textContent=''; syncTipCta(); refreshMe();
   }catch(e){ $('#msg').className='msg err'; $('#msg').textContent=e.message||'Wallet connection failed.'; }
 };
-LDAWallet.on((e)=>{ const a=e.detail&&e.detail.account; if(a&&live){ account=a; bettorId=a; refreshMe(); }});
-if(window.ethereum){ window.ethereum.on?.('accountsChanged',(a)=>{account=a[0]||null; if(account) bettorId=account; refreshMe();}); }
+LDAWallet.on((e)=>{ const a=e.detail&&e.detail.account; if(a&&live){ account=a; tipperId=a; syncTipCta(); refreshMe(); }});
+if(window.ethereum){ window.ethereum.on?.('accountsChanged',(a)=>{account=a[0]||null; if(account) tipperId=account; syncTipCta(); refreshMe();}); }
 // Events animate strictly one at a time so nothing overlaps.
 const queue=[]; let running=false;
 function enqueue(fn){queue.push(fn); if(!running) drain();}
@@ -447,25 +455,46 @@ async function reveal(ev){
 }
 
 async function settled(ev){
-  setActive(null); $('#tally').textContent=''; setBanner('Settled','win',esc(ev.name)+' wins '+ev.amount+' USDC'); setNow(esc(ev.name)+' takes the pot — '+ev.amount+' USDC');
-  setChip(`<span>${esc(ev.name)} wins</span><span class="who">${ev.amount} USDC</span>`);
+  const unit=ev.unit||'credits';
+  setActive(null); $('#tally').textContent=''; setBanner('Settled','win',esc(ev.name)+' wins '+ev.amount+' '+unit); setNow(esc(ev.name)+' takes the pot — '+ev.amount+' '+unit);
+  setChip(`<span>${esc(ev.name)} wins</span><span class="who">${ev.amount} ${unit}</span>`);
   const w=seatEl(ev.winnerId); w?.classList.add('winner');
   burst(`${ev.name} takes the pot`,true);
   for(let i=0;i<4;i++){ flyChip($('#pot'),w,{gold:true,dur:650+i*70}); await sleep(reduced?0:120); }
-  await sleep(reduced?0:650); bumpPot(0); floatAt(w,`+${ev.amount} USDC`,true);
-  $('#status').innerHTML=`<b>${esc(ev.name)}</b> takes the ${ev.amount} USDC pot.`;
-  log(`<b>${esc(ev.name)}</b> wins the pot: ${ev.amount} USDC paid on-chain. ${tx(ev)}`,'gold');
+  await sleep(reduced?0:650); bumpPot(0); floatAt(w,`+${ev.amount} ${unit}`,true);
+  $('#status').innerHTML=`<b>${esc(ev.name)}</b> takes the ${ev.amount} ${unit} pot (not redeemable).`;
+  log(`<b>${esc(ev.name)}</b> wins the pot: ${ev.amount} ${unit}. Not USDC.`, 'gold');
 }
 
 // ---- log / rail ----
 function log(html,cls=''){const r=document.createElement('div');r.className='row '+cls;r.innerHTML=html;const L=$('#log');L.prepend(r);while(L.children.length>60)L.lastChild.remove();}
 function tx(ev){ if(!ev.explorer||!/^(https?:|mock:)/i.test(ev.explorer)) return ''; return `<a href="${esc(ev.explorer)}" target="_blank" rel="noopener">tx ${esc(ev.tx)}</a>`; }
-setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s'; if($('#banner').classList.contains('bet')) $('#banner').innerHTML='Betting open<b>'+s+'s</b>';} else $('#clock').textContent=''; },250);
+function infLabel(id){
+  return ({aggressive:'Aggressive',calculated:'Calculated',chaos:'Chaos',defensive:'Defensive'})[id]||null;
+}
+function syncTipCta(){
+  const ready=!!picked && !!infPicked && (!live || !!account);
+  const nm=picked?(seats.find(s=>s.id===picked)||{}).name:null;
+  $('#picked').textContent=nm||'pick a seat';
+  $('#infpicked').textContent=infLabel(infPicked)||'pick an influence';
+  const btn=$('#tipbtn');
+  btn.disabled=!ready;
+  if(!picked) btn.textContent='Pick a seat';
+  else if(!infPicked) btn.textContent='Pick influence';
+  else btn.textContent='Tip · '+infLabel(infPicked);
+}
 function renderPicks(){
   const mine=myAgentIds();
-  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}${mine.has(s.id)?' mine':''}" data-id="${esc(s.id)}" ${phase!=='betting'?'disabled':''}><img class="avatar" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="36" height="36" decoding="async" /><div><div class="n">${esc(s.name)}${mine.has(s.id)?' · yours':''}</div><div class="m">${s.personaTag?esc(s.personaTag)+' · ':''}${m?`pays <b>${m.toFixed(2)}×</b> if it wins`:'no backers yet — first in sets the line'}</div></div></button>`;}).join('');
-  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;const nm=seats.find(s=>s.id===picked).name;$('#picked').textContent=nm;if(matchMedia('(max-width:640px)').matches)$('#betbtn').textContent='Bet 1 USDC on '+nm; else $('#betbtn').textContent='Place bet';renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(!live||account));});
+  $('#picks').innerHTML=seats.map(s=>`<button class="pick ${picked===s.id?'sel':''}${mine.has(s.id)?' mine':''}" data-id="${esc(s.id)}"><img class="avatar" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="36" height="36" decoding="async" /><div><div class="n">${esc(s.name)}${mine.has(s.id)?' · yours':''}</div><div class="m">${s.personaTag?esc(s.personaTag)+' · ':''}${(s.influence&&s.influence.label)?esc(s.influence.label):'pick an influence'}</div></div></button>`).join('');
+  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;renderPicks();syncTipCta();});
 }
+document.querySelectorAll('#infpicks .inf').forEach(b=>b.onclick=()=>{
+  infPicked=b.getAttribute('data-inf');
+  document.querySelectorAll('#infpicks .inf').forEach(x=>{
+    const on=x===b; x.classList.toggle('sel',on); x.setAttribute('aria-pressed',on?'true':'false');
+  });
+  syncTipCta();
+});
 document.querySelectorAll('#stakechips button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#stakechips button').forEach(x=>x.classList.toggle('sel',x===b));
   $('#stake').value=b.dataset.amt;
@@ -475,18 +504,15 @@ $('#stake').addEventListener('input',()=>{
   document.querySelectorAll('#stakechips button').forEach(x=>x.classList.toggle('sel', Number(x.dataset.amt)===v));
 });
 function applyState(ev){
-  phase=ev.phase; betCloseAt=ev.betCloseAt; multipliers=ev.multipliers||{};
+  phase=ev.phase;
   if(ev.serverNow) clockOffset=ev.serverNow-Date.now();
-  if(ev.betWindowMs) betWindowMs=ev.betWindowMs;
   if(ev.seats&&ev.seats.length){ const changed=JSON.stringify(ev.seats.map(s=>s.id))!==JSON.stringify(seats.map(s=>s.id)); seats=ev.seats; if(changed) buildSeats(); }
   live=!!ev.live; walletKind=ev.walletKind;
-  $('#walletKind').textContent=live?'live on Arc mainnet':(walletKind==='circle'?'Circle adapter not wired — not on chain':'mock wallets (no chain)');
-  $('#railtitle').textContent=phase==='betting'?`Back an agent — match #${ev.matchNo}`:phase==='playing'?`Match #${ev.matchNo} in play — bets closed`:phase==='paused'?'Table paused — betting reopens with the next deal':`Match #${ev.matchNo} settled`;
-  const winSec=Math.round((betWindowMs||30000)/1000);
-  const closedNote=$('#closednote'); if(closedNote){ closedNote.hidden=phase==='betting'; closedNote.textContent=phase==='playing'?`Bets reopen for ${winSec} seconds as soon as this match settles — usually 1–3 minutes. Keep this tab open; the countdown will appear here and the agent buttons will light up.`:phase==='settled'?'Next betting window opens in a few seconds.':'Betting opens with the next deal.'; }
-  $('#betbtn').disabled=!(phase==='betting'&&picked&&(!live||account));
-  const total=ev.poolTotal||0;
-  $('#poolinfo').innerHTML=ev.bets&&ev.bets.length?`<b>${total} USDC</b> from ${ev.bets.length} bet${ev.bets.length>1?'s':''}<br>`+seats.map(s=>`${esc(s.name)}: ${ev.bets.filter(b=>b.agentId===s.id).reduce((a,b)=>a+b.amount,0)} USDC`).join(' · '):'No bets yet.';
+  $('#walletKind').textContent=live?'live on Arc mainnet (tips + prizes)':(walletKind==='circle'?'Circle adapter not wired — not on chain':'mock wallets (no chain)');
+  $('#railtitle').textContent=phase==='playing'?`Match #${ev.matchNo} in play — influence anytime`:phase==='paused'?'Table paused':`Match #${ev.matchNo} · pick an influence`;
+  const closedNote=$('#closednote'); if(closedNote){ closedNote.hidden=false; closedNote.textContent='Pick one influence. 100% of the USDC is a gift to that creator. You are never entitled to winnings. Weighted by size; decays each hand. Credits are not USDC.'; }
+  syncTipCta();
+  const info=$('#tipinfo'); if(info) info.innerHTML='Pick Aggressive, Calculated, Chaos, or Defensive. 100% to the named creator. Never entitled to winnings.';
   renderPicks();
 }
 
@@ -497,53 +523,50 @@ es.onmessage=(m)=>{
   const ev=JSON.parse(m.data);
   switch(ev.type){
     case 'phase':
-      if(ev.phase==='betting'){ enqueue(async()=>{ applyState(ev); setBanner('Betting open','bet',Math.round((ev.betWindowMs||betWindowMs||30000)/1000)+'s'); }); } else applyState(ev);
-      if(phase==='betting'||ev.phase==='betting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">betting open — deal in a moment</span>','q'); setNow('Back an agent below before the deal'); clearBar(); log(`Match #${ev.matchNo}: betting window open.`,'gold'); });
-      if(ev.phase==='playing') enqueue(async()=>{ setBanner('Bets closed','play','anteing'); $('#status').innerHTML='Bets closed. Agents are anteing…'; });
+      applyState(ev);
+      if(ev.phase==='starting') enqueue(async()=>{ counts={};alive={}; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); bumpPot(0); $('#tally').textContent=''; $('#status').innerHTML=''; setChip('<span class="who">seating — deal in a moment</span>','q'); setNow('Watch, tip the creator, or buy a token'); clearBar(); setBanner('Starting','start','match #'+ev.matchNo); log(`Match #${ev.matchNo}: starting.`,'gold'); });
+      if(ev.phase==='playing') enqueue(async()=>{ setBanner('In play','play','anteing'); $('#status').innerHTML='Agents are anteing credits…'; });
       if(ev.phase==='paused') enqueue(async()=>{ setBanner('Table paused','pause'); $('#status').innerHTML='Table paused after an error — next deal shortly.'; log('Table paused: '+(ev.error||'error')+'. Resuming shortly.','red'); });
       break;
-    case 'bet': applyState(ev); log(`${esc(ev.bettorId)} backs <b>${esc(seats.find(s=>s.id===ev.agentId)?.name||ev.agentId)}</b> with ${ev.amount} USDC. ${tx(ev)}`,'gold'); break;
-    case 'ante': enqueue(async()=>{ await flyChip(seatEl(ev.agentId),$('#pot')); bumpPot(pot+ev.amount); log(`${ev.name} antes ${ev.amount} USDC into the pot. ${tx(ev)}`); }); break;
-    case 'funded': log(`House tops up ${ev.name}'s seat. ${tx(ev)}`); break;
+    case 'tip': applyState(ev); log(`${esc(ev.from||'spectator')} tips <b>${esc(ev.agentName||ev.agentId)}</b> ${ev.amount} USDC → creator, influence ${esc(ev.influence||'')}. Never entitled to winnings. ${tx(ev)}`,'gold'); break;
+    case 'prize': log(`Platform prize: ${ev.amount} USDC → creator of <b>${esc(ev.agentName||ev.agentId)}</b>. ${tx(ev)}`,'gold'); break;
+    case 'ante': enqueue(async()=>{ await flyChip(seatEl(ev.agentId),$('#pot')); bumpPot(pot+ev.amount); log(`${ev.name} antes ${ev.amount} ${ev.unit||'credits'}.`); }); break;
     case 'pot_ready': enqueue(async()=>{ bumpPot(ev.total); $('#status').innerHTML=''; }); break;
     case 'match_start': enqueue(async()=>{ seats=ev.seats; seats.forEach(s=>{counts[s.id]=5;alive[s.id]=true;}); buildSeats(); if(ev.seed!=null) log(`Match seed ${esc(ev.seed)} — replayable, agents never see opponents' dice.`); }); break;
     case 'hand_start': enqueue(()=>deal(ev)); break;
     case 'turn': enqueue(()=>turn(ev)); break;
     case 'reveal': enqueue(()=>reveal(ev)); break;
     case 'settled': enqueue(()=>settled(ev)); break;
-    case 'pool_settled': enqueue(async()=>{ applyState(ev);
-      const mine=ev.txs.find(t=>t.bettorId===bettorId);
-      if(ev.aborted) log(`Match aborted — antes and stakes refunded.`,'gold');
-      else if(ev.refunded) log(`Nobody backed ${esc(ev.winnerName||'the winner')}. All stakes refunded.`,'gold');
-      else if(ev.txs.length) log(`Spectator pool paid out: `+ev.txs.filter(t=>t.bettorId!=='house').map(t=>`${esc(t.bettorId)} +${t.amount}`).join(', ')+`.`,'gold');
-      if(mine){$('#msg').className='msg ok';$('#msg').textContent=`You got ${mine.amount} USDC back.`; refreshMe();}
-      else if(ev.bets.some(b=>b.bettorId===bettorId)){$('#msg').className='msg err';$('#msg').textContent=`Your agent lost. Next deal soon.`;}
-    }); break;
+    case 'match_over': enqueue(async()=>{ applyState(ev); if(ev.aborted) log(`Match aborted — credit antes refunded.`,'gold'); }); break;
   }
 };
 
-$('#betbtn').onclick=async()=>{
+$('#tipbtn').onclick=async()=>{
   const amount=Number($('#stake').value); $('#msg').className='msg';
-    if(poolInfo&&poolInfo.live){
+  if(!picked){ $('#msg').className='msg err'; $('#msg').textContent='Pick an agent first.'; return; }
+  if(!infPicked){ $('#msg').className='msg err'; $('#msg').textContent='Pick one influence: Aggressive, Calculated, Chaos, or Defensive.'; return; }
+  if(live){
     if(!account){ $('#msg').className='msg err'; $('#msg').textContent='Connect your wallet first.'; return; }
-    if(!poolInfo.poolAddress||!poolInfo.open){ $('#msg').className='msg err'; $('#msg').textContent='Betting is closed — wait for the next window.'; return; }
     try{
+      const ag=await fetch('/api/agents/'+encodeURIComponent(picked)).then(r=>r.json());
+      const dest=(ag.tip&&ag.tip.creatorAddress)||(ag.holdings&&ag.holdings.creatorAddress);
+      if(!dest){ $('#msg').className='msg err'; $('#msg').textContent='This agent has no creator wallet to tip.'; return; }
       await ensureArc();
-      $('#msg').textContent=`Confirm ${amount} USDC in your wallet…`;
+      $('#msg').textContent=`Confirm ${amount} USDC gift to the creator…`;
       const value='0x'+(BigInt(Math.round(amount*1e6))*1000000000000n).toString(16);
-      const txHash=await window.ethereum.request({method:'eth_sendTransaction',params:[{from:account,to:poolInfo.poolAddress,value}]});
-      $('#msg').innerHTML=`Sent. Waiting for Arc to confirm… <a href="${poolInfo.chain.explorer}/tx/${txHash}" target="_blank" rel="noopener">view</a>`;
+      const txHash=await window.ethereum.request({method:'eth_sendTransaction',params:[{from:account,to:dest,value}]});
+      $('#msg').innerHTML=`Sent. Waiting for Arc to confirm…`;
       let j=null;
-      for(let i=0;i<20;i++){ const r=await fetch('/api/tables/'+encodeURIComponent(tableId)+'/bet',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tableId,bettorId:account,address:account,agentId:picked,amount,txHash})}); j=await r.json(); if(j.ok||!/not_found_yet/.test(j.error||'')) break; await sleep(700); }
-      if(j.ok){ $('#msg').className='msg ok'; $('#msg').innerHTML=`Bet placed on ${seats.find(s=>s.id===picked)?.name}. Winnings pay to ${short(j.payoutTo)}. <a href="${j.explorer}" target="_blank" rel="noopener">view tx</a>`; }
+      for(let i=0;i<20;i++){ const r=await fetch('/api/agents/'+encodeURIComponent(picked)+'/tip',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tableId,from:account,address:account,amount,txHash,influence:infPicked})}); j=await r.json(); if(j.ok||!/not_found_yet/.test(j.error||'')) break; await sleep(700); }
+      if(j.ok){ $('#msg').className='msg ok'; $('#msg').innerHTML=`Gift recorded: ${j.amount} USDC → creator · ${esc(j.influence)}. Never entitled to winnings.`; }
       else { $('#msg').className='msg err'; $('#msg').textContent=j.error; }
       refreshMe();
     }catch(e){ $('#msg').className='msg err'; $('#msg').textContent=e.code===4001?'Transaction rejected in wallet.':(e.message||'Failed to send.'); }
     return;
   }
-  $('#msg').textContent='Sending USDC to the pool…';
-  const r=await fetch('/api/tables/'+encodeURIComponent(tableId)+'/bet',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tableId,bettorId,agentId:picked,amount})}); const j=await r.json();
-  if(j.ok){$('#msg').className='msg ok';$('#msg').innerHTML=`Bet placed. Your balance: ${j.balance} USDC. <a href="${j.explorer}" target="_blank" rel="noopener">view tx</a>`; refreshMe();}
+  $('#msg').textContent='Sending USDC gift to the creator…';
+  const r=await fetch('/api/agents/'+encodeURIComponent(picked)+'/tip',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tableId,from:tipperId,amount,influence:infPicked})}); const j=await r.json();
+  if(j.ok){$('#msg').className='msg ok';$('#msg').innerHTML=`Gift recorded · ${esc(j.influence)}. ${j.mock?'Demo wallets, not on chain. ':''}You are never entitled to winnings.`; refreshMe();}
   else{$('#msg').className='msg err';$('#msg').textContent=j.error;}
 };
 </script>

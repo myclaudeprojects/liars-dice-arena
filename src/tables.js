@@ -1,34 +1,14 @@
-// tables.js — Many parallel matches, each with its own seats and spectator pool.
+// tables.js — Many parallel matches, each with its own seats and credit pot.
 //
-// Product: thousands of people play, bet, and create agents. A creator must be
-// able to find tables featuring their agent and back it. Pools are per match.
-//
-// This process still runs tables on one event loop (Render web service). That is
-// a foundation, not a claim of infinite scale.
-//
-// TODO(scale): shard TableManager across workers keyed by tableId (or a
-//   matchmaking service that assigns table ids to worker processes).
-// TODO(scale): Redis / NATS pub-sub so SSE is not bound to the process that
-//   ran the match — /api/tables/:id/events should subscribe to a channel.
-// TODO(scale): lobby list from an index (Redis hashes) instead of walking
-//   in-memory Table objects; filter/q/agent should be indexed.
-// TODO(scale): house-bot wallets are already per-table labels; community
-//   agents stay one-wallet/one-live-table until a worker owns that agent.
+// Spectators watch, tip the creator (USDC gift), and buy agent tokens.
+// Agents play with free Arena Credits. There is no spectator wagering pool
+// and no USDC ante.
 
 const { runMatch } = require("./arena");
-const { BettingPool, impliedMultipliers } = require("./betting");
-const {
-  HOUSE_FEE_ADDRESS, HOUSE_FEE_BPS, SEAT_FEE_BPS, MIN_SEAT,
-} = require("./economics");
+const { HOUSE_FEE_ADDRESS } = require("./economics");
+const { maybeAwardPrize } = require("./prizes");
 
 const TABLE_ID_RE = /^t-\d+$/;
-
-function tableLabels(tableId, matchNo) {
-  return {
-    pot: `pot:${tableId}:${matchNo}`,
-    pool: `pool:${tableId}:${matchNo}`,
-  };
-}
 
 function communityBusyIds(tables, exceptTableId) {
   const ids = new Set();
@@ -71,33 +51,32 @@ class Table {
     this.matchNo = 0;
     this.phase = "idle";
     this.seats = [];
-    this.pool = null;
-    this.bets = [];
-    this.multipliers = {};
-    this.betCloseAt = null;
+    this.startCloseAt = null;
     this.clients = new Set();
     this.lastError = null;
     this.busyIds = [];
   }
 
   publicState() {
-    const bets = this.bets || [];
+    const seats = (this.seats || []).map((s) => {
+      const snap = this.mgr.influence ? this.mgr.influence.snapshot(s.id) : null;
+      return snap ? { ...s, influence: snap } : s;
+    });
     return {
       tableId: this.id,
       serverNow: Date.now(),
       phase: this.phase,
       matchNo: this.matchNo,
-      seats: this.seats,
-      bets,
-      multipliers: this.multipliers,
-      betCloseAt: this.betCloseAt,
-      poolTotal: bets.reduce((s, b) => s + b.amount, 0),
+      seats,
       ante: this.mgr.ante,
-      minSeat: this.mgr.minSeat,
+      unit: "credits",
       walletKind: this.mgr.wallet.kind,
       live: this.mgr.liveChain,
-      betWindowMs: this.mgr.betWindowMs,
+      startDelayMs: this.mgr.startDelayMs,
+      startCloseAt: this.startCloseAt,
       tableCount: this.mgr.tables.length,
+      noSpectatorPool: true,
+      noUsdcPot: true,
     };
   }
 
@@ -108,11 +87,6 @@ class Table {
       matchNo: st.matchNo,
       phase: st.phase,
       seats: st.seats,
-      poolTotal: st.poolTotal,
-      betCloseAt: st.betCloseAt,
-      multipliers: st.multipliers,
-      open: !!(this.pool && this.pool.open),
-      poolAddress: this.pool?.poolWallet?.address || null,
       clients: this.clients.size,
       error: this.lastError?.message || null,
     };
@@ -155,8 +129,6 @@ class Table {
       this.phase = "waiting";
       this.seats = [];
       this.busyIds = [];
-      this.pool = null;
-      this.bets = [];
       this.broadcast({ type: "phase", ...this.publicState() });
       this.mgr.notifyLobby();
       await this.mgr.sleep(this.mgr.waitingMs);
@@ -168,63 +140,57 @@ class Table {
       id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house",
       ownerAddress: a.ownerAddress || null,
       personaTag: a.personaTag || null,
+      creatorAddress: a.creatorWallet?.address || a.ownerAddress || null,
       imageUrl: `/api/agents/${encodeURIComponent(a.id)}/avatar`,
     }));
     this.busyIds = this.seats.filter((s) => s.owner && s.owner !== "house").map((s) => s.id);
-    const labels = tableLabels(this.id, this.matchNo);
 
-    this.pool = new BettingPool({
-      wallet: this.mgr.wallet,
-      houseFeeBps: HOUSE_FEE_BPS,
-      seatFeeBps: SEAT_FEE_BPS,
-      houseAddress: HOUSE_FEE_ADDRESS,
-      potLabel: labels.pool,
-    });
-    await this.pool.init();
-    this.phase = "betting";
-    this.bets = [];
-    this.multipliers = impliedMultipliers([], agents.map((a) => a.id), { houseBps: HOUSE_FEE_BPS, seatBps: SEAT_FEE_BPS });
-    this.betCloseAt = Date.now() + this.mgr.betWindowMs;
-    this.pool.closeAt = this.betCloseAt;
+    this.phase = "starting";
+    this.startCloseAt = Date.now() + this.mgr.startDelayMs;
     this.broadcast({ type: "phase", ...this.publicState() });
     this.mgr.notifyLobby();
-    await this.mgr.sleep(this.mgr.betWindowMs);
-    this.pool.close();
+    await this.mgr.sleep(this.mgr.startDelayMs);
 
     this.phase = "playing";
+    this.startCloseAt = null;
     this.broadcast({ type: "phase", ...this.publicState() });
     this.mgr.notifyLobby();
 
     const { turnDelayMs, revealDelayMs, dealDelayMs } = this.mgr;
     const result = await runMatch({
-      agents, wallet: this.mgr.wallet, ante: this.mgr.ante, seed: Date.now(), potLabel: labels.pot,
+      agents, credits: this.mgr.credits, ante: this.mgr.ante, seed: Date.now(),
+      influence: this.mgr.influence,
       onEvent: async (ev) => {
         this.broadcast(ev);
         if (ev.type === "turn") await this.mgr.sleep(turnDelayMs);
         else if (ev.type === "reveal") await this.mgr.sleep(revealDelayMs);
         else if (ev.type === "hand_start") await this.mgr.sleep(dealDelayMs);
-        else if (ev.type === "ante") await this.mgr.sleep(500);
+        else if (ev.type === "ante") await this.mgr.sleep(400);
       },
     });
 
-    this.pool.settledAt = Date.now();
     if (result.winnerId && !result.aborted) {
       this.mgr.stats.recordMatch({
         matchNo: this.matchNo, seats: this.seats, winnerId: result.winnerId, potTotal: result.potTotal,
-        ante: this.mgr.ante, log: result.log, poolTotal: this.pool.bets.reduce((s, b) => s + b.amount, 0),
-        seed: result.seed, tableId: this.id,
+        ante: this.mgr.ante, log: result.log, seed: result.seed, tableId: this.id, unit: "credits",
       });
+      try {
+        const prize = await maybeAwardPrize({
+          stats: this.mgr.stats, registry: this.mgr.registry, wallet: this.mgr.wallet,
+          live: this.mgr.liveChain,
+        });
+        if (prize && prize.awarded) {
+          this.broadcast({ type: "prize", ...prize.prize });
+        }
+      } catch (e) {
+        console.error("prize award failed:", e.message);
+      }
     }
-    const settlement = await this.pool.settle(result.winnerId || null, {
-      house: { address: HOUSE_FEE_ADDRESS },
-      seat: result.winnerId ? agents.find((a) => a.id === result.winnerId)?.walletInfo : null,
-    });
-    this.mgr.stats.recordBets(this.pool.bets, result.winnerId || null, settlement.payouts);
-    await this.mgr.reviewSeats(agents);
     this.phase = "settled";
     this.broadcast({
-      type: "pool_settled", winnerId: result.winnerId || null, winnerName: result.winnerName || null,
-      aborted: !!result.aborted, ...settlement, ...this.publicState(),
+      type: "match_over", winnerId: result.winnerId || null, winnerName: result.winnerName || null,
+      aborted: !!result.aborted, potTotal: result.potTotal, unit: "credits",
+      ...this.publicState(),
     });
     this.mgr.notifyLobby();
     await this.mgr.sleep(this.mgr.settlePauseMs);
@@ -237,12 +203,13 @@ class TableManager {
     this.wallet = opts.wallet;
     this.registry = opts.registry;
     this.stats = opts.stats;
+    this.credits = opts.credits;
+    this.influence = opts.influence || null;
     this.instantiate = opts.instantiate;
-    this.ensureWallet = opts.ensureWallet;
     this.ante = opts.ante;
     this.tableSize = opts.tableSize;
     this.liveChain = opts.liveChain;
-    this.betWindowMs = opts.betWindowMs;
+    this.startDelayMs = opts.startDelayMs ?? 4000;
     this.turnDelayMs = opts.turnDelayMs;
     this.revealDelayMs = opts.revealDelayMs;
     this.dealDelayMs = opts.dealDelayMs;
@@ -251,9 +218,7 @@ class TableManager {
     this.waitingMs = opts.waitingMs ?? 5000;
     this.staggerMs = opts.staggerMs ?? 4000;
     this.sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
-    this.minStake = opts.minStake;
-    this.minSeat = opts.minSeat ?? MIN_SEAT;
-    this.shouldReleaseTxClaim = opts.shouldReleaseTxClaim;
+    this.minTip = opts.minTip;
     this.houseWallet = null;
     this.seatLock = new Mutex();
     this.lobbyClients = new Set();
@@ -285,8 +250,8 @@ class TableManager {
   }
 
   featured() {
-    return this.tables.find((t) => t.phase === "betting")
-      || this.tables.find((t) => t.phase === "playing")
+    return this.tables.find((t) => t.phase === "playing")
+      || this.tables.find((t) => t.phase === "starting")
       || this.tables[0];
   }
 
@@ -320,17 +285,8 @@ class TableManager {
 
   async buildAgents(table) {
     const excludeIds = communityBusyIds(this.tables, table.id);
-    const funded = new Set();
-    for (const a of this.registry.list()) {
-      if (a.house || a.status !== "active") continue;
-      try {
-        const w = await this.ensureWallet(this.registry.get(a.id));
-        if ((await this.wallet.getBalance(w.walletId)) >= this.minSeat) funded.add(a.id);
-        else this.registry.sideline(a.id, "below_min_seat");
-      } catch { /* skip unfundable */ }
-    }
     const recs = this.registry.pickSeats(this.tableSize, {
-      eligible: (a) => funded.has(a.id),
+      eligible: (a) => a.status === "active",
       excludeIds,
     });
     if (recs.length < 2) {
@@ -345,17 +301,12 @@ class TableManager {
       else if (rec.house) ag.creatorWallet = { address: HOUSE_FEE_ADDRESS };
       ag.ownerAddress = recFull.ownerAddress || ag.ownerAddress || null;
       if (!ag.personaTag) ag.personaTag = recFull.personaTag || null;
-      if (rec.house) {
-        ag.walletInfo = await this.wallet.createSeatWallet(`${rec.id}:${table.id}`);
-        if (this.wallet.ensureFunded) {
-          try {
-            const tx = await this.wallet.ensureFunded(ag.walletInfo, this.minSeat);
-            if (tx) table.broadcast({ type: "funded", agentId: rec.id, name: rec.name, tx, explorer: this.wallet.explorerUrl(tx) });
-          } catch (e) { console.error(`could not fund ${rec.id} at ${table.id}:`, e.message); }
-        }
-      } else {
-        ag.walletInfo = await this.ensureWallet(rec);
+      if (this.influence) {
+        const book = this.influence;
+        const aid = rec.id;
+        ag.influenceOf = () => book.snapshot(aid);
       }
+      this.mgrCreditsEnsure(ag.id);
       agents.push(ag);
     }
     this.registry.markPlayed(recs.map((r) => r.id));
@@ -363,31 +314,20 @@ class TableManager {
     return agents;
   }
 
-  async reviewSeats(agents) {
-    for (const ag of agents || []) {
-      if (!ag || ag.owner === "house") continue;
-      try {
-        const rec = this.registry.get(ag.id);
-        if (!rec || rec.house || !rec.wallet) continue;
-        const bal = await this.wallet.getBalance(rec.wallet.walletId);
-        if (bal < this.minSeat) this.registry.sideline(ag.id, "below_min_seat");
-        else if (rec.status === "sidelined") this.registry.reactivate(ag.id);
-      } catch { /* leave status as-is */ }
-    }
+  mgrCreditsEnsure(id) {
+    if (this.credits && this.credits.ensure) this.credits.ensure(id);
   }
 
-  findTableForBet({ tableId, agentId }) {
+  findTableFeaturing(agentId, tableId) {
     if (tableId) return this.get(tableId);
-    if (agentId) {
-      const open = this.tables.find((t) => t.pool && t.pool.open && t.seats.some((s) => s.id === agentId));
-      if (open) return open;
-      return this.tables.find((t) => t.seats.some((s) => s.id === agentId)) || null;
-    }
+    if (agentId) return this.tables.find((t) => t.seats.some((s) => s.id === agentId)) || null;
     return this.featured();
   }
 
   async start() {
-    if (!this.houseWallet) this.houseWallet = await this.wallet.createSeatWallet("house");
+    if (this.wallet && !this.houseWallet) {
+      try { this.houseWallet = await this.wallet.createSeatWallet("house"); } catch { /* mock/live */ }
+    }
     this.tables.forEach((t, i) => {
       this.sleep(i * this.staggerMs).then(() => t.cycle()).catch((e) => {
         console.error(`table ${t.id} cycle crashed:`, e);
@@ -397,6 +337,6 @@ class TableManager {
 }
 
 module.exports = {
-  Table, TableManager, Mutex, TABLE_ID_RE, HOUSE_FEE_BPS, SEAT_FEE_BPS,
-  tableLabels, communityBusyIds, filterTableSummaries,
+  Table, TableManager, Mutex, TABLE_ID_RE,
+  communityBusyIds, filterTableSummaries,
 };

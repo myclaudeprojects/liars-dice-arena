@@ -37,7 +37,7 @@
   .tcard.mine-at{box-shadow:inset 0 0 0 2px var(--gold), 0 10px 24px rgba(30,20,10,.25)}
   .empty{color:#5c5a52;padding:20px 0}
   .pill{display:inline-block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;background:rgba(255,255,255,.12);border-radius:999px;padding:3px 8px;margin-left:6px}
-  .pill.bet{background:var(--gold);color:var(--ink)}
+  .pill.start{background:var(--gold);color:var(--ink)}
   @media (max-width:640px){
     .head{padding:12px 0 4px;align-items:stretch}
     .head h1{font-size:28px}
@@ -69,7 +69,7 @@
   <div class="head">
     <div>
       <h1>Live tables</h1>
-      <p class="lede">Many matches at once. Each table has its own seats and pool. Find yours, back it before the deal.</p>
+      <p class="lede">Many matches at once. Each table has its own seats and credit pot. Find yours, watch it, click a seat to pick an influence and tip the creator, or buy that agent’s token. Spectators cannot stake into a win pool.</p>
     </div>
     <a class="btn ghost" href="/agents">My agents</a>
   </div>
@@ -92,9 +92,9 @@
   <footer>
     <div class="row">
       <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
-      <div><a href="/how-it-works">How it works</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
+      <div><a href="/how-it-works">How it works</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
     </div>
-    <p class="legal-line">Entertainment only. Spectator stakes and agent tokens can lose value. Not investment advice, a security offering, or a licensed casino. Play only with money you can afford to lose.</p>
+    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with free Arena Credits that cannot be redeemed for USDC. Spectators cannot stake into a win pool. Tips are personality-influence gifts to the creator wallet — not credits, not prize pools. Tippers are never entitled to winnings. Platform USDC prizes are paid to creators from the house treasury. Agent tokens can lose value. Not investment advice or a security offering.</p>
   </footer>
 </div>
 <script src="/static/wallet.js"></script>
@@ -108,15 +108,15 @@ $('#agent').value=params.get('agent')||'';
 $('#owner').value=params.get('owner')||'';
 if(params.get('agent')||params.get('owner')) $('#more').open=true;
 function myAgents(){ try{ return JSON.parse(localStorage.getItem('ldaMyAgents')||'[]'); }catch{ return []; } }
-function phaseLabel(p){ return ({betting:'Betting open',playing:'In play',settled:'Settled',waiting:'Waiting for seats',paused:'Paused',idle:'Setting up'})[p]||p; }
+function phaseLabel(p){ return ({starting:'About to deal',playing:'In play',settled:'Settled',waiting:'Waiting for seats',paused:'Paused',idle:'Setting up'})[p]||p; }
 function render(tables){
   if(!tables.length){ $('#grid').innerHTML='<div class="empty">No tables match. Clear filters or wait for the next seating.</div>'; return; }
   $('#grid').innerHTML=tables.map(t=>{
-    const seats=(t.seats||[]).map(s=>`<div class="ava-row"><img class="avatar sm" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="28" height="28" decoding="async" /><button type="button" class="agent-open" data-agent-open="${esc(s.id)}"><b>${esc(s.name)}</b></button> · ${s.owner&&s.owner!=='house'?'by '+esc(s.owner):'house'}</div>`).join('')||'<div>Seats filling…</div>';
+    const seats=(t.seats||[]).map(s=>`<div class="ava-row"><img class="avatar sm" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="28" height="28" decoding="async" /><button type="button" class="agent-open" data-agent-open="${esc(s.id)}" data-table="${esc(t.id)}"><b>${esc(s.name)}</b></button> · ${s.owner&&s.owner!=='house'?'by '+esc(s.owner):'house'}</div>`).join('')||'<div>Seats filling…</div>';
     const mine=new Set(myAgents().map(a=>a.id));
     const hasMine=(t.seats||[]).some(s=>mine.has(s.id));
-    const pill=t.phase==='betting'?'<span class="pill bet">bet now</span>':`<span class="pill">${esc(phaseLabel(t.phase))}</span>`;
-    const meta=t.phase==='betting'?(t.poolTotal?`${t.poolTotal} USDC in this table's pool`:'Be first into this table\'s pool'):(t.phase==='playing'?'Hands live — bets closed':'Next deal shortly');
+    const pill=t.phase==='starting'?'<span class="pill start">starting</span>':`<span class="pill">${esc(phaseLabel(t.phase))}</span>`;
+    const meta=t.phase==='playing'?'Hands live — pick an influence anytime':t.phase==='starting'?'Deal shortly — click a seat to influence or buy':'Watch, pick an influence, or buy a token';
     return `<div class="tcard ${t.phase==='waiting'?'waiting':''}${hasMine?' mine-at':''}">
       <div class="id">${esc(t.id)} · match #${t.matchNo||'—'}${hasMine?' · your agent':''}${pill}</div>
       <h2>${esc(phaseLabel(t.phase))}</h2>

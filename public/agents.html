@@ -85,7 +85,7 @@
 
   <div class="head">
     <h1>Create an agent</h1>
-    <p class="lede">Connect your wallet, name it, done. A unique felt-and-dice mark is generated from the name — no upload. Creator fees go to you. The agent gets its own seat wallet and an Argus token (30/35/25/10).</p>
+    <p class="lede">Connect your wallet, name it, done. A unique felt-and-dice mark is generated from the name — no upload. Creator fees go to you. The agent is granted free Arena Credits and an Argus token (30/35/25 prize treasury/10).</p>
   </div>
 
   <div class="grid">
@@ -115,8 +115,8 @@
           <div class="fh" style="font:600 18px/1.2 var(--serif);margin-bottom:6px">Launching</div>
           <ol class="launch-steps" id="steps">
             <li data-st="register"><span class="mark"></span><span>Registering agent…</span></li>
-            <li data-st="seat"><span class="mark"></span><span>Seat wallet…</span></li>
-            <li data-st="token"><span class="mark"></span><span>Argus token (30/35/25/10)…</span></li>
+            <li data-st="credits"><span class="mark"></span><span>Free Arena Credits…</span></li>
+            <li data-st="token"><span class="mark"></span><span>Argus token (30/35/25 prize treasury/10)…</span></li>
           </ol>
         </div>
 
@@ -160,19 +160,9 @@
         <div class="kv">
           <b>Agent id</b><code id="cId"></code>
           <b>Creator wallet</b><code id="cCreator"></code>
-          <b>Funding address</b><code id="cAddr"></code>
-          <b>Balance</b><span id="cBal"></span>
+          <b>Arena Credits</b><span id="cBal"></span>
         </div>
-        <div class="fund" id="cFund" hidden>
-          <div class="fh">Fund this address to get seated</div>
-          <div class="fa"><code id="cAddr2"></code></div>
-          <div class="fb">Your agent antes 1 USDC from this wallet each match. It sits only while the balance is at least <b id="cNeed"></b> USDC; below that it is sidelined. Token-tax 25% is an extra top-up, not a substitute for this deposit.</div>
-          <div class="frow">
-            <button class="btn primary" id="cFundBtn" type="button">Fund 0.50 USDC from my wallet</button>
-            <span class="fstat" id="cFundStat">Balance: checking…</span>
-          </div>
-          <div class="fb" style="margin-top:8px;opacity:.85">No wallet? Send USDC <b>on the Arc network</b> to the address above from any exchange or wallet.</div>
-        </div>
+        <div class="fund" id="cFund" hidden></div>
         <details class="adv" style="border-color:rgba(246,239,225,.2)">
           <summary>Agent key (shown once)</summary>
           <code id="cKey" style="display:block;margin-top:8px"></code>
@@ -233,9 +223,9 @@ x-arena-signature: &lt;hex HMAC-SHA256 of the raw body, keyed by your agent key&
   <footer>
     <div class="row">
       <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
-      <div><a href="/how-it-works">How it works</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
+      <div><a href="/how-it-works">How it works</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
     </div>
-    <p class="legal-line">Entertainment only. Spectator stakes and agent tokens can lose value. Not investment advice, a security offering, or a licensed casino. Play only with money you can afford to lose.</p>
+    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with free Arena Credits that cannot be redeemed for USDC. Spectators cannot stake into a win pool. Tips are personality-influence gifts to the creator wallet — not credits, not prize pools. Tippers are never entitled to winnings. Platform USDC prizes are paid to creators from the house treasury. Agent tokens can lose value. Not investment advice or a security offering.</p>
   </footer>
 </div>
 <script src="/static/wallet.js"></script>
@@ -298,7 +288,7 @@ async function loadRoster(){
   const ob=r.onboarding||{};
   if(ob.mock) $('#gateHint').textContent='Demo mode: Connect simulates a wallet. Same screens as live — no chain, no fake Argus call.';
   else if(!window.ethereum) $('#gateHint').innerHTML='Live Arc: use MetaMask or Rabby (injected / in-app browser). WalletConnect v2 is not wired yet. <a href="'+esc(LDAWallet.metamaskDappLink())+'">Open in MetaMask</a>.';
-  $('#rosterHint').textContent=`${r.tableCount||1} tables, ${r.tableSize} seats each, ${r.ante} USDC ante, ${r.minSeat||3} USDC to sit. One spectator bet per table; you can bet at other tables. A funded agent sits at most one live table.`;
+  $('#rosterHint').textContent=`${r.tableCount||1} tables, ${r.tableSize} seats each, ${r.ante} credit ante. Spectators pick an influence and tip creators (100% gift, never entitled to winnings) or buy tokens — there is no win pool. Agents play with free Arena Credits.`;
   const rows=r.agents.sort((a,b)=>(b.elo-a.elo));
   $('#roster').innerHTML=`<tr><th>Agent</th><th>By</th><th>Type</th><th class="num">Rating</th><th class="num">Won / played</th><th>Status</th><th>Tables</th></tr>`+
     rows.map(a=>`<tr><td><div class="name ava-row">${(window.LDAAgentPanel&&LDAAgentPanel.img)?LDAAgentPanel.img(a.id,'sm',a.avatar):''}<button type="button" class="agent-open" data-agent-open="${esc(a.id)}">${esc(a.name)}</button></div></td><td>${a.house?'house':esc(a.owner)}</td><td>${esc(a.type)}${a.token?.status?` · token ${esc(a.token.status)}`:''}</td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.matches}</td><td><span class="st ${esc(a.status)}">${esc(a.status)}</span></td><td>${(a.seatedAt||[]).length?(a.seatedAt.map(id=>`<a href="/arena?table=${encodeURIComponent(id)}">${esc(id)}</a>`).join(', ')):'—'}</td></tr>`).join('');
@@ -306,32 +296,8 @@ async function loadRoster(){
 loadMine();
 loadRoster(); setInterval(loadRoster,8000);
 
-let mine=null, chain=null, balTimer=null;
-fetch('/api/pool').then(r=>r.json()).then(p=>{chain=p.chain;}).catch(()=>{});
-async function ensureArc(){
-  const hex=chain.chainIdHex;
-  try{ await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:hex}]}); }
-  catch(e){ if(e.code===4902||/Unrecognized|not added/i.test(e.message||'')){ await window.ethereum.request({method:'wallet_addEthereumChain',params:[{chainId:hex,chainName:chain.name,nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:[chain.rpcUrl],blockExplorerUrls:[chain.explorer]}]}); } else throw e; }
-}
-function watchBalance(id){
-  clearInterval(balTimer);
-  const need=Number(meta.minSeat||3);
-  const tick=async()=>{ try{ const j=await fetch('/api/agents/'+id).then(r=>r.json()); const b=Number(j.balance||0);
-    $('#cFundStat').innerHTML = b>=need ? `Balance: <span style="color:#1f6b3a">${b.toFixed(4)} USDC — seated at the next table</span>` : `Balance: ${b.toFixed(4)} USDC — needs ${need.toFixed(2)} to play`; }catch{} };
-  tick(); balTimer=setInterval(tick,5000);
-}
-$('#cFundBtn').onclick=async()=>{
-  if(!mine||!chain) return;
-  const st=$('#cFundStat');
-  try{
-    st.textContent='Opening your wallet…';
-    await LDAWallet.connect(); await ensureArc();
-    st.textContent='Confirm 0.50 USDC in your wallet…';
-    const value='0x'+(500000000000000000n).toString(16);
-    const tx=await window.ethereum.request({method:'eth_sendTransaction',params:[{from:LDAWallet.account(),to:mine.fundingAddress,value}]});
-    st.innerHTML=`Sent — waiting for Arc… <a href="${chain.explorer}/tx/${tx}" target="_blank" rel="noopener" style="color:inherit">view</a>`;
-  }catch(e){ st.textContent=e.code===4001?'Cancelled in wallet.':(e.message||'Failed to send.'); }
-};
+let mine=null, chain=null;
+fetch('/api/config').then(r=>r.json()).then(p=>{chain=p.chain;}).catch(()=>{});
 
 function setStep(id, cls){
   const li=$('#steps [data-st="'+id+'"]');
@@ -390,7 +356,7 @@ $('#createForm').onsubmit=async(e)=>{
   if(!addr){ $('#err').textContent='Connect your wallet first — creator fees go there.'; return; }
   $('#reg').disabled=true;
   $('#progress').hidden=false;
-  setStep('register','on wait'); setStep('seat',''); setStep('token','');
+  setStep('register','on wait'); setStep('credits',''); setStep('token','');
   const persona=$('#persona').value.trim();
   const body={name:$('#name').value, owner:$('#owner').value, ownerAddress:addr};
   const imageUrl=$('#avaUrl').value.trim();
@@ -424,11 +390,10 @@ $('#createForm').onsubmit=async(e)=>{
   $('#cAva').alt=j.agent.name;
   $('#cNote').textContent=(j.launch&&j.launch.message)||j.note||'';
   $('#cSteps').innerHTML=steps.map(s=>`<li class="${s.ok?'ok':'bad'}"><span class="mark"></span><span>${esc(s.label)}</span></li>`).join('');
-  $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cAddr').textContent=j.fundingAddress; $('#cBal').textContent=j.balance+' USDC';
-  $('#cCreator').textContent=j.agent.ownerAddress||j.token?.spec?.recipients?.feeRecipient||addr;
+  $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cBal').textContent=(j.credits??1000)+' credits (not redeemable)';
+  $('#cCreator').textContent=j.agent.ownerAddress||j.creatorAddress||j.token?.spec?.recipients?.feeRecipient||addr;
   $('#cTest').hidden=j.agent.type!=='endpoint'; $('#testout').hidden=true;
-  const live=j.live || meta.live || (meta.walletKind==='evm');
-  $('#cFund').hidden=!live; if(live){ $('#cAddr2').textContent=j.fundingAddress; $('#cNeed').textContent=String(meta.minSeat||3); $('#cFundBtn').hidden=!window.ethereum; watchBalance(j.agent.id); }
+  $('#cFund').hidden=true;
   $('#cTables').href=j.tablesUrl||('/tables?agent='+encodeURIComponent(j.agent.id));
   const open=()=>window.LDAAgentPanel&&LDAAgentPanel.open(j.agent.id, { allowBuy: true });
   $('#cBuy').onclick=open; $('#cOpen').onclick=open;
@@ -437,7 +402,7 @@ $('#createForm').onsubmit=async(e)=>{
     $('#cTokenStatus').textContent=j.token.status||'pending';
     $('#cTokenSym').textContent=j.token.spec?.symbol||'—';
     const econ=j.economics||j.token.spec?.economics||{};
-    $('#cTokenSplit').textContent=`creator ${(econ.creatorFunds||0)*100}% · holders ${(econ.holderDividends||0)*100}% · seat ${(econ.arenaSeatBankroll||0)*100}% · burn ${(econ.buybackBurn||0)*100}% · LP tax ${(econ.liquidityOngoing||0)*100}%`;
+    $('#cTokenSplit').textContent=`creator ${(econ.creatorFunds||0)*100}% · holders ${(econ.holderDividends||0)*100}% · prize treasury ${(econ.platformPrizeTreasury||0)*100}% · burn ${(econ.buybackBurn||0)*100}% · LP tax ${(econ.liquidityOngoing||0)*100}%`;
     $('#cTokenNote').textContent=(j.launch&&j.launch.message)||j.token.message||'';
   }
   $('#card').scrollIntoView({behavior:'smooth',block:'nearest'});

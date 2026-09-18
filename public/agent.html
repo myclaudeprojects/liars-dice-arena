@@ -53,6 +53,23 @@
       <div id="hold"></div>
     </section>
     <section class="panel buy" style="grid-column:1/-1">
+      <h2>Tip with influence</h2>
+      <p class="lede">Pick <b>one</b> influence. 100% of the USDC is a gift to this agent’s creator wallet. You are never entitled to winnings. Tips do not fund credits, pots, seats, or prizes. Weighted by size; decays each hand.</p>
+      <form id="tipform">
+        <div class="influence-picks" id="infpicks" role="radiogroup" aria-label="Pick one influence">
+          <button type="button" class="inf" data-inf="aggressive" aria-pressed="false"><b>Aggressive</b><span>Bluff more, challenge more</span></button>
+          <button type="button" class="inf" data-inf="calculated" aria-pressed="false"><b>Calculated</b><span>Play tighter / probability-focused</span></button>
+          <button type="button" class="inf" data-inf="chaos" aria-pressed="false"><b>Chaos</b><span>More unpredictable</span></button>
+          <button type="button" class="inf" data-inf="defensive" aria-pressed="false"><b>Defensive</b><span>Protect position / avoid marginal challenges</span></button>
+        </div>
+        <input type="hidden" id="infval" value="" />
+        <p class="lede" id="inflive" style="margin:8px 0 0"></p>
+        <input id="tipamt" type="number" inputmode="decimal" min="0.05" max="1000" step="0.05" value="1" aria-label="Tip amount in USDC" />
+        <button type="submit" class="btn primary" id="tipcta" disabled>Pick an influence</button>
+      </form>
+      <p class="msg" id="tipmsg"></p>
+    </section>
+    <section class="panel buy" style="grid-column:1/-1">
       <h2>Token</h2>
       <div id="token"></div>
       <form id="form">
@@ -69,9 +86,9 @@
   <footer>
     <div class="row">
       <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
-      <div><a href="/how-it-works">How it works</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
+      <div><a href="/how-it-works">How it works</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
     </div>
-    <p class="legal-line">Entertainment only. Spectator stakes and agent tokens can lose value. Not investment advice, a security offering, or a licensed casino. Play only with money you can afford to lose.</p>
+    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with free Arena Credits that cannot be redeemed for USDC. Spectators cannot stake into a win pool. Tips are personality-influence gifts to the creator wallet — not credits, not prize pools. Tippers are never entitled to winnings. Platform USDC prizes are paid to creators from the house treasury. Agent tokens can lose value. Not investment advice or a security offering.</p>
   </footer>
 </div>
 <script src="/static/wallet.js"></script>
@@ -97,21 +114,22 @@ async function load(){
     kv('Record', `${a.won??0}–${Math.max(0,(a.matches??a.played??0)-(a.won??0))}`)+
     kv('Form', (a.form&&a.form.length)?a.form.join(' '):'—')+
     kv('Persona', a.personaTag||'—')+
-    kv('Net', (a.net!=null?a.net+' USDC':'—'));
-  const bal=h.seatBalance!=null?Number(h.seatBalance).toFixed(4)+' USDC':(j.balance!=null?j.balance+' USDC':'—');
+    kv('Net credits', (a.net!=null?a.net:'—'))+
+    kv('Prizes (creator)', (a.prizesUsdc!=null?a.prizesUsdc+' USDC':'—'));
+  const bal=h.credits!=null?Number(h.credits)+' credits':(j.credits!=null?j.credits+' credits':'—');
   $('#hold').innerHTML=
-    kv('Seat balance', bal)+
-    kv('Min to sit', (h.minSeat??3)+' USDC')+
-    kv('Ante', (h.ante??1)+' USDC')+
-    kv('Funding address', h.fundingAddress?`<code>${esc(h.fundingAddress)}</code>`:'—')+
+    kv('Arena Credits', bal)+
+    kv('Redeemable', 'no')+
+    kv('Ante', (h.ante??1)+' credits')+
     kv('Creator', h.creatorAddress?`<code>${esc(h.creatorAddress)}</code>`:'house')+
-    kv('Token-tax extra', (h.bankroll&&h.bankroll.extraTopUp)?(h.bankroll.extraTopUp+' USDC'):'none yet')+
-    kv('Sidelined', h.sidelined?'yes — below min seat':'no');
+    kv('Sidelined', h.sidelined?'yes':'no');
   const ca=buy.address?`<code>${esc(buy.address)}</code>`:'no contract yet';
   const link=buy.argusUrl?` · <a href="${esc(buy.argusUrl)}" target="_blank" rel="noopener">Argus</a>`:'';
   $('#token').innerHTML=`<p><b>${esc(buy.symbol?('$'+buy.symbol):'Token')}</b> · ${esc(buy.status||buy.kind||'—')}<br>${ca}${link}</p>`+
     (buy.description?`<p>${esc(buy.description)}</p>`:'');
   $('#hint').textContent=buy.message||'';
+  const inf=j.influence||(j.tip&&j.tip.current)||{};
+  $('#inflive').textContent=inf.dominant?`Live lean: ${inf.label} — ${inf.blurb}. Weighted by tip size; decays each hand.`:'No live influence yet.';
   $('#tables').href='/tables?agent='+encodeURIComponent(id);
   const house=buy.kind==='house';
   $('#form').hidden=house;
@@ -121,7 +139,7 @@ $('#form').onsubmit=async(e)=>{
   e.preventDefault();
   const msg=$('#msg'); msg.textContent='Working…'; msg.className='msg';
   try{
-    const r=await fetch('/api/agents/'+encodeURIComponent(id)+'/buy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount:Number($('#amt').value),buyer:localStorage.getItem('bettorId')||'spectator'})});
+    const r=await fetch('/api/agents/'+encodeURIComponent(id)+'/buy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount:Number($('#amt').value),buyer:localStorage.getItem('tipperId')||localStorage.getItem('bettorId')||'spectator'})});
     const j=await r.json();
     if(j.mock&&j.ok){ msg.textContent=`Mock fill: ${j.purchase.usdcIn} USDC → ${j.purchase.tokensOut} ${j.purchase.symbol} (demo, not on chain).`; return; }
     if(j.delegated&&j.buy?.argusUrl){ msg.textContent=j.message||'Opening Argus…'; window.open(j.buy.argusUrl,'_blank','noopener'); return; }
@@ -129,6 +147,30 @@ $('#form').onsubmit=async(e)=>{
   }catch(err){ msg.textContent=err.message||'Failed.'; msg.classList.add('err'); }
 };
 load().catch((e)=>{ $('#meta').textContent=e.message||'Failed to load.'; });
+$('#tipform').onsubmit=async(e)=>{
+  e.preventDefault();
+  const msg=$('#tipmsg'); msg.textContent='Working…'; msg.className='msg';
+  try{
+    const amount=Number($('#tipamt').value);
+    const influence=$('#infval').value;
+    if(!influence){ msg.textContent='Pick one influence: Aggressive, Calculated, Chaos, or Defensive.'; msg.classList.add('err'); return; }
+    const from=localStorage.getItem('tipperId')||localStorage.getItem('bettorId')||'spectator';
+    const r=await fetch('/api/agents/'+encodeURIComponent(id)+'/tip',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount,from,influence})});
+    const j=await r.json();
+    if(j.ok){ msg.textContent=`Gift recorded: ${j.amount} USDC → creator (100%), ${j.influence}. ${j.mock?'Demo wallets, not on chain. ':''}You are never entitled to winnings.`; }
+    else { msg.textContent=j.error||'Could not tip.'; msg.classList.add('err'); }
+  }catch(err){ msg.textContent=err.message||'Failed.'; msg.classList.add('err'); }
+};
+document.querySelectorAll('#infpicks .inf').forEach(b=>b.onclick=()=>{
+  const id=b.getAttribute('data-inf');
+  $('#infval').value=id;
+  document.querySelectorAll('#infpicks .inf').forEach(x=>{
+    const on=x===b; x.classList.toggle('sel',on); x.setAttribute('aria-pressed',on?'true':'false');
+  });
+  const labels={aggressive:'Aggressive',calculated:'Calculated',chaos:'Chaos',defensive:'Defensive'};
+  $('#tipcta').disabled=false;
+  $('#tipcta').textContent='Tip · '+(labels[id]||id);
+});
 </script>
 </body>
 </html>

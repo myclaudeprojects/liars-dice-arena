@@ -1,53 +1,48 @@
-// arena.js — Orchestrates one match: seats the agents, funds the pot from antes,
-// drives turns, and settles USDC to the winner. Emits events via a callback so
-// a CLI, a websocket server, or a test can all consume the same stream.
+// arena.js — Orchestrates one match on Arena Credits (not USDC).
+// Credits are free and nonredeemable. There is no player-funded pot and no
+// chain transfer for antes. Emits events via a callback so a CLI, a websocket
+// server, or a test can all consume the same stream.
 
 const { Match } = require("./engine");
 const { safeFallback } = require("./agents");
-const { POT_CREATOR_BPS, POT_SEAT_BPS, round6 } = require("./economics");
+const { CreditBook } = require("./credits");
+const { DEFAULT_ANTE_CREDITS, assertAnteCredits } = require("./economics");
 
-async function refundAntes({ agents, wallet, pot, seatWallets, ante, onEvent }) {
+function refundAntes({ agents, credits, ante, onEvent }) {
   for (const ag of agents) {
     try {
-      const tx = await wallet.settle(pot, seatWallets[ag.id], ante);
-      await onEvent({ type: "refund", agentId: ag.id, name: ag.name, amount: ante, tx, explorer: wallet.explorerUrl(tx) });
+      credits.credit(ag.id, ante);
+      onEvent({ type: "refund", agentId: ag.id, name: ag.name, amount: ante, unit: "credits" });
     } catch (e) {
-      await onEvent({ type: "refund_failed", agentId: ag.id, name: ag.name, error: String(e.message || e).slice(0, 200) });
+      onEvent({ type: "refund_failed", agentId: ag.id, name: ag.name, error: String(e.message || e).slice(0, 200) });
     }
   }
 }
 
-async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.now(), onEvent = () => {}, maxSteps = 1000, potLabel = "pot" }) {
-  const seatWallets = {};
-  for (const ag of agents) {
-    seatWallets[ag.id] = ag.walletInfo || await wallet.createSeatWallet(ag.name);
-  }
-  const pot = await wallet.createPot(potLabel);
-
-  // Collect antes; if a later ante fails, refund whoever already paid so funds
-  // are not stuck in the pot.
+async function runMatch({
+  agents, credits, ante = DEFAULT_ANTE_CREDITS, diceCount = 5, seed = Date.now(),
+  onEvent = () => {}, maxSteps = 1000, influence = null,
+} = {}) {
+  const book = credits || new CreditBook({ persist: false });
+  const anteCredits = assertAnteCredits(ante);
   const paid = [];
   try {
     for (const ag of agents) {
-      const tx = await wallet.ante(seatWallets[ag.id], pot, ante);
+      book.ensure(ag.id, anteCredits);
+      book.debit(ag.id, anteCredits);
       paid.push(ag);
-      await onEvent({ type: "ante", agentId: ag.id, name: ag.name, amount: ante, tx, explorer: wallet.explorerUrl(tx) });
+      await onEvent({
+        type: "ante", agentId: ag.id, name: ag.name, amount: anteCredits, unit: "credits",
+      });
     }
   } catch (e) {
-    await onEvent({ type: "ante_failed", error: String(e.message || e).slice(0, 200), paid: paid.length });
-    for (const ag of paid) {
-      try {
-        const tx = await wallet.settle(pot, seatWallets[ag.id], ante);
-        await onEvent({ type: "refund", agentId: ag.id, name: ag.name, amount: ante, tx, explorer: wallet.explorerUrl(tx) });
-      } catch (re) {
-        await onEvent({ type: "refund_failed", agentId: ag.id, error: String(re.message || re).slice(0, 200) });
-      }
-    }
+    await onEvent({ type: "ante_failed", error: String(e.message || e).slice(0, 200), paid: paid.length, unit: "credits" });
+    refundAntes({ agents: paid, credits: book, ante: anteCredits, onEvent });
     throw e;
   }
 
-  const potTotal = Math.round(ante * agents.length * 1e6) / 1e6;
-  await onEvent({ type: "pot_ready", total: potTotal });
+  const potTotal = anteCredits * agents.length;
+  await onEvent({ type: "pot_ready", total: potTotal, unit: "credits" });
 
   const match = new Match({
     seats: agents.map((a) => ({ id: a.id, name: a.name })),
@@ -59,15 +54,24 @@ async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.n
     id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house",
     ownerAddress: a.ownerAddress || null, personaTag: a.personaTag || null,
     imageUrl: `/api/agents/${encodeURIComponent(a.id)}/avatar`,
-  })), seed });
-  const emitDeal = () => onEvent({ type: "hand_start", hand: match.handNumber,
-    counts: match.players.map((p) => ({ id: p.id, dice: p.dice.length, alive: p.alive })), first: match.currentPlayer.id });
+  })), seed, unit: "credits" });
+  const emitDeal = () => {
+    // Decay after the opening hand so a tip can actually affect play first,
+    // then fade — one gift cannot lock a persona forever.
+    if (influence && match.handNumber > 1) {
+      influence.decayHands(agents.map((a) => a.id));
+    }
+    return onEvent({ type: "hand_start", hand: match.handNumber,
+      counts: match.players.map((p) => ({ id: p.id, dice: p.dice.length, alive: p.alive })), first: match.currentPlayer.id });
+  };
   await emitDeal();
 
   let steps = 0;
   while (!match.winnerId && steps++ < maxSteps) {
     const actor = byId[match.currentPlayer.id];
     const view = match.viewFor(actor.id);
+    if (influence) view.influence = influence.snapshot(actor.id);
+    else if (typeof actor.influenceOf === "function") view.influence = actor.influenceOf();
     let played;
     try {
       played = await actor.act(view);
@@ -87,8 +91,6 @@ async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.n
       await onEvent({ type: "illegal", agentId: actor.id, error: res.error, action: played.action, fallback: fb.action });
       res = match.applyAction(fb.action);
       if (!res.ok) {
-        // Last resort: challenge if a bid exists, else the match cannot stall —
-        // refund and abort after the loop's maxSteps guard.
         if (view.currentBid) res = match.applyAction({ type: "challenge" });
         if (!res.ok) continue;
       }
@@ -102,43 +104,28 @@ async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.n
     }
   }
 
-  const balances = {};
-  const readBalances = async () => {
-    for (const ag of agents) balances[ag.id] = await wallet.getBalance(seatWallets[ag.id].walletId);
-  };
+  const balances = book.snapshot(agents.map((a) => a.id));
 
   if (!match.winnerId) {
     await onEvent({ type: "aborted", reason: "no_winner", steps: maxSteps });
-    await refundAntes({ agents, wallet, pot, seatWallets, ante, onEvent });
-    await readBalances();
-    return { winnerId: null, winnerName: null, potTotal, aborted: true, balances, log: match.log, seed };
+    refundAntes({ agents, credits: book, ante: anteCredits, onEvent: (ev) => onEvent(ev) });
+    return {
+      winnerId: null, winnerName: null, potTotal, aborted: true, unit: "credits",
+      balances: book.snapshot(agents.map((a) => a.id)), log: match.log, seed,
+    };
   }
 
   const winner = byId[match.winnerId];
-  const creatorDest = winner.creatorWallet || winner.ownerWallet || null;
-  const creatorShare = creatorDest ? round6((potTotal * POT_CREATOR_BPS) / 10_000) : 0;
-  const seatShare = round6(potTotal - creatorShare);
-  const settleTxs = [];
-  if (creatorShare > 0) {
-    const ctx = await wallet.settle(pot, creatorDest, creatorShare);
-    settleTxs.push({ to: "creator", amount: creatorShare, tx: ctx, explorer: wallet.explorerUrl(ctx) });
-    await onEvent({
-      type: "pot_creator", winnerId: winner.id, name: winner.name, amount: creatorShare,
-      tx: ctx, explorer: wallet.explorerUrl(ctx),
-    });
-  }
-  const settleTx = await wallet.settle(pot, seatWallets[winner.id], seatShare);
-  settleTxs.push({ to: "seat", amount: seatShare, tx: settleTx, explorer: wallet.explorerUrl(settleTx) });
+  book.credit(winner.id, potTotal);
   await onEvent({
     type: "settled", winnerId: winner.id, name: winner.name, amount: potTotal,
-    seatShare, creatorShare, tx: settleTx, explorer: wallet.explorerUrl(settleTx),
+    unit: "credits", redeemable: false,
   });
-  await readBalances();
 
   return {
     winnerId: match.winnerId, winnerName: winner.name, potTotal,
-    seatShare, creatorShare, settleTxs,
-    balances, log: match.log, seed,
+    unit: "credits", redeemable: false,
+    balances: book.snapshot(agents.map((a) => a.id)), log: match.log, seed,
   };
 }
 

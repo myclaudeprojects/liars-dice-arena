@@ -60,14 +60,14 @@ const viewUp = reg.publicView(reg.get(rec.id));
 assert(viewUp.avatar.kind === "upload" && !viewUp.avatar.file, "upload kind, file stripped");
 assert(viewUp.imageUrl.includes("v=1"), "cache buster");
 
-reg.sideline(rec.id, "below_min_seat");
+reg.sideline(rec.id, "unresponsive");
 assert(reg.get(rec.id).status === "sidelined", "sidelined");
-assert(reg.publicView(reg.get(rec.id)).sidelineReason === "below_min_seat", "reason public");
+assert(reg.publicView(reg.get(rec.id)).sidelineReason === "unresponsive", "reason public");
 assert(!reg.pickSeats(8).some((s) => s.id === rec.id), "sidelined not seated");
-reg.recordBankrollTopUp(rec.id, { amount: 1.5, source: "token_tax" });
-assert(reg.get(rec.id).bankrollExtra === 1.5, "extra top-up recorded");
-assert(!reg.publicView(reg.get(rec.id)).bankrollTopUps, "raw top-ups not public");
-assert(reg.publicView(reg.get(rec.id)).bankroll.extraTopUp === 1.5, "summary public");
+assert(!("bankroll" in reg.publicView(reg.get(rec.id))), "no bankroll summary");
+assert(reg.publicView(reg.get(rec.id)).fundingAddress === null, "no seat funding address");
+const tre = reg.recordTreasuryInflow({ amount: 2.5, source: "token_tax_prize_treasury" });
+assert(tre.fundsPlay === false && tre.amount === 2.5, "treasury inflow never funds play");
 reg.reactivate(rec.id);
 assert(reg.get(rec.id).status === "active", "reactivated");
 

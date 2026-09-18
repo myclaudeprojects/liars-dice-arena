@@ -1,12 +1,17 @@
-// wallet.js — The ONLY place that touches money. Everything else is chain-agnostic.
+// wallet.js — The ONLY place that touches on-chain USDC.
 //
-// The game needs these operations:
-//   createSeatWallet(label)              -> { walletId, address }
-//   createPot()                          -> { walletId, address }
+// Agents do not ante USDC. Matches use free Arena Credits (src/credits.js).
+// Chain transfers are for:
+//   - spectator tips → creator wallet
+//   - platform prize payouts → creator wallet from the prize treasury
+//   - Argus token buys (off this adapter; deep-link to Argus)
+//
+// Operations used here:
+//   createSeatWallet(label)              -> { walletId, address }  (mock tipper wallets)
 //   getBalance(walletId)                 -> number (USDC)
-//   ante(fromWallet, potWallet, amt)     -> txHash  (agent pays into the pot)
-//   settle(potWallet, winnerWallet, amt) -> txHash  (pot pays the winner)
-//   ensureFunded(wallet, amt)            -> txHash|null (house tops up its own seats)
+//   ante(fromWallet, toWallet, amt)      -> txHash  (tip: spectator → creator)
+//   settle(fromWallet, toWallet, amt)    -> txHash  (prize: treasury → creator)
+//   credit(wallet, amt)                  -> txHash  (mock prize credit)
 // Wallets are always passed as objects { walletId, address }.
 //
 // MockWallet   — in memory, auto-funded, zero keys. Used for local play.
@@ -38,7 +43,8 @@ class MockWallet {
     const b = this.balances.get(fromW.walletId) ?? 0;
     if (b < amt) throw new Error("insufficient_balance");
     this.balances.set(fromW.walletId, b - amt);
-    this.balances.set(toW.walletId, (this.balances.get(toW.walletId) ?? 0) + amt);
+    const toId = toW.walletId || toW.address;
+    this.balances.set(toId, (this.balances.get(toId) ?? 0) + amt);
     return "0xmocktx_ante_" + Math.random().toString(16).slice(2, 10);
   }
   async settle(potW, toW, amt) {
@@ -212,7 +218,7 @@ class EvmWallet {
     const block = await this.provider.getBlock(rc.blockNumber);
     return { from: tx.from, amount: this._fromWei(tx.value), timestamp: block.timestamp * 1000, blockNumber: rc.blockNumber };
   }
-  // What the browser needs to add Arc + pay the pool.
+  // What the browser needs to add Arc + send a tip to a creator.
   chainInfo() { return { chainId: this.chainId, chainIdHex: "0x" + this.chainId.toString(16), rpcUrl: this.rpcUrl, explorer: this.explorer, name: this.chainId === 5042 ? "Arc" : "Arc Testnet" }; }
   explorerUrl(txHash) { return `${this.explorer}/tx/${txHash}`; }
   addressUrl(addr) { return `${this.explorer}/address/${addr}`; }

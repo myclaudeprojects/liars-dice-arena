@@ -8,6 +8,7 @@
   let root = null;
   let currentId = null;
   let allowBuy = true;
+  let tableId = null;
 
   function ensure() {
     if (root) return root;
@@ -25,6 +26,23 @@
         <p class="agent-sheet-meta" id="as-meta"></p>
         <div class="agent-sheet-stats" id="as-stats"></div>
         <div class="agent-sheet-hold" id="as-hold"></div>
+        <form class="agent-sheet-tip" id="as-tip">
+          <p class="agent-sheet-tip-lede" id="as-tip-lede">Tip this creator — pick <b>one</b> influence. 100% of the USDC is a gift to their wallet. You are never entitled to winnings. Tips do not fund credits, pots, or prizes.</p>
+          <div class="influence-picks" id="as-inf" role="radiogroup" aria-label="Pick one influence">
+            <button type="button" class="inf" data-inf="aggressive" aria-pressed="false"><b>Aggressive</b><span>Bluff more, challenge more</span></button>
+            <button type="button" class="inf" data-inf="calculated" aria-pressed="false"><b>Calculated</b><span>Play tighter / probability-focused</span></button>
+            <button type="button" class="inf" data-inf="chaos" aria-pressed="false"><b>Chaos</b><span>More unpredictable</span></button>
+            <button type="button" class="inf" data-inf="defensive" aria-pressed="false"><b>Defensive</b><span>Protect position / avoid marginal challenges</span></button>
+          </div>
+          <input type="hidden" id="as-inf-val" value="" />
+          <p class="agent-sheet-live" id="as-inf-live"></p>
+          <label for="as-tip-amt">Amount (USDC)</label>
+          <div class="agent-sheet-row">
+            <input id="as-tip-amt" type="number" inputmode="decimal" min="0.05" max="1000" step="0.05" value="1" />
+            <button type="submit" class="btn primary" id="as-tip-cta" disabled>Pick an influence</button>
+          </div>
+          <p class="agent-sheet-msg" id="as-tip-msg"></p>
+        </form>
         <div class="agent-sheet-token" id="as-token"></div>
         <form class="agent-sheet-buy" id="as-form">
           <label for="as-amt">Amount (USDC)</label>
@@ -40,7 +58,30 @@
     root.addEventListener("click", (e) => { if (e.target === root) close(); });
     root.querySelector("[data-as-close]").addEventListener("click", close);
     root.querySelector("#as-form").addEventListener("submit", onBuy);
+    root.querySelector("#as-tip").addEventListener("submit", onTip);
+    root.querySelector("#as-inf").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-inf]");
+      if (!btn || !root.contains(btn)) return;
+      pickInfluence(btn.getAttribute("data-inf"));
+    });
     return root;
+  }
+
+  function pickInfluence(id) {
+    if (!root) return;
+    const val = String(id || "").toLowerCase();
+    root.querySelector("#as-inf-val").value = val;
+    root.querySelectorAll("#as-inf [data-inf]").forEach((b) => {
+      const on = b.getAttribute("data-inf") === val;
+      b.classList.toggle("sel", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    const cta = root.querySelector("#as-tip-cta");
+    if (cta && !cta.dataset.locked) {
+      const labels = { aggressive: "Aggressive", calculated: "Calculated", chaos: "Chaos", defensive: "Defensive" };
+      cta.disabled = !labels[val];
+      cta.textContent = labels[val] ? "Tip · " + labels[val] : "Pick an influence";
+    }
   }
 
   function close() {
@@ -70,8 +111,12 @@
     root.querySelector("#as-hold").innerHTML = "";
     root.querySelector("#as-token").innerHTML = "";
     root.querySelector("#as-msg").textContent = "";
+    root.querySelector("#as-tip-msg").textContent = "";
     root.querySelector("#as-hint").textContent = "";
     root.querySelector("#as-cta").disabled = true;
+    const tipCta = root.querySelector("#as-tip-cta");
+    if (tipCta) { tipCta.disabled = true; tipCta.dataset.locked = "1"; tipCta.textContent = "Pick an influence"; }
+    pickInfluence("");
   }
 
   function cell(val, label) {
@@ -98,18 +143,52 @@
       (creator ? ` · creator ${esc(String(creator).slice(0, 6) + "…" + String(creator).slice(-4))}` : "") +
       (tables.length ? ` · at ${tables.map((id) => `<a href="/arena?table=${esc(id)}">${esc(id)}</a>`).join(", ")}` : "");
 
-    const form = (a.form || []).map((x) => `<i class="${x === "W" ? "w" : "l"}">${esc(x)}</i>`).join("") || "—";
+    const formLine = (a.form || []).map((x) => `<i class="${x === "W" ? "w" : "l"}">${esc(x)}</i>`).join("") || "—";
     root.querySelector("#as-stats").innerHTML =
       cell(`${a.won ?? 0}–${Math.max(0, (a.matches ?? a.played ?? 0) - (a.won ?? 0))}`, "record") +
-      cell((a.net != null ? a.net + " USDC" : "—"), "net") +
-      `<div><b class="form">${form}</b><span>form</span></div>`;
+      cell((a.net != null ? a.net + " cr" : "—"), "net credits") +
+      `<div><b class="form">${formLine}</b><span>form</span></div>`;
 
-    const bal = h.seatBalance != null ? Number(h.seatBalance).toFixed(2) + " USDC" : (j.balance != null ? Number(j.balance).toFixed(2) + " USDC" : "—");
-    const extra = h.bankroll && h.bankroll.extraTopUp ? h.bankroll.extraTopUp + " extra" : "no tax top-up yet";
+    const bal = h.credits != null ? Number(h.credits) + " cr" : (j.credits != null ? Number(j.credits) + " cr" : "—");
     root.querySelector("#as-hold").innerHTML =
-      cell(bal, "seat") +
-      cell(String(h.minSeat ?? 3), "min to sit") +
-      cell(extra, "token-tax bankroll");
+      cell(bal, "credits") +
+      cell("no", "redeemable") +
+      cell(String(h.ante ?? 1) + " cr", "ante");
+
+    const tip = j.tip || {};
+    const tipForm = root.querySelector("#as-tip");
+    const tipCta = root.querySelector("#as-tip-cta");
+    const tipMsg = root.querySelector("#as-tip-msg");
+    const liveEl = root.querySelector("#as-inf-live");
+    if (tipForm) {
+      tipForm.hidden = false;
+      if (tipCta) {
+        delete tipCta.dataset.locked;
+        const chosen = root.querySelector("#as-inf-val").value;
+        tipCta.disabled = !chosen;
+        tipCta.textContent = chosen ? "Tip · " + chosen.charAt(0).toUpperCase() + chosen.slice(1) : "Pick an influence";
+      }
+      if (tipMsg && !tipMsg.textContent) {
+        tipMsg.textContent = "You are never entitled to winnings. 100% to the creator wallet.";
+      }
+      const cur = tip.current || j.influence;
+      if (liveEl) {
+        liveEl.textContent = cur && cur.dominant
+          ? `Live lean: ${cur.label} — ${cur.blurb}. Weighted by tip size; decays each hand.`
+          : "No live influence yet — your tip shifts how this seat plays, then fades.";
+      }
+      const choices = tip.choices;
+      if (choices && choices.length) {
+        choices.forEach((c) => {
+          const b = root.querySelector(`#as-inf [data-inf="${c.id}"]`);
+          if (!b) return;
+          const span = b.querySelector("span");
+          const bold = b.querySelector("b");
+          if (bold) bold.textContent = c.label;
+          if (span) span.textContent = c.blurb;
+        });
+      }
+    }
 
     const ca = buy.address ? `<code>${esc(buy.address)}</code>` : "<span>no contract yet</span>";
     const link = buy.argusUrl
@@ -118,7 +197,7 @@
     const profile = a.id ? `<a href="/agent/${encodeURIComponent(a.id)}">Agent page</a>` : "";
     const econ = buy.economics;
     const split = econ
-      ? `Tax after protocol cut: creator ${(econ.creatorFunds || 0) * 100}% · holders ${(econ.holderDividends || 0) * 100}% · seat extra ${(econ.arenaSeatBankroll || 0) * 100}% · burn ${(econ.buybackBurn || 0) * 100}% · LP tax ${(econ.liquidityOngoing || 0) * 100}%`
+      ? `Tax after protocol cut: creator ${(econ.creatorFunds || 0) * 100}% · holders ${(econ.holderDividends || 0) * 100}% · prize treasury ${(econ.platformPrizeTreasury || econ.arenaSeatBankroll || 0) * 100}% · burn ${(econ.buybackBurn || 0) * 100}% · LP tax ${(econ.liquidityOngoing || 0) * 100}%`
       : "";
     const desc = buy.description ? `<p>${esc(buy.description)}</p>` : "";
     root.querySelector("#as-token").innerHTML =
@@ -148,6 +227,7 @@
   async function open(id, opts) {
     if (!id) return;
     allowBuy = opts && opts.allowBuy === false ? false : true;
+    tableId = (opts && opts.tableId) || null;
     currentId = id;
     ensure();
     root.hidden = false;
@@ -156,7 +236,7 @@
     const closeBtn = root.querySelector("[data-as-close]");
     if (closeBtn) closeBtn.focus();
     try {
-      const r = await fetch("/api/agents/" + encodeURIComponent(id));
+      const r = await fetch("/api/agents/" + encodeURIComponent(id) + (tableId ? ("?table=" + encodeURIComponent(tableId)) : ""));
       const j = await r.json();
       if (currentId !== id) return;
       if (!j.ok && !j.agent) throw new Error(j.error || "No such agent.");
@@ -178,7 +258,7 @@
       const r = await fetch("/api/agents/" + encodeURIComponent(currentId) + "/buy", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ amount: amt, buyer: localStorage.getItem("bettorId") || "spectator" }),
+        body: JSON.stringify({ amount: amt, buyer: localStorage.getItem("tipperId") || localStorage.getItem("bettorId") || "spectator" }),
       });
       const j = await r.json();
       if (j.mock && j.ok) {
@@ -196,8 +276,68 @@
     }
   }
 
+  async function onTip(e) {
+    e.preventDefault();
+    if (!currentId) return;
+    const amt = Number(root.querySelector("#as-tip-amt").value);
+    const inf = root.querySelector("#as-inf-val").value;
+    const msg = root.querySelector("#as-tip-msg");
+    if (!inf) { msg.textContent = "Pick one influence: Aggressive, Calculated, Chaos, or Defensive."; return; }
+    msg.textContent = "Working…";
+    try {
+      const cfg = await fetch("/api/config").then((r) => r.json()).catch(() => ({}));
+      const live = !!cfg.live;
+      const agent = await fetch("/api/agents/" + encodeURIComponent(currentId) + (tableId ? ("?table=" + encodeURIComponent(tableId)) : "")).then((r) => r.json());
+      const dest = (agent.tip && (agent.tip.creatorAddress || agent.tip.fundingAddress)) || (agent.holdings && agent.holdings.creatorAddress);
+      const from = (window.LDAWallet && LDAWallet.account()) || localStorage.getItem("tipperId") || localStorage.getItem("bettorId") || "spectator";
+      if (live) {
+        if (!window.ethereum) throw new Error("Connect a wallet to tip on Arc.");
+        const st = await LDAWallet.connect();
+        const account = st.account;
+        if (!account) throw new Error("Connect a wallet to tip.");
+        if (!dest) throw new Error("This agent has no creator wallet to tip.");
+        const chain = cfg.chain;
+        if (chain && chain.chainIdHex) {
+          try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain.chainIdHex }] }); }
+          catch (err) {
+            if (err.code === 4902 || /Unrecognized|not added/i.test(err.message || "")) {
+              await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: chain.chainIdHex, chainName: chain.name, nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 }, rpcUrls: [chain.rpcUrl], blockExplorerUrls: [chain.explorer] }] });
+            } else throw err;
+          }
+        }
+        msg.textContent = `Confirm ${amt} USDC in your wallet…`;
+        const value = "0x" + (BigInt(Math.round(amt * 1e6)) * 1000000000000n).toString(16);
+        const txHash = await window.ethereum.request({ method: "eth_sendTransaction", params: [{ from: account, to: dest, value }] });
+        msg.textContent = "Sent. Waiting for Arc to confirm…";
+        let j = null;
+        for (let i = 0; i < 20; i++) {
+          const r = await fetch("/api/agents/" + encodeURIComponent(currentId) + "/tip", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ amount: amt, txHash, address: account, from: account, tableId, influence: inf }),
+          });
+          j = await r.json();
+          if (j.ok || !/not_found_yet/.test(j.error || "")) break;
+          await new Promise((res) => setTimeout(res, 700));
+        }
+        if (j && j.ok) msg.textContent = `Gift recorded: ${j.amount} USDC → creator (100%), influence ${j.influence}. Never entitled to winnings.`;
+        else msg.textContent = (j && j.error) || "Could not record tip.";
+        return;
+      }
+      const r = await fetch("/api/agents/" + encodeURIComponent(currentId) + "/tip", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amount: amt, from, tableId, influence: inf }),
+      });
+      const j = await r.json();
+      if (j.ok) msg.textContent = `Gift recorded: ${j.amount} USDC → creator (100%), ${j.influence}. ${j.mock ? "Demo wallets, not on chain. " : ""}You are never entitled to winnings.`;
+      else msg.textContent = j.error || "Could not tip.";
+    } catch (err) {
+      msg.textContent = err.message || "Failed.";
+    }
+  }
+
   function flagsFromEl(el) {
-    return { allowBuy: true };
+    return { allowBuy: true, tableId: el.getAttribute("data-table") || null };
   }
 
   document.addEventListener("click", (e) => {

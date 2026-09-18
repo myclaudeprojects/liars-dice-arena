@@ -8,16 +8,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/static/site.css" />
 <style>
-  .head{padding:30px 0 6px}.head h1{font-size:44px;font-weight:600}
+  .head{padding:22px 0 6px}.head h1{font-size:44px;font-weight:600}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:22px}
   @media (max-width:900px){.grid{grid-template-columns:1fr}}
   .panel h2{font-size:22px;font-weight:600;margin-bottom:12px}
   label{display:block;font-size:13px;color:#5c5a52;margin:12px 0 5px}
-  input[type=text],input[type=url],textarea,select{width:100%;font:inherit;padding:10px 12px;border:2px solid #d9cfb8;border-radius:10px;background:#fff}
+  input[type=text],input[type=url],textarea,select{width:100%;font:inherit;padding:10px 12px;border:2px solid #d9cfb8;border-radius:10px;background:#fff;min-height:44px}
   input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--gold);outline-offset:1px;border-color:var(--gold)}
   textarea{min-height:110px;resize:vertical}
   .types{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
-  .types button{font:inherit;border:2px solid #d9cfb8;background:#fff;border-radius:10px;padding:10px 8px;cursor:pointer;text-align:left;color:inherit}
+  .types button{font:inherit;border:2px solid #d9cfb8;background:#fff;border-radius:10px;padding:10px 8px;cursor:pointer;text-align:left;color:inherit;min-height:44px}
   .types button.sel{border-color:var(--gold);background:#fff6df}
   .types button:disabled{opacity:.5;cursor:not-allowed}
   .types b{display:block;font:600 15px/1.2 var(--serif)}.types span{font-size:12px;color:#5c5a52}
@@ -46,6 +46,16 @@
   .proto h2{font-size:30px;font-weight:600;margin-bottom:10px}
   .proto pre{background:#1f2a24;color:#e8f0ea;border-radius:12px;padding:16px 18px;font-size:13px;overflow:auto;line-height:1.5}
   .proto p{color:#2f2e28;line-height:1.6;max-width:720px}
+  @media (max-width:640px){
+    .head{padding:12px 0 0}
+    .head h1{font-size:28px}
+    .types{grid-template-columns:1fr}
+    .card{padding:16px 14px}
+    .card .kv{grid-template-columns:1fr;gap:2px 0}
+    .card .row .btn,.fund .btn{width:100%}
+    .proto pre{font-size:12px;padding:12px}
+    input[type=text],input[type=url],textarea,select{font-size:16px}
+  }
 </style>
 </head>
 <body>

@@ -15,6 +15,7 @@
     root.hidden = true;
     root.innerHTML = `
       <div class="agent-sheet-card" role="dialog" aria-modal="true" aria-labelledby="as-name">
+        <div class="agent-sheet-handle" aria-hidden="true"></div>
         <button type="button" class="agent-sheet-x" data-as-close aria-label="Close">Close</button>
         <h2 id="as-name">Agent</h2>
         <p class="agent-sheet-meta" id="as-meta"></p>
@@ -33,9 +34,6 @@
     root.addEventListener("click", (e) => { if (e.target === root) close(); });
     root.querySelector("[data-as-close]").addEventListener("click", close);
     root.querySelector("#as-form").addEventListener("submit", onBuy);
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !root.hidden) close();
-    });
     return root;
   }
 
@@ -43,6 +41,7 @@
     if (!root) return;
     root.hidden = true;
     currentId = null;
+    document.body.classList.remove("sheet-open");
   }
 
   function renderLoading() {
@@ -96,7 +95,10 @@
     currentId = id;
     ensure();
     root.hidden = false;
+    document.body.classList.add("sheet-open");
     renderLoading();
+    const closeBtn = root.querySelector("[data-as-close]");
+    if (closeBtn) closeBtn.focus();
     try {
       const r = await fetch("/api/agents/" + encodeURIComponent(id));
       const j = await r.json();
@@ -145,6 +147,17 @@
     e.stopPropagation();
     open(el.getAttribute("data-agent-open"));
   }, true);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && root && !root.hidden) { close(); return; }
+    if (e.key !== "Enter" && e.key !== " ") return;
+    if (!e.target || !e.target.closest) return;
+    if (e.target.closest("#agent-sheet, input, textarea, a, .pick, button:not([data-agent-open])")) return;
+    const el = e.target.closest("[data-agent-open]");
+    if (!el) return;
+    e.preventDefault();
+    open(el.getAttribute("data-agent-open"));
+  });
 
   window.LDAAgentPanel = { open, close };
 })();

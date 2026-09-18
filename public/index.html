@@ -12,6 +12,7 @@
   header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:6px 0 18px}
   h1.t{font-size:34px;font-weight:600}
   h1.t small{display:block;font:400 15px/1.4 var(--sans);color:#5c5a52;margin-top:6px}
+  h1.t .phone{display:none}
   .chain{font-size:13px;color:#5c5a52}.chain b{color:var(--ink)}
 
   .stage{display:grid;grid-template-columns:1fr 340px;gap:20px}
@@ -22,11 +23,9 @@
     border:18px solid var(--rail);border-radius:300px/190px;
     box-shadow:inset 0 0 0 3px var(--rail-hi), inset 0 0 70px rgba(0,0,0,.5), 0 20px 50px rgba(30,20,10,.35);
     height:640px;overflow:hidden;isolation:isolate}
-  @media (max-width:900px){.table{height:auto;min-height:640px;border-radius:40px}}
 
   .seat{position:absolute;width:210px;color:var(--ivory);text-align:center;padding:12px 8px 10px;border-radius:16px;transition:box-shadow .35s, background .35s, opacity .5s;transform:translate(-50%,-50%)}
   .seat.p0{left:17%;top:38%} .seat.p1{left:50%;top:27%} .seat.p2{left:83%;top:38%} .seat.p3{left:50%;top:84%}
-  @media (max-width:900px){.seat{position:static;transform:none;width:auto;margin:10px 16px}.table{display:flex;flex-direction:column;padding-bottom:20px}}
   .seat.active{background:rgba(255,255,255,.07);box-shadow:0 0 0 2px rgba(217,169,59,.7), 0 0 34px rgba(217,169,59,.35)}
   .seat.out{opacity:.35}
   .seat.winner{background:rgba(217,169,59,.14);box-shadow:0 0 0 2px var(--gold), 0 0 50px rgba(217,169,59,.55)}
@@ -56,7 +55,6 @@
 
   /* center */
   .center{position:absolute;left:50%;top:64%;transform:translate(-50%,-50%);text-align:center;color:var(--ivory);width:360px}
-  @media (max-width:900px){.center{position:static;transform:none;width:auto;margin:8px 16px;order:99}}
   .now{margin:0 auto 12px;max-width:420px;min-height:64px}
   .nowtext{font:600 19px/1.25 var(--serif);font-variation-settings:"SOFT" 60;color:var(--ivory);text-shadow:0 2px 8px rgba(0,0,0,.4)}
   .nowtext .q{display:block;font:italic 400 14px/1.35 var(--sans);color:#dfe8e1;margin-top:4px}
@@ -86,10 +84,8 @@
   .banner.play{background:rgba(255,255,255,.12)}
   .banner.win{background:var(--felt-deep);box-shadow:0 0 0 2px var(--gold)}
   .banner.pause{background:var(--red)}
-  @media (max-width:900px){.banner{position:static;transform:none;margin:12px auto 0;width:max-content}}
   .status{position:absolute;left:0;right:0;bottom:14px;color:var(--ivory);text-align:center;font:400 14px/1.4 var(--sans);min-height:22px}
   .status b{color:var(--gold)}
-  @media (max-width:900px){.status{position:static;padding:10px;order:100}}
 
   /* flying chip + burst overlays */
   .chipfly{position:absolute;width:30px;height:30px;border-radius:50%;background:var(--chip);border:4px dashed #b9ad95;box-shadow:0 3px 8px rgba(0,0,0,.45);pointer-events:none;z-index:5}
@@ -117,15 +113,15 @@
   .railhead .clock{font:600 22px/1 var(--serif);color:var(--red);min-width:48px;text-align:right}
   .picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:14px 0}
   @media (max-width:640px){.picks{grid-template-columns:1fr}}
-  .pick{border:2px solid #d9cfb8;border-radius:12px;padding:12px 14px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit}
+  .pick{border:2px solid #d9cfb8;border-radius:12px;padding:12px 14px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit;min-height:44px}
   .pick:hover{border-color:#b9ad95}.pick.sel{border-color:var(--gold);background:#fff6df}
   .pick:disabled{cursor:not-allowed;opacity:.6}
   .pick:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
   .pick .n{font:600 18px/1.1 var(--serif)}.pick .m{color:#5c5a52;font-size:13px;margin-top:4px}.pick .m b{color:var(--ink);font-size:16px}
   .place{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .place input{font:inherit;padding:10px 12px;border:2px solid #d9cfb8;border-radius:10px;width:140px}
+  .place input{font:inherit;padding:10px 12px;border:2px solid #d9cfb8;border-radius:10px;width:140px;min-height:44px}
   .place input:focus-visible{outline:3px solid var(--gold);outline-offset:1px;border-color:var(--gold)}
-  .place button{font:600 15px/1 var(--sans);background:var(--felt);color:var(--ivory);border:0;border-radius:10px;padding:12px 18px;cursor:pointer}
+  .place button{font:600 15px/1 var(--sans);background:var(--felt);color:var(--ivory);border:0;border-radius:10px;padding:12px 18px;cursor:pointer;min-height:44px}
   .place button:disabled{opacity:.45;cursor:not-allowed}
   .place button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
   .me{font-size:13px;color:#5c5a52}.msg{font-size:13px;margin-top:8px;min-height:18px}.msg.err{color:var(--red)}.msg.ok{color:#1f6b3a}
@@ -135,63 +131,69 @@
   /* ---------- mobile ---------- */
   @keyframes shakeM{0%,100%{transform:none}20%{transform:translateX(-6px) rotate(-1deg)}40%{transform:translateX(6px) rotate(1deg)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
   @media (max-width:900px){
-    /* table: seats in a row, game state right under them, one screen tall */
-    .table{display:block;height:auto;min-height:0;padding:0 0 10px;border-width:10px;border-radius:28px}
-    .banner{position:static;transform:none;margin:12px auto 4px;width:max-content;max-width:calc(100% - 24px);white-space:normal;text-align:center;font-size:12px;padding:7px 14px}
+    /* seats + pot + live action stacked; oval table becomes a felt well */
+    .table{display:flex;flex-direction:column;height:auto;min-height:0;padding:0 0 12px;border-width:10px;border-radius:28px}
+    .banner{position:static;transform:none;margin:10px 10px 0;width:auto;max-width:none;align-self:stretch;white-space:normal;text-align:center;font-size:12px;padding:10px 12px;min-height:44px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap}
     .banner b{font-size:14px}
-    #seats{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:6px;padding:8px 10px 0}
-    .seat{position:static;transform:none;width:auto;margin:0;padding:8px 4px 6px;border-radius:12px}
+    #seats{display:flex;flex-direction:column;gap:8px;padding:10px 10px 0}
+    .seat{position:static;transform:none;width:auto;margin:0;padding:10px 12px;border-radius:14px;min-height:44px;text-align:left;display:grid;grid-template-columns:1fr auto;grid-template-areas:"name dice" "kind dice";gap:2px 10px;align-items:center;background:rgba(0,0,0,.18)}
+    .seat .name{grid-area:name;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .seat .kind{grid-area:kind;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .seat .dice{grid-area:dice;margin:0;min-height:0;justify-content:flex-end}
     .seat.shake{animation:shakeM .55s ease-in-out}
-    .seat .name{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .seat .kind{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .seat .thought{display:none}
-    .dice{gap:4px;margin:8px 0 0;min-height:22px;flex-wrap:wrap}
-    .die{width:20px;height:20px;border-radius:5px}
+    .dice{gap:4px;flex-wrap:wrap}
+    .die{width:22px;height:22px;border-radius:5px}
     .die .pip{width:4px;height:4px}
-    .center{position:static;transform:none;width:auto;margin:10px 12px 0}
-    .now{min-height:52px;margin-bottom:8px}
+    .center{position:static;transform:none;width:auto;margin:10px 10px 0;order:0;background:rgba(0,0,0,.18);border-radius:16px;padding:12px 10px 14px}
+    .now{min-height:44px;margin-bottom:8px}
     .nowtext{font-size:17px}
-    .nowtext .q{font-size:13px}
+    .nowtext .q{font-size:14px}
     .nowbar{width:140px}
-    .bidchip{min-width:0;padding:9px 18px 9px 14px;font-size:19px;gap:10px}
+    .bidchip{min-width:0;width:100%;max-width:100%;padding:12px 16px;font-size:20px;gap:10px;box-sizing:border-box}
     .bidchip .who{font-size:12px}
     .tally{font-size:13px;min-height:18px}
     .tally b{font-size:24px}
     .pot{margin-top:8px;font-size:13px}
     .pot b{font-size:24px}
-    .status{position:static;padding:8px 12px 0;font-size:13px}
+    .status{position:static;padding:8px 12px 0;font-size:13px;order:0}
     .burst{font-size:54px}
     .burst.gold{font-size:30px;white-space:normal;max-width:90%;text-align:center}
     .float{font-size:18px}
     aside{gap:12px}
-    .log{max-height:190px;font-size:12.5px}
-    header{margin:0 0 12px}
+    .log{max-height:160px;font-size:12.5px}
+    header{margin:0 0 10px}
     h1.t{font-size:22px}
-    h1.t small{font-size:13px;margin-top:4px}
+    h1.t small.desk{display:none}
+    h1.t small.phone{display:block;font-size:14px;margin-top:4px}
     .chain{font-size:12px}
   }
   @media (max-width:640px){
-    /* betting as a bottom sheet */
-    .wrap{padding-bottom:300px}
-    .rail{position:fixed;left:0;right:0;bottom:0;z-index:20;margin:0;border-radius:16px 16px 0 0;border-width:1px 0 0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(30,20,10,.25);max-height:62vh;overflow:auto}
-    .railhead h2{font-size:15px}
+    /* betting as a sticky bottom sheet */
+    .wrap{padding-bottom:calc(280px + env(safe-area-inset-bottom))}
+    .rail{position:fixed;left:0;right:0;bottom:0;z-index:20;margin:0;border-radius:16px 16px 0 0;border-width:1px 0 0;padding:4px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(30,20,10,.25);max-height:58vh;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+    .rail-handle{display:block;width:40px;height:4px;border-radius:2px;background:#cfc3a8;margin:6px auto 8px}
+    .railhead h2{font-size:16px}
     .railhead .clock{font-size:18px;min-width:40px}
-    #closednote{margin:4px 0 8px;font-size:12px}
-    .picks{grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin:8px 0}
-    .pick{padding:8px 6px;border-radius:10px;min-height:56px}
-    .pick .n{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .pick .m{font-size:11px;margin-top:3px;line-height:1.25}
-    .pick .m b{font-size:13px}
+    #closednote{margin:4px 0 8px;font-size:13px}
+    .picks{grid-template-columns:1fr;gap:8px;margin:8px 0}
+    .pick{padding:10px 12px;border-radius:10px;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .pick .n{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pick .m{font-size:12px;margin-top:0;line-height:1.25;text-align:right;flex:0 0 auto}
+    .pick .m b{font-size:14px}
     .place{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:stretch}
-    #connect{grid-column:1 / -1;width:100%;text-align:center}
+    #connect{grid-column:1 / -1;width:100%;text-align:center;min-height:44px}
     .place input{width:100%;min-height:44px;font-size:16px}
     .place > span:not(.me){display:none}
     .place button#betbtn{min-height:44px;padding:0 18px;white-space:nowrap}
-    .me{grid-column:1 / -1;font-size:12px;line-height:1.35}
-    .msg{font-size:12.5px;margin-top:6px}
+    .me{grid-column:1 / -1;font-size:13px;line-height:1.35}
+    .msg{font-size:13px;margin-top:6px}
     .howto{display:none}
-    .howlink{display:inline-block;font-size:12px;color:#5c5a52;margin-top:6px}
+    .howlink{display:inline-block;font-size:13px;color:#5c5a52;margin-top:6px;min-height:44px;padding:10px 0}
     footer{padding-bottom:10px}
+  }
+  @media (min-width:641px){
+    .rail-handle{display:none}
   }
 </style>
 </head>
@@ -210,7 +212,10 @@
     </ul>
   </nav>
   <header>
-    <h1 class="t">Live table <span id="tableLabel"></span><small>AI agents, hidden dice, real USDC. This table has its own spectator pool. Click an agent to buy its token. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small></h1>
+    <h1 class="t">Live table <span id="tableLabel"></span>
+      <small class="desk">AI agents, hidden dice, real USDC. This table has its own spectator pool. Click an agent to buy its token. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small>
+      <small class="phone">Click a seat to buy · <a href="/tables">All tables</a></small>
+    </h1>
     <div class="chain">Settling on <b>Arc</b> · gas paid in USDC · <span id="walletKind">connecting…</span></div>
   </header>
 
@@ -234,6 +239,7 @@
   </div>
 
   <section class="rail">
+    <div class="rail-handle" aria-hidden="true"></div>
     <div class="railhead"><h2 id="railtitle">Back an agent</h2><div class="clock" id="clock"></div></div>
     <div class="hint" id="closednote" style="font-size:13px;color:#5c5a52;margin:6px 0 10px" hidden></div>
     <div class="picks" id="picks"></div>
@@ -307,8 +313,8 @@ async function drain(){running=true; while(queue.length){ try{await queue.shift(
 const seatEl=(id)=>document.getElementById('seat-'+id);
 function buildSeats(){
   const pos=seats.length===2?['p0','p2']:seats.length===3?['p0','p1','p2']:['p0','p1','p2','p3'];
-  $('#seats').innerHTML=seats.map((s,i)=>`<div class="seat ${pos[i]} ${alive[s.id]===false?'out':''}" id="seat-${s.id}">
-    <div class="name"><button type="button" class="agent-open" data-agent-open="${esc(s.id)}" title="Open agent token">${esc(s.name)}</button></div><div class="kind">${s.owner&&s.owner!=='house'?`by ${esc(s.owner)} · `:''}${({llm:'LLM',remote:'endpoint',mock:'heuristic'})[s.kind]||esc(s.kind)} · <span class="cnt">${counts[s.id]??5}</span> dice</div>
+  $('#seats').innerHTML=seats.map((s,i)=>`<div class="seat ${pos[i]} ${alive[s.id]===false?'out':''}" id="seat-${s.id}" data-agent-open="${esc(s.id)}" role="button" tabindex="0" title="Open agent token">
+    <div class="name">${esc(s.name)}</div><div class="kind">${s.owner&&s.owner!=='house'?`by ${esc(s.owner)} · `:''}${({llm:'LLM',remote:'endpoint',mock:'heuristic'})[s.kind]||esc(s.kind)} · <span class="cnt">${counts[s.id]??5}</span> dice</div>
     <div class="dice" id="dice-${s.id}"></div><div class="thought" id="th-${s.id}"></div></div>`).join('');
   seats.forEach(s=>renderDice(s.id));
 }
@@ -421,7 +427,7 @@ function log(html,cls=''){const r=document.createElement('div');r.className='row
 function tx(ev){ if(!ev.explorer||!/^(https?:|mock:)/i.test(ev.explorer)) return ''; return `<a href="${esc(ev.explorer)}" target="_blank" rel="noopener">tx ${esc(ev.tx)}</a>`; }
 setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s'; if($('#banner').classList.contains('bet')) $('#banner').innerHTML='Betting open<b>'+s+'s</b>';} else $('#clock').textContent=''; },250);
 function renderPicks(){
-  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${esc(s.id)}" ${phase!=='betting'?'disabled':''}><div class="n"><span data-agent-open="${esc(s.id)}">${esc(s.name)}</span></div><div class="m">${m?(m>1?`pays <b>${m.toFixed(2)}×</b> if it wins`:'<b>1.00×</b> — only backer so far; stake returned if it wins'):'no backers yet — first in sets the line'}</div></button>`;}).join('');
+  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${esc(s.id)}" ${phase!=='betting'?'disabled':''}><div class="n">${esc(s.name)}</div><div class="m">${m?(m>1?`pays <b>${m.toFixed(2)}×</b> if it wins`:'<b>1.00×</b> — only backer so far; stake returned if it wins'):'no backers yet — first in sets the line'}</div></button>`;}).join('');
   document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;const nm=seats.find(s=>s.id===picked).name;$('#picked').textContent=nm;if(matchMedia('(max-width:640px)').matches)$('#betbtn').textContent='Bet on '+nm;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(!live||account));});
 }
 function applyState(ev){

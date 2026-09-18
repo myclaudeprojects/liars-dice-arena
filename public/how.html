@@ -8,19 +8,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/static/site.css" />
 <style>
-  .head{padding:30px 0 6px}
+  .head{padding:24px 0 6px}
   .head h1{font-size:44px;font-weight:600}
   article{display:grid;grid-template-columns:220px 1fr;gap:40px;margin-top:26px}
-  @media (max-width:860px){article{grid-template-columns:1fr}}
+  @media (max-width:860px){article{grid-template-columns:1fr;gap:16px}}
   .toc{position:sticky;top:20px;align-self:start;font-size:14px}
-  .toc a{display:block;padding:6px 0;color:#4a483f;text-decoration:none}
+  .toc a{display:flex;align-items:center;padding:10px 0;min-height:44px;color:#4a483f;text-decoration:none}
   .toc a:hover{color:var(--ink);text-decoration:underline}
-  .body{max-width:720px}
+  .body{max-width:720px;min-width:0}
   .body h2{font-size:30px;font-weight:600;margin:38px 0 12px}
   .body h2:first-child{margin-top:0}
   .body p,.body li{color:#2f2e28;line-height:1.6}
   .body ol,.body ul{padding-left:22px}
   .ex{background:#fff9ee;border:1px solid #d9cfb8;border-radius:12px;padding:18px 20px;margin:16px 0}
+  .ex .scroll{margin-top:8px}
   .ex table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
   .ex td,.ex th{padding:7px 6px;border-bottom:1px solid #e6dcc6;text-align:left}
   .ex td.num,.ex th.num{text-align:right;font-variant-numeric:tabular-nums}
@@ -28,6 +29,19 @@
   .dicerow span.l{font-size:13px;color:#5c5a52;margin-right:6px;min-width:76px}
   dl dt{font-weight:600;margin-top:14px}
   dl dd{margin:4px 0 0}
+  @media (max-width:860px){
+    .head{padding:12px 0 0}
+    .head h1{font-size:28px}
+    .toc{position:static;display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin:0 -14px;padding:4px 14px 12px}
+    .toc::-webkit-scrollbar{display:none}
+    .toc a{flex:0 0 auto;padding:10px 14px;min-height:44px;background:var(--room-2);border-radius:999px;white-space:nowrap;font-size:14px}
+    .toc a:hover{text-decoration:none;background:#ddd4bd}
+    .body h2{font-size:22px;margin:22px 0 8px}
+    .body p,.body li{font-size:16px;line-height:1.5}
+    .ex{padding:14px;overflow:hidden}
+    .ex table{font-size:13px}
+    .dicerow span.l{min-width:0;width:100%}
+  }
 </style>
 </head>
 <body>
@@ -124,6 +138,7 @@
 
       <div class="ex">
         <b>Worked example.</b> Three spectators bet before the deal; The Shark wins.
+        <div class="scroll">
         <table>
           <tr><th>Spectator</th><th>Backed</th><th class="num">Staked</th><th class="num">Paid out</th></tr>
           <tr><td>alice</td><td>The Shark</td><td class="num">10</td><td class="num">24.70</td></tr>
@@ -131,6 +146,7 @@
           <tr><td>bob</td><td>Degen</td><td class="num">60</td><td class="num">0</td></tr>
           <tr><td colspan="2">Losing side 60 · house 2% of that = 1.20 · 98.80 split 1:3 between the winning backers</td><td class="num">100</td><td class="num">98.80</td></tr>
         </table>
+        </div>
       </div>
 
       <h2 id="arc">Why Arc</h2>

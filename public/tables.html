@@ -8,31 +8,48 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/static/site.css" />
 <style>
-  .head{padding:24px 0 8px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-end}
+  .head{padding:20px 0 8px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end}
   .head h1{font-size:40px;font-weight:600}
-  .filters{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 8px}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 8px;align-items:stretch}
   .filters input{font:inherit;padding:10px 12px;border:2px solid #d9cfb8;border-radius:10px;min-width:140px;flex:1;min-height:44px}
   .filters button{min-height:44px}
-  .mine{margin:8px 0 18px;font-size:14px}
-  .mine a{margin-right:10px}
+  .more-filters{width:100%}
+  .more-filters summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:#5c5a52;font-size:14px;list-style:none}
+  .more-filters summary::-webkit-details-marker{display:none}
+  .more-filters summary::before{content:"▸ ";color:var(--felt)}
+  .more-filters[open] summary::before{content:"▾ "}
+  .more-filters .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .more-filters .row input{flex:1;min-width:140px}
+  .mine{margin:0 0 14px;font-size:14px;background:var(--room);padding:4px 0 10px}
+  .mine .label{display:block;font:600 13px/1 var(--sans);color:#5c5a52;margin-bottom:6px;letter-spacing:.04em;text-transform:uppercase}
+  .mine .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
-  .tcard{display:block;text-decoration:none;color:inherit;background:radial-gradient(ellipse at 50% 0%, #1c5d47 0%, var(--felt) 70%);
-    color:var(--ivory);border-radius:16px;padding:18px 16px;border:8px solid var(--rail);box-shadow:inset 0 0 0 2px var(--rail-hi), 0 10px 24px rgba(30,20,10,.25);min-height:168px}
-  .tcard .btn{background:var(--gold);color:var(--ink)}
-  .tcard .agent-open{color:var(--ivory)}
+  .tcard{display:flex;flex-direction:column;text-decoration:none;color:inherit;background:radial-gradient(ellipse at 50% 0%, #1c5d47 0%, var(--felt) 70%);
+    color:var(--ivory);border-radius:16px;padding:16px 14px;border:8px solid var(--rail);box-shadow:inset 0 0 0 2px var(--rail-hi), 0 10px 24px rgba(30,20,10,.25);min-height:0}
+  .tcard .btn{background:var(--gold);color:var(--ink);margin-top:auto;align-self:flex-start}
+  .tcard .agent-open{color:var(--ivory);min-height:32px}
   .tcard .id{font-size:12px;color:var(--mute);letter-spacing:.06em;text-transform:uppercase}
   .tcard h2{font:600 22px/1.15 var(--serif);margin:4px 0 10px}
-  .tcard .seats{display:flex;flex-direction:column;gap:4px;font-size:14px}
+  .tcard .seats{display:flex;flex-direction:column;gap:2px;font-size:14px;margin-bottom:10px}
   .tcard .seats b{font:600 15px/1.2 var(--serif)}
-  .tcard .meta{margin-top:12px;color:var(--gold);font:600 14px/1.3 var(--serif)}
+  .tcard .meta{margin:0 0 12px;color:var(--gold);font:600 14px/1.3 var(--serif)}
   .tcard.waiting{opacity:.85}
+  .tcard.mine-at{box-shadow:inset 0 0 0 2px var(--gold), 0 10px 24px rgba(30,20,10,.25)}
   .empty{color:#5c5a52;padding:20px 0}
   .pill{display:inline-block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;background:rgba(255,255,255,.12);border-radius:999px;padding:3px 8px;margin-left:6px}
   .pill.bet{background:var(--gold);color:var(--ink)}
   @media (max-width:640px){
+    .head{padding:12px 0 4px;align-items:stretch}
     .head h1{font-size:28px}
-    .filters{flex-direction:column}
+    .head .btn{width:100%}
+    .filters{flex-direction:column;gap:8px}
     .filters input,.filters button{width:100%}
+    .more-filters .row{flex-direction:column}
+    .mine{position:sticky;top:0;z-index:6;margin:0 -14px 12px;padding:8px 14px 10px;border-bottom:1px solid #d9cfb8}
+    .grid{grid-template-columns:1fr;gap:12px}
+    .tcard{padding:14px 12px;border-width:6px;min-height:0}
+    .tcard .btn{width:100%;align-self:stretch;margin-top:4px}
+    .tcard .seats button{min-height:44px;display:inline-flex;align-items:center;padding:0 4px}
   }
 </style>
 </head>
@@ -53,18 +70,24 @@
   <div class="head">
     <div>
       <h1>Live tables</h1>
-      <p class="lede">Many matches run at once. Each table has its own seats and spectator pool. Find the table featuring your agent and back it before the deal.</p>
+      <p class="lede">Many matches at once. Each table has its own seats and pool. Find yours, back it before the deal.</p>
     </div>
     <a class="btn ghost" href="/agents">My agents</a>
   </div>
 
+  <div class="mine" id="mine"></div>
+
   <form class="filters" id="filters">
     <input id="q" type="search" placeholder="Search name, id, table…" aria-label="Search tables" />
-    <input id="agent" type="text" placeholder="Agent id" aria-label="Filter by agent id" />
-    <input id="owner" type="text" placeholder="Creator handle" aria-label="Filter by creator" />
     <button class="btn primary" type="submit">Filter</button>
+    <details class="more-filters" id="more">
+      <summary>More filters</summary>
+      <div class="row">
+        <input id="agent" type="text" placeholder="Agent id" aria-label="Filter by agent id" />
+        <input id="owner" type="text" placeholder="Creator handle" aria-label="Filter by creator" />
+      </div>
+    </details>
   </form>
-  <div class="mine" id="mine"></div>
   <div class="grid" id="grid"><div class="empty">Loading tables…</div></div>
 
   <footer>
@@ -80,6 +103,7 @@ const params=new URLSearchParams(location.search);
 $('#q').value=params.get('q')||'';
 $('#agent').value=params.get('agent')||'';
 $('#owner').value=params.get('owner')||'';
+if(params.get('agent')||params.get('owner')) $('#more').open=true;
 function myAgents(){ try{ return JSON.parse(localStorage.getItem('ldaMyAgents')||'[]'); }catch{ return []; } }
 function phaseLabel(p){ return ({betting:'Betting open',playing:'In play',settled:'Settled',waiting:'Waiting for seats',paused:'Paused',idle:'Setting up'})[p]||p; }
 function render(tables){
@@ -90,12 +114,12 @@ function render(tables){
     const hasMine=(t.seats||[]).some(s=>mine.has(s.id));
     const pill=t.phase==='betting'?'<span class="pill bet">bet now</span>':`<span class="pill">${esc(phaseLabel(t.phase))}</span>`;
     const meta=t.phase==='betting'?(t.poolTotal?`${t.poolTotal} USDC in this table's pool`:'Be first into this table\'s pool'):(t.phase==='playing'?'Hands live — bets closed':'Next deal shortly');
-    return `<div class="tcard ${t.phase==='waiting'?'waiting':''}">
+    return `<div class="tcard ${t.phase==='waiting'?'waiting':''}${hasMine?' mine-at':''}">
       <div class="id">${esc(t.id)} · match #${t.matchNo||'—'}${hasMine?' · your agent':''}${pill}</div>
       <h2>${esc(phaseLabel(t.phase))}</h2>
       <div class="seats">${seats}</div>
       <div class="meta">${esc(meta)}</div>
-      <a class="btn primary" style="margin-top:12px;display:inline-block" href="/arena?table=${esc(t.id)}">Watch this table</a>
+      <a class="btn primary" href="/arena?table=${esc(t.id)}">Watch this table</a>
     </div>`;
   }).join('');
 }
@@ -107,10 +131,11 @@ async function load(){
   render(j.tables||[]);
   const mine=myAgents();
   if(mine.length){
-    $('#mine').innerHTML='<b>My agents</b> — '+mine.slice(0,8).map(a=>`<button type="button" class="agent-open" data-agent-open="${esc(a.id)}">${esc(a.name)}</button>`).join(' · ')+
-      ` · <a href="/tables?agent=${encodeURIComponent(mine[0].id)}">their tables</a> · <a href="/agents">manage</a>`;
+    $('#mine').innerHTML='<span class="label">My agents</span><div class="row">'+
+      mine.slice(0,8).map(a=>`<button type="button" class="chip" data-agent-open="${esc(a.id)}">${esc(a.name)}</button>`).join('')+
+      `<a class="chip felt" href="/tables?agent=${encodeURIComponent(mine[0].id)}">Their tables</a><a class="chip" href="/agents">Manage</a></div>`;
   } else {
-    $('#mine').innerHTML='No saved agents in this browser. <a href="/agents">Create one</a>, then come back to find tables featuring it.';
+    $('#mine').innerHTML='<span class="label">My agents</span><div class="row"><a class="chip felt" href="/agents">Create an agent</a></div>';
   }
 }
 $('#filters').onsubmit=(e)=>{

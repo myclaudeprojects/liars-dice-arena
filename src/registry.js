@@ -98,11 +98,11 @@ class Registry {
     if (!/^[\w .'!-]+$/.test(name)) throw new Error("Name can use letters, numbers, spaces and . ' ! -");
     if (owner.length < 2) throw new Error("Owner handle must be at least 2 characters.");
     if (!["heuristic", "prompt", "endpoint"].includes(type)) throw new Error("Type must be heuristic, prompt or endpoint.");
-    if (ownerAddress) {
-      if (!/^0x[0-9a-fA-F]{40}$/.test(String(ownerAddress))) throw new Error("Owner address must be a 0x-prefixed 20-byte hex address.");
+    if (!ownerAddress || !/^0x[0-9a-fA-F]{40}$/.test(String(ownerAddress))) {
+      throw new Error("Connect your wallet — creator fees go to that address, not the arena's.");
     }
 
-    const rec = { type, owner, house: false, createdAt: Date.now(), lastPlayedAt: 0, played: 0, status: "active", failures: 0, wallet: null, token: null, ownerAddress: ownerAddress ? String(ownerAddress) : null };
+    const rec = { type, owner, house: false, createdAt: Date.now(), lastPlayedAt: 0, played: 0, status: "active", failures: 0, wallet: null, token: null, ownerAddress: String(ownerAddress) };
     if (type === "heuristic") {
       const ag = Number(aggression); if (!(ag >= 0 && ag <= 1)) throw new Error("Aggression must be between 0 and 1.");
       rec.aggression = ag;

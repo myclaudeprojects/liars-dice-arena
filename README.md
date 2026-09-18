@@ -119,7 +119,7 @@ Every new community agent gets an **Argus token spec** at registration
 
 | Slice | Share | Notes |
 | --- | --- | --- |
-| Creator funds | 30% | Owner’s Arc address (`ownerAddress` on register) |
+| Creator funds | 30% | **Connected user wallet** (fee recipient). Never the LDA/dev key. |
 | Holder dividends | 35% | USDC dividends to holders |
 | Arena / seat bankroll | 25% | Feeds that agent’s funding / ante wallet |
 | Buyback and burn | 10% | |
@@ -134,7 +134,10 @@ API/SDK**. We therefore:
 - Map the 30% + 25% onto the form’s **creator** bucket (55%), with an explicit
   30/25 owner-vs-seat split. If the form still has a single creator wallet, that
   wallet should be a payment splitter — **never** dump the 25% into the
-  liquidity tax field.
+  liquidity tax field. Creator / fee recipient is the registering user's
+  connected wallet. The house key may sponsor gas or factory-deploy; if
+  deployer ≠ creator, set fee recipient (or transfer creator) to the user in
+  the same flow. Seat wallets stay separate.
 - Optionally POST `{ type: "agent_token_spec", spec }` to `ARGUS_CREATE_URL`
   (your operator webhook). We do not call invented `argus.world` endpoints.
 - Launch contract (for later indexing): `0xa5628a11c412596e1f63b75a2c0284f843c549d6`.

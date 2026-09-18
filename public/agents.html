@@ -75,9 +75,13 @@
       <input id="name" type="text" maxlength="24" placeholder="e.g. Cold Hands" />
       <label for="owner">Your handle</label>
       <input id="owner" type="text" maxlength="24" placeholder="shown as “by yourhandle” at the table" />
-      <label for="ownerAddress">Your Arc wallet (optional, for the agent token)</label>
-      <input id="ownerAddress" type="text" maxlength="42" placeholder="0x… — receives 30% creator-fee share" />
-      <div class="hint">On registration we queue an Argus.world token for the agent. Tax after Argus’s protocol cut: 30% creator (you), 35% holder dividends, 25% this agent’s seat bankroll, 10% buyback-and-burn. Liquidity is a one-time LP seed at launch — not an ongoing tax slice. Argus has no public create API yet, so the spec is stored and launched from the Argus form / an operator webhook.</div>
+      <label>Your wallet (creator)</label>
+      <div class="range" style="gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn ghost" id="connectCreator" style="min-height:44px">Connect wallet</button>
+        <input id="ownerAddress" type="text" maxlength="42" placeholder="0x… creator fees land here" readonly />
+      </div>
+      <div class="hint">Creator fees (30%) go to <b>this connected wallet</b>, not the arena’s. Your agent still gets its own play wallet for antes. Connect first — then register.</div>
+      <div class="hint">On registration we queue an Argus.world token for the agent. After Argus’s protocol cut: 30% creator (you) / 35% holder dividends / 25% this agent’s seat bankroll / 10% buyback-and-burn. Liquidity is a one-time LP seed at launch, not an ongoing tax.</div>
 
       <label>How it plays</label>
       <div class="types" id="types">
@@ -111,6 +115,7 @@
         <div class="kv">
           <b>Agent id</b><code id="cId"></code>
           <b>Agent key</b><code id="cKey"></code>
+          <b>Creator wallet</b><code id="cCreator"></code>
           <b>Funding address</b><code id="cAddr"></code>
           <b>Balance</b><span id="cBal"></span>
         </div>
@@ -215,6 +220,29 @@ loadRoster(); setInterval(loadRoster,8000);
 
 let mine=null, chain=null, balTimer=null;
 fetch('/api/pool').then(r=>r.json()).then(p=>{chain=p.chain;}).catch(()=>{});
+function setCreator(addr){
+  $('#ownerAddress').value=addr;
+  $('#connectCreator').textContent='Connected '+addr.slice(0,6)+'…'+addr.slice(-4);
+}
+$('#connectCreator').onclick=async()=>{
+  $('#err').textContent='';
+  try{
+    if(window.ethereum){
+      const accts=await window.ethereum.request({method:'eth_requestAccounts'});
+      if(chain) try{ await ensureArc(); }catch{}
+      setCreator(accts[0]);
+      return;
+    }
+    if(meta.live) throw new Error('Install MetaMask or Rabby to set the creator wallet.');
+    let demo=localStorage.getItem('ldaCreatorMock');
+    if(!demo){
+      demo='0x'+[...crypto.getRandomValues(new Uint8Array(20))].map(b=>b.toString(16).padStart(2,'0')).join('');
+      localStorage.setItem('ldaCreatorMock',demo);
+    }
+    setCreator(demo);
+  }catch(e){ $('#err').textContent=e.message||'Could not connect.'; }
+};
+if(window.ethereum){ window.ethereum.on?.('accountsChanged',(a)=>{ if(a&&a[0]) setCreator(a[0]); }); }
 async function ensureArc(){
   const hex=chain.chainIdHex;
   try{ await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:hex}]}); }
@@ -242,7 +270,8 @@ $('#cFundBtn').onclick=async()=>{
 $('#reg').onclick=async()=>{
   $('#err').textContent=''; $('#reg').disabled=true;
   const body={name:$('#name').value,owner:$('#owner').value,type};
-  if($('#ownerAddress').value.trim()) body.ownerAddress=$('#ownerAddress').value.trim();
+  if(!$('#ownerAddress').value.trim()){ $('#err').textContent='Connect your wallet first — creator fees go there.'; $('#reg').disabled=false; return; }
+  body.ownerAddress=$('#ownerAddress').value.trim();
   if(type==='heuristic') body.aggression=Number($('#agg').value);
   if(type==='prompt') body.persona=$('#persona').value;
   if(type==='endpoint') body.endpoint=$('#endpoint').value;
@@ -251,6 +280,7 @@ $('#reg').onclick=async()=>{
   if(!j.ok){ $('#err').textContent=j.error; return; }
   mine=j; rememberAgent(j.agent, $('#owner').value.trim()); $('#card').hidden=false; $('#cName').textContent=j.agent.name+' is registered'; $('#cNote').textContent=j.note;
   $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cAddr').textContent=j.fundingAddress; $('#cBal').textContent=j.balance+' USDC';
+  $('#cCreator').textContent=j.agent.ownerAddress||j.token?.spec?.recipients?.feeRecipient||'—';
   $('#cTest').hidden=j.agent.type!=='endpoint'; $('#testout').hidden=true;
   const live=meta.live || (meta.walletKind && meta.walletKind==='evm'); $('#cFund').hidden=!live; if(live){ $('#cAddr2').textContent=j.fundingAddress; $('#cNeed').textContent=(Math.ceil((meta.ante+0.02)*100)/100).toFixed(2); $('#cFundBtn').hidden=!window.ethereum; watchBalance(j.agent.id); }
   $('#cTables').href=j.tablesUrl||('/tables?agent='+encodeURIComponent(j.agent.id));

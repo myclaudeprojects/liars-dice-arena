@@ -60,9 +60,11 @@
     const buy = j.buy || a.buy || {};
     root.querySelector("#as-name").textContent = a.name || buy.name || "Agent";
     const owner = a.house ? "house" : (a.owner || "");
+    const creator = buy.creator || a.ownerAddress;
     const tables = (j.tables || a.seatedAt || []).map((t) => t.id || t).filter(Boolean);
     root.querySelector("#as-meta").innerHTML =
       `${esc(a.id || "")}${owner ? " · by " + esc(owner) : ""}${a.type ? " · " + esc(a.type) : ""}` +
+      (creator ? ` · creator ${esc(creator.slice(0, 6) + "…" + creator.slice(-4))}` : "") +
       (tables.length ? ` · at ${tables.map((id) => `<a href="/arena?table=${esc(id)}">${esc(id)}</a>`).join(", ")}` : "");
 
     const ca = buy.address ? `<code>${esc(buy.address)}</code>` : "<span>no contract yet</span>";

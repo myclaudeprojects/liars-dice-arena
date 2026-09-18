@@ -21,25 +21,33 @@ assert(!isPrivateHost("example.com"), "public host");
 assert(!isPrivateHost("8.8.8.8"), "public ip");
 assert(isCloudMetadata("169.254.169.254"), "aws metadata");
 
+const addr = (h) => "0x" + String(h).replace(/[^0-9a-f]/gi, "a").padEnd(40, "0").slice(0, 40);
+
 const reg = new Registry({ allowLocal: false });
-const rec = reg.register({ name: "Cold Hands", type: "heuristic", owner: "alice", aggression: 0.4 });
+const rec = reg.register({ name: "Cold Hands", type: "heuristic", owner: "alice", aggression: 0.4, ownerAddress: addr("aa") });
 assert(reg.auth(rec.id, rec.key), "exact key");
 assert(!reg.auth(rec.id, rec.key + "x"), "suffix must not match");
 assert(!reg.auth(rec.id, rec.key.slice(0, -1)), "prefix must not match");
 assert(!reg.auth(rec.id, null), "missing");
+assert(rec.ownerAddress.toLowerCase() === addr("aa"), "creator stored");
 
 let threw = false;
-try { reg.register({ name: "Local Brain", type: "endpoint", owner: "bob", endpoint: "http://127.0.0.1:9/" }); }
+try { reg.register({ name: "No Wallet", type: "heuristic", owner: "bob", aggression: 0.1 }); }
+catch (e) { threw = /Connect your wallet/.test(e.message); }
+assert(threw, "creator wallet required");
+
+threw = false;
+try { reg.register({ name: "Local Brain", type: "endpoint", owner: "bob", endpoint: "http://127.0.0.1:9/", ownerAddress: addr("bb") }); }
 catch (e) { threw = /publicly reachable/.test(e.message); }
 assert(threw, "private endpoint refused");
 
 threw = false;
 try { reg.register({ name: "Bad Addr", type: "heuristic", owner: "bob", aggression: 0.1, ownerAddress: "0x123" }); }
-catch (e) { threw = /Owner address/.test(e.message); }
+catch (e) { threw = /Connect your wallet/.test(e.message); }
 assert(threw, "bad owner address");
 
 const extra = [];
-for (const n of ["One", "Two", "Three"]) extra.push(reg.register({ name: n, type: "heuristic", owner: "rot", aggression: 0.3 }));
+for (const n of ["One", "Two", "Three"]) extra.push(reg.register({ name: n, type: "heuristic", owner: "rot", aggression: 0.3, ownerAddress: addr(n) }));
 const seated = reg.pickSeats(2, { eligible: () => true, excludeIds: [] });
 const skipped = reg.pickSeats(4, { eligible: () => true, excludeIds: seated.map((s) => s.id) });
 assert(!skipped.some((s) => seated.map((x) => x.id).includes(s.id)), "pickSeats excludeIds");

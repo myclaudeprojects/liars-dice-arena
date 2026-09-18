@@ -61,6 +61,24 @@ function tokenSymbol(name, id) {
   return base.slice(0, 10);
 }
 
+function normalizeAddress(a) {
+  const s = String(a || "");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(s)) return null;
+  return s.toLowerCase();
+}
+
+// Creator / fee recipient is the human's connected wallet — never the
+// agent's seat wallet and never the LDA/dev (house) key.
+function assertCreatorWallet(ownerAddress, { seatAddress, deployerAddress, houseAddress } = {}) {
+  const creator = normalizeAddress(ownerAddress);
+  if (!creator) throw new Error("Creator must be your connected wallet (0x address).");
+  const seat = normalizeAddress(seatAddress);
+  const house = normalizeAddress(houseAddress) || normalizeAddress(deployerAddress);
+  if (seat && creator === seat) throw new Error("Creator wallet must not be the agent's seat wallet.");
+  if (house && creator === house) throw new Error("Creator wallet cannot be the arena/house wallet. Connect your own wallet.");
+  return creator;
+}
+
 function publicTokenView(token) {
   if (!token) return null;
   const { webhook, raw, ...rest } = token;
@@ -110,6 +128,7 @@ function buyView(token, { house = false, name, id } = {}) {
     name: spec.name || name || null,
     symbol: spec.symbol || tokenSymbol(name, id),
     address,
+    creator: spec.recipients?.feeRecipient || spec.recipients?.creator || null,
     argusUrl: tokenPageUrl(token),
     inAppSwap: false,
     economics: spec.economics || { ...AGENT_TOKEN_ECONOMICS },
@@ -133,9 +152,15 @@ function quoteMockBuy(amountUsdc, { symbol = "AGENT", rate = 1000 } = {}) {
   };
 }
 
-function buildTokenSpec({ agent, seatWallet, ownerAddress }) {
+function buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress }) {
+  const creator = assertCreatorWallet(ownerAddress, {
+    seatAddress: seatWallet?.address,
+    deployerAddress,
+    houseAddress,
+  });
   const econ = assertEconomics(AGENT_TOKEN_ECONOMICS);
   const form = toArgusFormAllocation(econ);
+  const deployer = normalizeAddress(deployerAddress) || normalizeAddress(houseAddress);
   return {
     name: `${agent.name} (${agent.id})`,
     symbol: tokenSymbol(agent.name, agent.id),
@@ -144,8 +169,16 @@ function buildTokenSpec({ agent, seatWallet, ownerAddress }) {
     // Native Argus buckets (must sum to 100% on the create form).
     argusAllocation: form,
     recipients: {
-      creator: ownerAddress || null,
-      seatBankroll: seatWallet?.address || null,
+      creator,                 // 30% creator funds → connected user
+      feeRecipient: creator,   // must never be the LDA/dev wallet
+      seatBankroll: seatWallet?.address || null, // 25% — separate play wallet
+      deployer: deployer && deployer !== creator ? deployer : null,
+    },
+    creatorRights: {
+      feeRecipient: creator,
+      // House key may sponsor gas / factory-deploy. If deployer ≠ creator,
+      // set fee recipient (or transfer creator role) to the user in the same flow.
+      transferIfDeployerDiffers: !!(deployer && deployer !== creator),
     },
     liquidity: { kind: "launch_seed_only", ongoingTax: false },
     launch: {
@@ -160,6 +193,7 @@ function buildTokenSpec({ agent, seatWallet, ownerAddress }) {
     todos: [
       "TODO(argus): wallet-connect create on argus.world — no server-side create endpoint published",
       "TODO(argus): single creator wallet → 30/25 splitter (owner vs agent funding address)",
+      "TODO(argus): if factory deployer is the house key, set fee recipient / transfer creator to ownerAddress in the same flow — never leave creator as LDA/dev",
       "TODO(argus): confirm buy/sell tax bps against the live create form (cap 10% each)",
     ],
   };
@@ -184,8 +218,8 @@ async function postOperatorWebhook(spec, { url, timeoutMs = 8000, fetchImpl = fe
   } finally { clearTimeout(t); }
 }
 
-async function onAgentRegistered({ agent, seatWallet, ownerAddress, fetchImpl = fetch } = {}) {
-  const spec = buildTokenSpec({ agent, seatWallet, ownerAddress });
+async function onAgentRegistered({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress, fetchImpl = fetch } = {}) {
+  const spec = buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress });
   const url = process.env.ARGUS_CREATE_URL || "";
   if (!url) {
     return {
@@ -216,6 +250,8 @@ module.exports = {
   tokenPageUrl,
   buyView,
   quoteMockBuy,
+  normalizeAddress,
+  assertCreatorWallet,
   buildTokenSpec,
   onAgentRegistered,
 };

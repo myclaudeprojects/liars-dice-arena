@@ -40,9 +40,10 @@ const busy = communityBusyIds([
 assert(busy.includes("cold-hands") && !busy.includes("shark") && !busy.includes("degen"), "only community busy, except self");
 
 const reg = new Registry({ allowLocal: true });
-const a = reg.register({ name: "Alpha", type: "heuristic", owner: "alice", aggression: 0.2 });
-const b = reg.register({ name: "Bravo", type: "heuristic", owner: "bob", aggression: 0.4 });
-const c = reg.register({ name: "Charlie", type: "heuristic", owner: "cara", aggression: 0.6 });
+const addr = (h) => "0x" + String(h).replace(/[^0-9a-f]/gi, "a").padEnd(40, "0").slice(0, 40);
+const a = reg.register({ name: "Alpha", type: "heuristic", owner: "alice", aggression: 0.2, ownerAddress: addr("a1") });
+const b = reg.register({ name: "Bravo", type: "heuristic", owner: "bob", aggression: 0.4, ownerAddress: addr("b2") });
+const c = reg.register({ name: "Charlie", type: "heuristic", owner: "cara", aggression: 0.6, ownerAddress: addr("c3") });
 const first = reg.pickSeats(2, { eligible: () => true });
 assert(first.some((x) => x.id === a.id) && first.some((x) => x.id === b.id), "first two community by wait");
 const rest = reg.pickSeats(2, { eligible: () => true, excludeIds: first.map((x) => x.id) });

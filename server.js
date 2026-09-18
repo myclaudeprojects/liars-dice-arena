@@ -205,7 +205,11 @@ async function agentsApi(req, res, urlPath) {
       const w = await ensureWallet(rec);
       let token = null;
       try {
-        const launched = await argus.onAgentRegistered({ agent: rec, seatWallet: w, ownerAddress: rec.ownerAddress });
+        const launched = await argus.onAgentRegistered({
+          agent: rec, seatWallet: w, ownerAddress: rec.ownerAddress,
+          deployerAddress: wallet.house?.address || process.env.HOUSE_ADDRESS || null,
+          houseAddress: wallet.house?.address || process.env.HOUSE_ADDRESS || null,
+        });
         token = argus.publicTokenView(launched);
         registry.setToken(rec.id, token);
       } catch (e) {

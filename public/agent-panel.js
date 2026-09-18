@@ -74,9 +74,13 @@
     const split = econ
       ? `Tax after protocol cut: creator ${(econ.creatorFunds || 0) * 100}% · holders ${(econ.holderDividends || 0) * 100}% · seat ${(econ.arenaSeatBankroll || 0) * 100}% · burn ${(econ.buybackBurn || 0) * 100}% · LP tax ${(econ.liquidityOngoing || 0) * 100}%`
       : "";
+    const watch = buy.website || (a.id ? "/agent/" + encodeURIComponent(a.id) : "");
+    const lda = watch ? `<a href="${esc(watch)}">Watch &amp; bet</a>` : "";
+    const desc = buy.description ? `<p>${esc(buy.description)}</p>` : "";
     root.querySelector("#as-token").innerHTML =
       `<div><b>${esc(buy.symbol ? "$" + buy.symbol : "Token")}</b> · ${esc(buy.status || buy.kind || "—")}</div>` +
-      `<div class="agent-sheet-ca">${ca} ${link}</div>` +
+      `<div class="agent-sheet-ca">${ca} ${link}${lda ? " · " + lda : ""}</div>` +
+      desc +
       (split ? `<p>${esc(split)}</p>` : "");
 
     const mock = !j.live && buy.kind !== "house";

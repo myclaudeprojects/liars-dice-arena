@@ -2,7 +2,7 @@ const {
   AGENT_TOKEN_ECONOMICS, assertEconomics, toArgusFormAllocation,
   buildTokenSpec, onAgentRegistered, tokenSymbol, publicTokenView,
   tokenContract, tokenPageUrl, buyView, quoteMockBuy, ARENA_LIAR_TOKEN, ARGUS_APP,
-  assertCreatorWallet,
+  assertCreatorWallet, publicBaseUrl,
 } = require("../src/argus");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
@@ -28,13 +28,34 @@ try {
   throw new Error("should reject liquidity tax");
 } catch (e) { if (!/liquidity/.test(e.message) && !/sum/.test(e.message)) throw e; }
 
-assert(tokenSymbol("Cold Hands", "cold-hands") === "COLDHAND", "symbol");
+assert(tokenSymbol("Cold Hands", "cold-hands") === "LDACOLDHAN", "LDA ticker");
+assert(tokenSymbol("LDA Bot", "lda-bot") === "LDABOT", "no double LDA prefix");
+assert(publicBaseUrl("https://example.test/arena/") === "https://example.test", "origin only");
+assert(publicBaseUrl("") === null, "no guessed domain");
 const spec = buildTokenSpec({
   agent: { id: "cold-hands", name: "Cold Hands" },
   seatWallet: { address: "0x" + "11".repeat(20) },
   ownerAddress: "0x" + "22".repeat(20),
   deployerAddress: "0x" + "33".repeat(20),
 });
+assert(spec.name === "Cold Hands", "token name is display name");
+assert(spec.symbol === "LDACOLDHAN", "LDA symbol");
+assert(spec.metadata.description.includes("Liar's Dice Arena agent · watch & bet"), "short funnel line");
+assert(spec.metadata.description.includes("/agent/cold-hands"), "agent deep link");
+assert(spec.metadata.description.includes("#LiarsDiceArena"), "hashtag");
+assert(!/30%|35%|25%|10%/.test(spec.metadata.description), "economics stay off-chain");
+assert(spec.metadata.website === null, "no website without PUBLIC_BASE_URL");
+assert(spec.metadata.argusForm.name === spec.name, "form name");
+assert(spec.metadata.argusForm.links.length === 0, "no absolute link yet");
+const specAbs = buildTokenSpec({
+  agent: { id: "cold-hands", name: "Cold Hands" },
+  seatWallet: { address: "0x" + "11".repeat(20) },
+  ownerAddress: "0x" + "22".repeat(20),
+  siteOrigin: "https://arena.example",
+});
+assert(specAbs.metadata.website === "https://arena.example/agent/cold-hands", "absolute website");
+assert(specAbs.metadata.argusForm.links[0] === specAbs.metadata.website, "links map to website");
+assert(specAbs.metadata.description.includes("https://arena.example/agent/cold-hands"), "abs url in description");
 assert(spec.liquidity.ongoingTax === false, "lp seed only");
 assert(spec.recipients.seatBankroll, "seat recipient");
 assert(spec.recipients.creator === ("0x" + "22".repeat(20)), "creator is user wallet");
@@ -44,6 +65,8 @@ assert(spec.creatorRights.transferIfDeployerDiffers === true, "transfer creator 
 assert(spec.recipients.creator !== spec.recipients.seatBankroll, "seat ≠ creator");
 assert(spec.todos.some((t) => /splitter/.test(t)), "splitter TODO");
 assert(spec.todos.some((t) => /fee recipient|LDA\/dev/.test(t)), "never LDA as creator");
+assert(spec.todos.some((t) => /PUBLIC_BASE_URL/.test(t)), "deep link origin TODO");
+assert(spec.todos.some((t) => /description\/website/.test(t)), "form field mapping TODO");
 assert(!/liquidity tax bucket/i.test(JSON.stringify(spec.argusAllocation)), "seat not mapped into liquidity numbers");
 
 try { buildTokenSpec({ agent: { id: "x", name: "X" }, seatWallet: { address: "0x" + "11".repeat(20) } }); throw new Error("missing creator should throw"); }
@@ -68,7 +91,7 @@ assert(/\/token\/0x/.test(tokenPageUrl({ address: "0x" + "cd".repeat(20) })), "c
 const houseBuy = buyView(null, { house: true, name: "The Shark", id: "shark" });
 assert(houseBuy.kind === "house" && houseBuy.address === ARENA_LIAR_TOKEN, "house → $LIAR");
 const pendingBuy = buyView({ status: "pending_manual_launch", spec }, { name: "Cold Hands", id: "cold-hands" });
-assert(pendingBuy.kind === "agent" && pendingBuy.symbol === "COLDHAND" && !pendingBuy.address, "pending has symbol, no ca");
+assert(pendingBuy.kind === "agent" && pendingBuy.symbol === "LDACOLDHAN" && !pendingBuy.address, "pending has symbol, no ca");
 assert(pendingBuy.creator === spec.recipients.creator, "buy view exposes creator");
 assert(pendingBuy.inAppSwap === false, "no invented in-app swap");
 const q = quoteMockBuy(2, { symbol: "COLDHAND" });
@@ -94,6 +117,8 @@ try { quoteMockBuy(0); throw new Error("zero should throw"); } catch (e) { if (e
       const body = JSON.parse(opts.body);
       assert(body.type === "agent_token_spec", "envelope");
       assert(body.spec.recipients.feeRecipient === body.spec.recipients.creator, "creator is fee recipient");
+      assert(body.spec.metadata.description.includes("#LiarsDiceArena"), "hashtag in webhook spec");
+      assert(body.spec.metadata.name === "A", "display name");
       assert(body.spec.recipients.creator !== body.spec.recipients.seatBankroll, "seat is not creator");
       return { ok: true, text: async () => JSON.stringify({ queued: true }) };
     },

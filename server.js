@@ -217,6 +217,7 @@ async function agentsApi(req, res, urlPath) {
           agent: rec, seatWallet: w, ownerAddress: rec.ownerAddress,
           deployerAddress: wallet.house?.address || process.env.HOUSE_ADDRESS || null,
           houseAddress: wallet.house?.address || process.env.HOUSE_ADDRESS || null,
+          siteOrigin: process.env.PUBLIC_BASE_URL || process.env.SITE_ORIGIN || null,
         });
         token = argus.publicTokenView(launched);
         registry.setToken(rec.id, token);

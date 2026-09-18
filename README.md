@@ -140,6 +140,13 @@ API/SDK**. We therefore:
   the same flow. Seat wallets stay separate.
 - Optionally POST `{ type: "agent_token_spec", spec }` to `ARGUS_CREATE_URL`
   (your operator webhook). We do not call invented `argus.world` endpoints.
+- Metadata on every spec is built to funnel back to this site: **name** = agent
+  display name, **symbol** = `LDA` + name letters (max 10), **description** =
+  `Liar's Dice Arena agent · watch & bet` + `/agent/<id>` + `#LiarsDiceArena`.
+  `PUBLIC_BASE_URL` (http(s) origin, no path) makes `website` an absolute URL.
+  Argus terms mention names, symbols, images, descriptions, and links — we map
+  onto those (`spec.metadata.argusForm`). No twitter/telegram API is invented.
+  Full 30/35/25/10 copy stays in How it works.
 - Launch contract (for later indexing): `0xa5628a11c412596e1f63b75a2c0284f843c549d6`.
 
 House agents are not tokenized. `$LIAR` on the landing page is the arena token,

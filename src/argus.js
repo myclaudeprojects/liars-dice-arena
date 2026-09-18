@@ -57,8 +57,70 @@ function toArgusFormAllocation(econ = AGENT_TOKEN_ECONOMICS) {
 
 function tokenSymbol(name, id) {
   const letters = String(name || id || "AGENT").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const base = (letters.slice(0, 8) || "AGENT");
-  return base.slice(0, 10);
+  if (letters.startsWith("LDA") && letters.length >= 4) return letters.slice(0, 10);
+  const rest = (letters || "AGT").slice(0, 7);
+  return ("LDA" + rest).slice(0, 10);
+}
+
+// Canonical site origin for metadata deep links. Do not guess a production
+// domain — set PUBLIC_BASE_URL (or SITE_ORIGIN) to an http(s) origin, no path.
+function publicBaseUrl(raw = process.env.PUBLIC_BASE_URL || process.env.SITE_ORIGIN) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (u.username || u.password) return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
+
+function agentDeepLink(agentId, { siteOrigin } = {}) {
+  const id = encodeURIComponent(String(agentId || "").trim());
+  const path = `/agent/${id}`;
+  const tablesPath = `/tables?agent=${id}`;
+  const base = publicBaseUrl(siteOrigin !== undefined ? siteOrigin : (process.env.PUBLIC_BASE_URL || process.env.SITE_ORIGIN));
+  return {
+    path,
+    tablesPath,
+    url: base ? `${base}${path}` : path,
+    absolute: !!base,
+  };
+}
+
+// Short on-chain copy. Full 30/35/25/10 economics live in How it works.
+function tokenDescription(agent, link) {
+  const where = link.absolute ? link.url : link.path;
+  return `Liar's Dice Arena agent · watch & bet ${where} #LiarsDiceArena`;
+}
+
+function tokenMetadata(agent, { siteOrigin } = {}) {
+  const name = String(agent?.name || agent?.id || "Agent").slice(0, 32);
+  const symbol = tokenSymbol(name, agent?.id);
+  const link = agentDeepLink(agent?.id, { siteOrigin });
+  const description = tokenDescription(agent, link);
+  const website = link.absolute ? link.url : null;
+  return {
+    name,
+    symbol,
+    description,
+    website,
+    image: null,
+    // Argus terms (retrieved 2026-09): creators supply names, symbols, images,
+    // descriptions, and links. No public schema for twitter/telegram — do not
+    // invent those APIs. Map website onto "links" / a website slot if present.
+    argusForm: {
+      name,
+      symbol,
+      description,
+      image: null,
+      links: website ? [website] : [],
+      website,
+    },
+    deepLink: link,
+  };
 }
 
 function normalizeAddress(a) {
@@ -130,6 +192,8 @@ function buyView(token, { house = false, name, id } = {}) {
     address,
     creator: spec.recipients?.feeRecipient || spec.recipients?.creator || null,
     argusUrl: tokenPageUrl(token),
+    website: spec.metadata?.website || null,
+    description: spec.metadata?.description || null,
     inAppSwap: false,
     economics: spec.economics || { ...AGENT_TOKEN_ECONOMICS },
     message: address
@@ -152,7 +216,7 @@ function quoteMockBuy(amountUsdc, { symbol = "AGENT", rate = 1000 } = {}) {
   };
 }
 
-function buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress }) {
+function buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress, siteOrigin } = {}) {
   const creator = assertCreatorWallet(ownerAddress, {
     seatAddress: seatWallet?.address,
     deployerAddress,
@@ -161,10 +225,12 @@ function buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, hous
   const econ = assertEconomics(AGENT_TOKEN_ECONOMICS);
   const form = toArgusFormAllocation(econ);
   const deployer = normalizeAddress(deployerAddress) || normalizeAddress(houseAddress);
+  const meta = tokenMetadata(agent, { siteOrigin });
   return {
-    name: `${agent.name} (${agent.id})`,
-    symbol: tokenSymbol(agent.name, agent.id),
+    name: meta.name,
+    symbol: meta.symbol,
     agentId: agent.id,
+    metadata: meta,
     economics: { ...econ },
     // Native Argus buckets (must sum to 100% on the create form).
     argusAllocation: form,
@@ -195,6 +261,8 @@ function buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, hous
       "TODO(argus): single creator wallet → 30/25 splitter (owner vs agent funding address)",
       "TODO(argus): if factory deployer is the house key, set fee recipient / transfer creator to ownerAddress in the same flow — never leave creator as LDA/dev",
       "TODO(argus): confirm buy/sell tax bps against the live create form (cap 10% each)",
+      "TODO(argus): confirm create-form keys for description/website/social — terms list names, symbols, images, descriptions, and links; map metadata.argusForm, do not invent twitter/telegram endpoints",
+      "TODO(argus): set PUBLIC_BASE_URL so metadata.website is an absolute /agent/<id> deep link",
     ],
   };
 }
@@ -218,8 +286,8 @@ async function postOperatorWebhook(spec, { url, timeoutMs = 8000, fetchImpl = fe
   } finally { clearTimeout(t); }
 }
 
-async function onAgentRegistered({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress, fetchImpl = fetch } = {}) {
-  const spec = buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress });
+async function onAgentRegistered({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress, siteOrigin, fetchImpl = fetch } = {}) {
+  const spec = buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress, siteOrigin });
   const url = process.env.ARGUS_CREATE_URL || "";
   if (!url) {
     return {
@@ -245,6 +313,9 @@ module.exports = {
   assertEconomics,
   toArgusFormAllocation,
   tokenSymbol,
+  publicBaseUrl,
+  agentDeepLink,
+  tokenMetadata,
   publicTokenView,
   tokenContract,
   tokenPageUrl,

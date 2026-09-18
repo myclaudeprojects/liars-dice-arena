@@ -11,6 +11,7 @@
 // game loop free of any vendor specifics.
 
 const { DICE_SIDES, isHigherBid } = require("./engine");
+const { assertSafeAgentUrl } = require("./registry");
 
 // Expected number of dice showing `face` among `unknownDice` dice we can't see,
 // with ones wild. Each unknown die matches a given non-1 face with prob 2/6
@@ -142,7 +143,9 @@ or
 }
 
 function buildUserPrompt(view) {
-  const { you, table, currentBid, totalDice, onesWild } = view;
+  const you = view.you || { id: "?", name: "?", dice: [] };
+  const table = view.table || [];
+  const { currentBid, totalDice, onesWild } = view;
   const others = table.filter((t) => t.id !== you.id && t.alive)
     .map((t) => `${t.name}(${t.diceCount} dice)`).join(", ");
   return `Your dice: [${you.dice.join(", ")}]
@@ -164,7 +167,7 @@ function parseAction(raw, view) {
     const end = cleaned.lastIndexOf("}");
     obj = JSON.parse(cleaned.slice(start, end + 1));
   } catch { return null; }
-  if (!obj || !obj.action) return null;
+  if (!obj || !obj.action || typeof obj.action !== "object") return null;
   const thought = typeof obj.thought === "string" ? obj.thought.slice(0, 200) : "";
   const a = obj.action;
   if (a.type === "challenge") {
@@ -202,14 +205,16 @@ function safeFallback(view, why) {
 //   x-arena-agent: the agent id
 // Reply within `timeoutMs` with {"thought":"...","action":{...}} (same shape as LLMAgent).
 class RemoteAgent {
-  constructor({ id, name, endpoint, sign, timeoutMs = 6000, onResult = () => {} }) {
+  constructor({ id, name, endpoint, sign, timeoutMs = 6000, onResult = () => {}, allowLocal = false }) {
     this.id = id; this.name = name; this.endpoint = endpoint; this.sign = sign;
     this.timeoutMs = timeoutMs; this.onResult = onResult; this.kind = "remote";
+    this.allowLocal = allowLocal;
   }
   async act(view) {
     const body = JSON.stringify({ agentId: this.id, view });
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
+      await assertSafeAgentUrl(this.endpoint, { allowLocal: this.allowLocal });
       const r = await fetch(this.endpoint, {
         method: "POST", signal: ctrl.signal, redirect: "error",
         headers: { "content-type": "application/json", "x-arena-agent": this.id, "x-arena-signature": this.sign(body) },

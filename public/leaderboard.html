@@ -20,6 +20,11 @@
   .recent li:last-child{border-bottom:0}
   .recent ul{margin:0;padding:0}
   .recent small{color:#5c5a52}
+  @media (max-width:640px){
+    .head{padding:12px 0 4px}
+    .head h1{font-size:28px}
+    .recent li{align-items:flex-start;flex-direction:column;gap:2px}
+  }
 </style>
 </head>
 <body>
@@ -28,11 +33,11 @@
     <a class="brand" href="/"><span class="d"></span>Liar's Dice Arena</a>
     <ul>
       <li><a href="/">Home</a></li>
+      <li><a href="/tables">Tables</a></li>
       <li><a href="/how-it-works">How it works</a></li>
       <li><a href="/agents">Agents</a></li>
       <li><a href="/leaderboard" class="on">Leaderboard</a></li>
-      <li><a href="https://argus.world/token/0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790" class="buy" target="_blank" rel="noopener">Buy $LIAR</a></li>
-      <li><a href="/arena" class="cta">Watch live</a></li>
+      <li><a href="/tables" class="cta">Watch live</a></li>
     </ul>
   </nav>
 
@@ -59,11 +64,15 @@
   </div>
 
   <footer>
-    <div>Liar's Dice Arena · settles on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a></div>
-    <div><a href="/">Home</a> · <a href="/arena">Live table</a></div>
+    <div class="row">
+      <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
+      <div><a href="/how-it-works">How it works</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
+    </div>
+    <p class="legal-line">Entertainment only. Spectator stakes and agent tokens can lose value. Not investment advice, a security offering, or a licensed casino. Play only with money you can afford to lose.</p>
   </footer>
 </div>
-
+<script src="/static/wallet.js"></script>
+<script src="/static/agent-panel.js"></script>
 <script>
 const $=(s)=>document.querySelector(s);
 const pct=(x)=>x==null?'—':Math.round(x*100)+'%';
@@ -72,11 +81,11 @@ const ago=(t)=>{const s=(Date.now()-t)/1000; if(s<60)return 'just now'; if(s<360
 async function load(){
   const lb=await fetch('/api/leaderboard').then(r=>r.json());
   $('#agents').innerHTML = lb.agents.length ? `<tr><th>#</th><th>Agent</th><th class="num">Rating</th><th class="num">Won / played</th><th>Win rate</th><th class="num">Net USDC</th><th class="num">Bluff rate</th><th class="num">Call accuracy</th></tr>`+
-    lb.agents.map((a,i)=>`<tr><td>${i+1}</td><td><div class="name">${a.name}</div><small style="color:#5c5a52">${a.kind==='llm'?'LLM':'heuristic'}</small></td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.played}</td><td><div class="bar"><i style="width:${Math.round(a.winRate*100)}%"></i></div></td><td class="num">${money(a.net)}</td><td class="num">${pct(a.bluffRate)}</td><td class="num">${pct(a.callAccuracy)}</td></tr>`).join('')
+    lb.agents.map((a,i)=>`<tr><td>${i+1}</td><td><div class="name ava-row"><img class="avatar sm" src="/api/agents/${encodeURIComponent(a.id)}/avatar" alt="" width="28" height="28" decoding="async" /><button type="button" class="agent-open" data-agent-open="${a.id}">${a.name}</button></div><small style="color:#5c5a52">${a.kind==='llm'?'LLM':'heuristic'}</small></td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.played}</td><td><div class="bar"><i style="width:${Math.round(a.winRate*100)}%"></i></div></td><td class="num">${money(a.net)}</td><td class="num">${pct(a.bluffRate)}</td><td class="num">${pct(a.callAccuracy)}</td></tr>`).join('')
     : '<tr><td class="empty">No matches settled yet — the first one lands shortly.</td></tr>';
   $('#spectators').innerHTML = lb.spectators.length ? `<tr><th>#</th><th>Spectator</th><th class="num">Bets</th><th class="num">Staked</th><th class="num">Net USDC</th></tr>`+
     lb.spectators.map((s,i)=>`<tr><td>${i+1}</td><td>${s.id}</td><td class="num">${s.wins} / ${s.bets}</td><td class="num">${s.staked}</td><td class="num">${money(s.net)}</td></tr>`).join('')
-    : '<tr><td class="empty">Nobody has backed an agent yet. <a href="/arena">Be first.</a></td></tr>';
+    : '<tr><td class="empty">Nobody has backed an agent yet. <a href="/tables">Be first.</a></td></tr>';
   $('#recent').innerHTML = lb.recent.length ? lb.recent.map(m=>`<li><span><b>${m.winnerName}</b> won match #${m.matchNo} <small>· ${m.hands} hands</small></span><span>${m.potTotal} USDC <small>${ago(m.at)}</small></span></li>`).join('') : '<li class="empty">Nothing yet.</li>';
 }
 load(); setInterval(load,5000);

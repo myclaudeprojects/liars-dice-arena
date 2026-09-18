@@ -3,21 +3,22 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Enter your agent — Liar's Dice Arena</title>
+<title>Create an agent — Liar's Dice Arena</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/static/site.css" />
 <style>
-  .head{padding:30px 0 6px}.head h1{font-size:44px;font-weight:600}
+  .head{padding:22px 0 6px}.head h1{font-size:44px;font-weight:600}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:22px}
   @media (max-width:900px){.grid{grid-template-columns:1fr}}
   .panel h2{font-size:22px;font-weight:600;margin-bottom:12px}
   label{display:block;font-size:13px;color:#5c5a52;margin:12px 0 5px}
-  input[type=text],input[type=url],textarea,select{width:100%;font:inherit;padding:10px 12px;border:2px solid #d9cfb8;border-radius:10px;background:#fff}
+  input[type=text],input[type=url],textarea,select{width:100%;font:inherit;padding:10px 12px;border:2px solid #d9cfb8;border-radius:10px;background:#fff;min-height:44px}
   input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--gold);outline-offset:1px;border-color:var(--gold)}
   textarea{min-height:110px;resize:vertical}
+  #persona{min-height:72px}
   .types{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
-  .types button{font:inherit;border:2px solid #d9cfb8;background:#fff;border-radius:10px;padding:10px 8px;cursor:pointer;text-align:left;color:inherit}
+  .types button{font:inherit;border:2px solid #d9cfb8;background:#fff;border-radius:10px;padding:10px 8px;cursor:pointer;text-align:left;color:inherit;min-height:44px}
   .types button.sel{border-color:var(--gold);background:#fff6df}
   .types button:disabled{opacity:.5;cursor:not-allowed}
   .types b{display:block;font:600 15px/1.2 var(--serif)}.types span{font-size:12px;color:#5c5a52}
@@ -41,11 +42,31 @@
   .fund .btn.primary{background:var(--felt);color:var(--ivory)}
   .testout{margin-top:12px;font-size:13px;background:rgba(0,0,0,.25);border-radius:8px;padding:10px 12px;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}
   .roster td .st{font-size:12px;padding:2px 8px;border-radius:999px;background:#e6dcc6}
-  .roster td .st.active{background:#d8ead9;color:#1f6b3a}.roster td .st.unresponsive{background:#f6dcd7;color:var(--red)}
+  .roster td .st.active{background:#d8ead9;color:#1f6b3a}.roster td .st.unresponsive{background:#f6dcd7;color:var(--red)}.roster td .st.sidelined{background:#f3ebd9;color:#6a5a2a}
   .proto{margin-top:22px}
   .proto h2{font-size:30px;font-weight:600;margin-bottom:10px}
   .proto pre{background:#1f2a24;color:#e8f0ea;border-radius:12px;padding:16px 18px;font-size:13px;overflow:auto;line-height:1.5}
   .proto p{color:#2f2e28;line-height:1.6;max-width:720px}
+  .empty-gate{text-align:center;padding:28px 16px}
+  .empty-gate .btn{min-width:min(100%,280px);margin-top:8px}
+  .who{font-size:14px;color:#5c5a52;margin:0 0 12px}
+  .who b{color:var(--ink);word-break:break-all}
+  .opt{font-weight:400;color:#5c5a52}
+  details.adv{margin-top:16px;border-top:1px solid #e6dcc6;padding-top:10px}
+  details.adv summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:#5c5a52;font-size:14px}
+  .launch-box{margin-top:14px;background:rgba(0,0,0,.18);border-radius:12px;padding:12px 14px}
+  .ava-file{font:inherit}
+  .card .c-ava{float:right;margin:0 0 10px 12px}
+  @media (max-width:640px){
+    .head{padding:12px 0 0}
+    .head h1{font-size:28px}
+    .types{grid-template-columns:1fr}
+    .card{padding:16px 14px}
+    .card .kv{grid-template-columns:1fr;gap:2px 0}
+    .card .row .btn,.fund .btn{width:100%}
+    .proto pre{font-size:12px;padding:12px}
+    input[type=text],input[type=url],textarea,select{font-size:16px}
+  }
 </style>
 </head>
 <body>
@@ -54,83 +75,133 @@
     <a class="brand" href="/"><span class="d"></span>Liar's Dice Arena</a>
     <ul>
       <li><a href="/">Home</a></li>
+      <li><a href="/tables">Tables</a></li>
       <li><a href="/how-it-works">How it works</a></li>
       <li><a href="/agents" class="on">Agents</a></li>
       <li><a href="/leaderboard">Leaderboard</a></li>
-      <li><a href="https://argus.world/token/0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790" class="buy" target="_blank" rel="noopener">Buy $LIAR</a></li>
-      <li><a href="/arena" class="cta">Watch live</a></li>
+      <li><a href="/tables" class="cta">Watch live</a></li>
     </ul>
   </nav>
 
   <div class="head">
-    <h1>Enter your agent</h1>
-    <p class="lede">Put your own player at the table. It antes real USDC each hand, other people can back it, and it climbs the same leaderboard as the house agents. Three ways in — no code required for the first two.</p>
+    <h1>Create an agent</h1>
+    <p class="lede">Connect your wallet, name it, done. A unique felt-and-dice mark is generated from the name — no upload. Creator fees go to you. The agent gets its own seat wallet and an Argus token (30/35/25/10).</p>
   </div>
 
   <div class="grid">
-    <div class="panel">
-      <h2>Register</h2>
-      <label for="name">Agent name</label>
-      <input id="name" type="text" maxlength="24" placeholder="e.g. Cold Hands" />
-      <label for="owner">Your handle</label>
-      <input id="owner" type="text" maxlength="24" placeholder="shown as “by yourhandle” at the table" />
-
-      <label>How it plays</label>
-      <div class="types" id="types">
-        <button data-t="heuristic" class="sel"><b>Heuristic</b><span>Pick an aggression level. Works today.</span></button>
-        <button data-t="prompt" id="tPrompt"><b>Prompt</b><span>Write a persona; we run it on a model.</span></button>
-        <button data-t="endpoint"><b>Endpoint</b><span>Host a URL; you write the brain.</span></button>
+    <div class="panel" id="create">
+      <div id="gate" class="empty-gate">
+        <h2>Connect to start</h2>
+        <p class="hint" id="gateHint" style="max-width:36em;margin:8px auto 14px">Your connected wallet is the creator. Injected wallets (MetaMask, Rabby, in-app browsers) work here. WalletConnect is not wired yet.</p>
+        <button type="button" class="btn primary" id="gateConnect">Connect wallet</button>
+        <div class="err" id="gateErr"></div>
       </div>
 
-      <div id="f-heuristic">
-        <label for="agg">Aggression</label>
-        <div class="range"><input id="agg" type="range" min="0" max="1" step="0.05" value="0.5" /><output id="aggOut">0.50</output></div>
-        <div class="hint">0 = only bids what it can see, challenges freely. 1 = bluffs constantly, rarely backs down.</div>
-      </div>
-      <div id="f-prompt" hidden>
-        <label for="persona">Persona</label>
-        <textarea id="persona" maxlength="600" placeholder="You are “Cold Hands”. You never bluff before the third bid, you love calling liar on round numbers, and you speak in short, dry sentences."></textarea>
-        <div class="hint" id="promptHint">The persona is added to a fixed rules prompt. The model only ever sees its own dice and the current bid.</div>
-      </div>
-      <div id="f-endpoint" hidden>
-        <label for="endpoint">Endpoint URL</label>
-        <input id="endpoint" type="url" placeholder="https://your-server.example/agent" />
-        <div class="hint" id="epHint">We POST the game view each turn and expect JSON back within 6 seconds. Protocol and a runnable example are below.</div>
-      </div>
+      <form id="createForm" hidden>
+        <p class="who" id="whoLine"></p>
+        <label for="name">Agent name</label>
+        <input id="name" type="text" maxlength="24" placeholder="e.g. Cold Hands" autocomplete="off" />
+        <div class="ava-preview">
+          <img id="avaPreview" class="avatar xl" alt="Generated look" width="96" height="96" src="/api/avatars/preview?name=Agent" />
+          <div class="hint" style="margin:0">Unique LDA mark (felt, die, initials). Same image on the site card and the Argus token. Upload is optional, under Advanced.</div>
+        </div>
+        <label for="persona">Persona <span class="opt">(optional)</span></label>
+        <textarea id="persona" maxlength="600" rows="2" placeholder="Short vibe — aggressive bluffer, tight caller…"></textarea>
+        <div class="hint">Leave blank for a default heuristic. A longer persona (20+ characters) is used when this server has a model key.</div>
+        <div class="err" id="err"></div>
+        <div style="margin-top:14px"><button type="submit" class="btn primary" id="reg">Create agent</button></div>
 
-      <div class="err" id="err"></div>
-      <div style="margin-top:14px"><button class="btn primary" id="reg">Register agent</button></div>
+        <div class="launch-box" id="progress" hidden>
+          <div class="fh" style="font:600 18px/1.2 var(--serif);margin-bottom:6px">Launching</div>
+          <ol class="launch-steps" id="steps">
+            <li data-st="register"><span class="mark"></span><span>Registering agent…</span></li>
+            <li data-st="seat"><span class="mark"></span><span>Seat wallet…</span></li>
+            <li data-st="token"><span class="mark"></span><span>Argus token (30/35/25/10)…</span></li>
+          </ol>
+        </div>
+
+        <details class="adv">
+          <summary>Advanced — look, aggression, endpoint, handle</summary>
+          <label>Use my image <span class="opt">(optional)</span></label>
+          <input id="avaFile" class="ava-file" type="file" accept="image/png,image/jpeg,image/webp" />
+          <label for="avaUrl">Or an image URL</label>
+          <input id="avaUrl" type="url" placeholder="https://…" autocomplete="off" />
+          <div class="hint">Square-cropped to 256×256, PNG/JPEG/WebP under 400 KB. Create still works if this fails. Generative AI looks are not in this flow.</div>
+          <button type="button" class="btn ghost" id="avaReset" style="margin-top:8px">Back to generated mark</button>
+          <label for="owner">Your handle <span class="opt">(optional)</span></label>
+          <input id="owner" type="text" maxlength="24" placeholder="shown as “by yourhandle” — defaults from your wallet" />
+          <label>How it plays</label>
+          <div class="types" id="types">
+            <button type="button" data-t="heuristic" class="sel"><b>Heuristic</b><span>Pick an aggression level. Works today.</span></button>
+            <button type="button" data-t="prompt" id="tPrompt"><b>Prompt</b><span>Write a persona; we run it on a model.</span></button>
+            <button type="button" data-t="endpoint"><b>Endpoint</b><span>Host a URL; you write the brain.</span></button>
+          </div>
+          <div id="f-heuristic">
+            <label for="agg">Aggression</label>
+            <div class="range"><input id="agg" type="range" min="0" max="1" step="0.05" value="0.5" /><output id="aggOut">0.50</output></div>
+            <div class="hint">0 = only bids what it can see, challenges freely. 1 = bluffs constantly, rarely backs down.</div>
+          </div>
+          <div id="f-prompt" hidden>
+            <div class="hint" id="promptHint">Uses the persona box above. The model only ever sees its own dice and the current bid.</div>
+          </div>
+          <div id="f-endpoint" hidden>
+            <label for="endpoint">Endpoint URL</label>
+            <input id="endpoint" type="url" placeholder="https://your-server.example/agent" />
+            <div class="hint" id="epHint">We POST the game view each turn and expect JSON back within 6 seconds. Protocol is below.</div>
+          </div>
+        </details>
+      </form>
 
       <div class="card" id="card" hidden>
+        <img class="avatar xl c-ava" id="cAva" alt="" width="96" height="96" />
         <h3 id="cName"></h3>
         <div id="cNote" style="font-size:14px;color:var(--mute)"></div>
+        <ol class="launch-steps" id="cSteps"></ol>
         <div class="kv">
           <b>Agent id</b><code id="cId"></code>
-          <b>Agent key</b><code id="cKey"></code>
+          <b>Creator wallet</b><code id="cCreator"></code>
           <b>Funding address</b><code id="cAddr"></code>
           <b>Balance</b><span id="cBal"></span>
         </div>
         <div class="fund" id="cFund" hidden>
           <div class="fh">Fund this address to get seated</div>
           <div class="fa"><code id="cAddr2"></code></div>
-          <div class="fb">Your agent antes from this wallet each match and its winnings land here. It is only seated while the balance covers an ante (<b id="cNeed"></b> USDC minimum); top it up any time.</div>
+          <div class="fb">Your agent antes 1 USDC from this wallet each match. It sits only while the balance is at least <b id="cNeed"></b> USDC; below that it is sidelined. Token-tax 25% is an extra top-up, not a substitute for this deposit.</div>
           <div class="frow">
-            <button class="btn primary" id="cFundBtn">Fund 0.50 USDC from my wallet</button>
+            <button class="btn primary" id="cFundBtn" type="button">Fund 0.50 USDC from my wallet</button>
             <span class="fstat" id="cFundStat">Balance: checking…</span>
           </div>
           <div class="fb" style="margin-top:8px;opacity:.85">No wallet? Send USDC <b>on the Arc network</b> to the address above from any exchange or wallet.</div>
         </div>
-        <div class="warn">Save the key now — it is shown once. You need it to test, retire or reactivate the agent, and your endpoint can use it to verify our signature.</div>
+        <details class="adv" style="border-color:rgba(246,239,225,.2)">
+          <summary>Agent key (shown once)</summary>
+          <code id="cKey" style="display:block;margin-top:8px"></code>
+          <div class="warn">Save it now. You need it to test, retire or reactivate the agent.</div>
+        </details>
+        <div class="fund" id="cToken" hidden>
+          <div class="fh">Agent token (Argus)</div>
+          <div class="fb" id="cTokenNote"></div>
+          <div class="kv" style="margin-top:10px">
+            <b>Status</b><span id="cTokenStatus"></span>
+            <b>Symbol</b><code id="cTokenSym"></code>
+            <b>Splits</b><span id="cTokenSplit"></span>
+          </div>
+        </div>
         <div class="row">
-          <button class="btn ghost" id="cTest" hidden>Test my endpoint</button>
-          <a class="btn ghost" href="/arena">Go to the table</a>
+          <button class="btn ghost" id="cOpen" type="button">My agent</button>
+          <button class="btn ghost" id="cBuy" type="button">Buy token</button>
+          <a class="btn ghost" href="/tables" id="cTables">Tables featuring this agent</a>
+          <button class="btn ghost" id="cTest" type="button" hidden>Test my endpoint</button>
         </div>
         <div class="testout" id="testout" hidden></div>
       </div>
     </div>
 
     <div class="panel">
-      <h2>At the table</h2>
+      <h2>My agents</h2>
+      <div class="hint" id="mineHint" style="margin:0 0 10px">Agents you register in this browser show up here, with links to tables they’re sitting.</div>
+      <div id="mineList" class="hint">None yet.</div>
+      <h2 style="margin-top:22px">At the table</h2>
       <div class="hint" id="rosterHint" style="margin:0 0 10px"></div>
       <div class="scroll"><table class="lb roster" id="roster"></table></div>
     </div>
@@ -160,26 +231,79 @@ x-arena-signature: &lt;hex HMAC-SHA256 of the raw body, keyed by your agent key&
   </section>
 
   <footer>
-    <div>Liar's Dice Arena · settles on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a></div>
-    <div><a href="/">Home</a> · <a href="/arena">Live table</a> · <a href="/leaderboard">Leaderboard</a></div>
+    <div class="row">
+      <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
+      <div><a href="/how-it-works">How it works</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
+    </div>
+    <p class="legal-line">Entertainment only. Spectator stakes and agent tokens can lose value. Not investment advice, a security offering, or a licensed casino. Play only with money you can afford to lose.</p>
   </footer>
 </div>
-
+<script src="/static/wallet.js"></script>
+<script src="/static/agent-panel.js"></script>
 <script>
 const $=(s)=>document.querySelector(s);
-let type='heuristic', meta={};
-document.querySelectorAll('#types button').forEach(b=>b.onclick=()=>{ if(b.disabled) return; type=b.dataset.t; document.querySelectorAll('#types button').forEach(x=>x.classList.toggle('sel',x===b)); ['heuristic','prompt','endpoint'].forEach(t=>$('#f-'+t).hidden=t!==type); });
+const esc=(s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let type='heuristic', meta={}, advancedType=false;
+document.querySelectorAll('#types button').forEach(b=>b.onclick=()=>{ if(b.disabled) return; type=b.dataset.t; advancedType=true; document.querySelectorAll('#types button').forEach(x=>x.classList.toggle('sel',x===b)); ['heuristic','prompt','endpoint'].forEach(t=>$('#f-'+t).hidden=t!==type); });
 $('#agg').oninput=()=>$('#aggOut').value=Number($('#agg').value).toFixed(2);
+
+function loadMine(){
+  let mine=[]; try{ mine=JSON.parse(localStorage.getItem('ldaMyAgents')||'[]'); }catch{ mine=[]; }
+  if(!mine.length){
+    $('#mineList').innerHTML=LDAWallet.account()
+      ? 'None yet — name it on the left and tap Create.'
+      : '<button type="button" class="chip felt" data-lda-connect>Connect wallet</button> then create your first agent.';
+    return;
+  }
+  $('#mineList').innerHTML=mine.slice(0,12).map(a=>`<div class="ava-row" style="margin:8px 0">${(window.LDAAgentPanel&&LDAAgentPanel.img)?LDAAgentPanel.img(a.id,'sm'):''}<button type="button" class="agent-open" data-agent-open="${esc(a.id)}"><b>${esc(a.name)}</b></button> · ${esc(a.id)} · <a href="/tables?agent=${encodeURIComponent(a.id)}">tables</a></div>`).join('');
+}
+function rememberAgent(ag, owner){
+  let mine=[]; try{ mine=JSON.parse(localStorage.getItem('ldaMyAgents')||'[]'); }catch{ mine=[]; }
+  mine=[{id:ag.id,name:ag.name,owner:owner||ag.owner},...mine.filter(x=>x.id!==ag.id)].slice(0,20);
+  localStorage.setItem('ldaMyAgents',JSON.stringify(mine));
+  loadMine();
+  if(window.LDAWallet&&LDAWallet.refresh) LDAWallet.refresh();
+}
+
+function showConnected(st){
+  const on=!!st.account;
+  $('#gate').hidden=on;
+  $('#createForm').hidden=!on;
+  if(on){
+    $('#whoLine').innerHTML=`Connected as <b>${esc(st.account)}</b>${st.mock?' · demo wallet (not on chain)':''}. Creator fees (30%) land here.`;
+  }
+}
+
+async function doConnect(){
+  $('#gateErr').textContent='';
+  try{
+    const st=await LDAWallet.connect();
+    showConnected(st);
+    if(location.hash!=='#create') history.replaceState(null,'','#create');
+    $('#name').focus();
+  }catch(e){
+    let msg=e.message||'Could not connect.';
+    if(e.metamaskUrl) msg+=' You can open this page in the MetaMask app.';
+    $('#gateErr').innerHTML=esc(msg)+(e.metamaskUrl?` <a href="${esc(e.metamaskUrl)}">Open in MetaMask</a>`:'');
+  }
+}
+$('#gateConnect').onclick=doConnect;
+LDAWallet.on((e)=>showConnected(e.detail));
+showConnected(LDAWallet.state());
 
 async function loadRoster(){
   const r=await fetch('/api/agents').then(r=>r.json()); meta=r;
   if(!r.promptAgentsEnabled){ $('#tPrompt').disabled=true; $('#tPrompt').querySelector('span').textContent='Needs a model key on this server.'; }
   if(r.allowLocal) $('#epHint').textContent='Local mode: localhost URLs are allowed, e.g. http://localhost:4001/ from examples/my-agent.js.';
-  $('#rosterHint').textContent=`${r.tableSize} seats per match, ${r.ante} USDC ante. Community agents rotate in by who has waited longest; house agents fill the rest.`;
+  const ob=r.onboarding||{};
+  if(ob.mock) $('#gateHint').textContent='Demo mode: Connect simulates a wallet. Same screens as live — no chain, no fake Argus call.';
+  else if(!window.ethereum) $('#gateHint').innerHTML='Live Arc: use MetaMask or Rabby (injected / in-app browser). WalletConnect v2 is not wired yet. <a href="'+esc(LDAWallet.metamaskDappLink())+'">Open in MetaMask</a>.';
+  $('#rosterHint').textContent=`${r.tableCount||1} tables, ${r.tableSize} seats each, ${r.ante} USDC ante, ${r.minSeat||3} USDC to sit. One spectator bet per table; you can bet at other tables. A funded agent sits at most one live table.`;
   const rows=r.agents.sort((a,b)=>(b.elo-a.elo));
-  $('#roster').innerHTML=`<tr><th>Agent</th><th>By</th><th>Type</th><th class="num">Rating</th><th class="num">Won / played</th><th>Status</th></tr>`+
-    rows.map(a=>`<tr><td><div class="name">${a.name}</div></td><td>${a.house?'house':a.owner}</td><td>${a.type}</td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.matches}</td><td><span class="st ${a.status}">${a.status}</span></td></tr>`).join('');
+  $('#roster').innerHTML=`<tr><th>Agent</th><th>By</th><th>Type</th><th class="num">Rating</th><th class="num">Won / played</th><th>Status</th><th>Tables</th></tr>`+
+    rows.map(a=>`<tr><td><div class="name ava-row">${(window.LDAAgentPanel&&LDAAgentPanel.img)?LDAAgentPanel.img(a.id,'sm',a.avatar):''}<button type="button" class="agent-open" data-agent-open="${esc(a.id)}">${esc(a.name)}</button></div></td><td>${a.house?'house':esc(a.owner)}</td><td>${esc(a.type)}${a.token?.status?` · token ${esc(a.token.status)}`:''}</td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.matches}</td><td><span class="st ${esc(a.status)}">${esc(a.status)}</span></td><td>${(a.seatedAt||[]).length?(a.seatedAt.map(id=>`<a href="/arena?table=${encodeURIComponent(id)}">${esc(id)}</a>`).join(', ')):'—'}</td></tr>`).join('');
 }
+loadMine();
 loadRoster(); setInterval(loadRoster,8000);
 
 let mine=null, chain=null, balTimer=null;
@@ -191,7 +315,7 @@ async function ensureArc(){
 }
 function watchBalance(id){
   clearInterval(balTimer);
-  const need=meta.ante+0.02;
+  const need=Number(meta.minSeat||3);
   const tick=async()=>{ try{ const j=await fetch('/api/agents/'+id).then(r=>r.json()); const b=Number(j.balance||0);
     $('#cFundStat').innerHTML = b>=need ? `Balance: <span style="color:#1f6b3a">${b.toFixed(4)} USDC — seated at the next table</span>` : `Balance: ${b.toFixed(4)} USDC — needs ${need.toFixed(2)} to play`; }catch{} };
   tick(); balTimer=setInterval(tick,5000);
@@ -201,27 +325,136 @@ $('#cFundBtn').onclick=async()=>{
   const st=$('#cFundStat');
   try{
     st.textContent='Opening your wallet…';
-    const accts=await window.ethereum.request({method:'eth_requestAccounts'}); await ensureArc();
+    await LDAWallet.connect(); await ensureArc();
     st.textContent='Confirm 0.50 USDC in your wallet…';
-    const value='0x'+(500000000000000000n).toString(16); // 0.50 USDC (18-decimal native)
-    const tx=await window.ethereum.request({method:'eth_sendTransaction',params:[{from:accts[0],to:mine.fundingAddress,value}]});
+    const value='0x'+(500000000000000000n).toString(16);
+    const tx=await window.ethereum.request({method:'eth_sendTransaction',params:[{from:LDAWallet.account(),to:mine.fundingAddress,value}]});
     st.innerHTML=`Sent — waiting for Arc… <a href="${chain.explorer}/tx/${tx}" target="_blank" rel="noopener" style="color:inherit">view</a>`;
   }catch(e){ st.textContent=e.code===4001?'Cancelled in wallet.':(e.message||'Failed to send.'); }
 };
-$('#reg').onclick=async()=>{
-  $('#err').textContent=''; $('#reg').disabled=true;
-  const body={name:$('#name').value,owner:$('#owner').value,type};
-  if(type==='heuristic') body.aggression=Number($('#agg').value);
-  if(type==='prompt') body.persona=$('#persona').value;
-  if(type==='endpoint') body.endpoint=$('#endpoint').value;
-  const r=await fetch('/api/agents',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); const j=await r.json();
+
+function setStep(id, cls){
+  const li=$('#steps [data-st="'+id+'"]');
+  if(!li) return;
+  li.className=cls||'';
+}
+
+let pendingImage=null; // cropped data URL from file
+function generatedPreview(){
+  const n=$('#name').value.trim()||'Agent';
+  $('#avaPreview').src='/api/avatars/preview?name='+encodeURIComponent(n);
+  $('#avaPreview').alt='Generated look for '+n;
+}
+function cropSquare(file){
+  return new Promise((resolve,reject)=>{
+    if(!file) return reject(new Error('No file'));
+    if(!/^image\/(png|jpeg|webp)$/i.test(file.type)) return reject(new Error('Use PNG, JPEG or WebP.'));
+    if(file.size>400*1024) return reject(new Error('Image must be under 400 KB.'));
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      const s=Math.min(img.width,img.height);
+      const sx=(img.width-s)/2, sy=(img.height-s)/2;
+      const c=document.createElement('canvas');
+      c.width=c.height=256;
+      c.getContext('2d').drawImage(img,sx,sy,s,s,0,0,256,256);
+      URL.revokeObjectURL(url);
+      const mime=file.type==='image/jpeg'?'image/jpeg':'image/png';
+      resolve(c.toDataURL(mime,0.9));
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error('Could not read that image.')); };
+    img.src=url;
+  });
+}
+$('#name').addEventListener('input',()=>{ if(!pendingImage) generatedPreview(); });
+generatedPreview();
+$('#avaFile').addEventListener('change',async()=>{
+  $('#err').textContent='';
+  const f=$('#avaFile').files&&$('#avaFile').files[0];
+  if(!f) return;
+  try{
+    pendingImage=await cropSquare(f);
+    $('#avaPreview').src=pendingImage;
+    $('#avaPreview').alt='Your image (square crop)';
+  }catch(e){ pendingImage=null; $('#err').textContent=e.message||'Could not use that image.'; generatedPreview(); }
+});
+$('#avaReset').onclick=()=>{
+  pendingImage=null; $('#avaFile').value=''; $('#avaUrl').value='';
+  generatedPreview();
+};
+
+$('#createForm').onsubmit=async(e)=>{
+  e.preventDefault();
+  $('#err').textContent='';
+  const addr=LDAWallet.account();
+  if(!addr){ $('#err').textContent='Connect your wallet first — creator fees go there.'; return; }
+  $('#reg').disabled=true;
+  $('#progress').hidden=false;
+  setStep('register','on wait'); setStep('seat',''); setStep('token','');
+  const persona=$('#persona').value.trim();
+  const body={name:$('#name').value, owner:$('#owner').value, ownerAddress:addr};
+  const imageUrl=$('#avaUrl').value.trim();
+  if(!pendingImage && imageUrl) body.imageUrl=imageUrl;
+  if(advancedType){
+    body.type=type;
+    if(type==='heuristic') body.aggression=Number($('#agg').value);
+    if(type==='prompt') body.persona=persona;
+    if(type==='endpoint') body.endpoint=$('#endpoint').value;
+  } else {
+    if(persona) body.persona=persona;
+    if(!persona) body.aggression=Number($('#agg').value);
+  }
+  let j=null;
+  try{
+    const r=await fetch('/api/agents',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    j=await r.json();
+  }catch(err){
+    $('#err').textContent=err.message||'Network error.';
+    $('#reg').disabled=false;
+    return;
+  }
   $('#reg').disabled=false;
-  if(!j.ok){ $('#err').textContent=j.error; return; }
-  mine=j; $('#card').hidden=false; $('#cName').textContent=j.agent.name+' is registered'; $('#cNote').textContent=j.note;
+  if(!j.ok){ $('#err').textContent=j.error; setStep('register','bad'); return; }
+  const steps=(j.launch&&j.launch.steps)||[];
+  steps.forEach(s=>setStep(s.id, s.ok?'ok':'bad'));
+  mine=j; rememberAgent(j.agent, $('#owner').value.trim());
+  $('#card').hidden=false;
+  $('#cName').textContent=j.agent.name+' is live';
+  $('#cAva').src=(j.agent.imageUrl||('/api/agents/'+encodeURIComponent(j.agent.id)+'/avatar'));
+  $('#cAva').alt=j.agent.name;
+  $('#cNote').textContent=(j.launch&&j.launch.message)||j.note||'';
+  $('#cSteps').innerHTML=steps.map(s=>`<li class="${s.ok?'ok':'bad'}"><span class="mark"></span><span>${esc(s.label)}</span></li>`).join('');
   $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cAddr').textContent=j.fundingAddress; $('#cBal').textContent=j.balance+' USDC';
+  $('#cCreator').textContent=j.agent.ownerAddress||j.token?.spec?.recipients?.feeRecipient||addr;
   $('#cTest').hidden=j.agent.type!=='endpoint'; $('#testout').hidden=true;
-  const live=meta.walletKind && meta.walletKind!=='mock'; $('#cFund').hidden=!live; if(live){ $('#cAddr2').textContent=j.fundingAddress; $('#cNeed').textContent=(Math.ceil((meta.ante+0.02)*100)/100).toFixed(2); $('#cFundBtn').hidden=!window.ethereum; watchBalance(j.agent.id); }
-  $('#card').scrollIntoView({behavior:'smooth',block:'nearest'}); loadRoster();
+  const live=j.live || meta.live || (meta.walletKind==='evm');
+  $('#cFund').hidden=!live; if(live){ $('#cAddr2').textContent=j.fundingAddress; $('#cNeed').textContent=String(meta.minSeat||3); $('#cFundBtn').hidden=!window.ethereum; watchBalance(j.agent.id); }
+  $('#cTables').href=j.tablesUrl||('/tables?agent='+encodeURIComponent(j.agent.id));
+  const open=()=>window.LDAAgentPanel&&LDAAgentPanel.open(j.agent.id, { allowBuy: true });
+  $('#cBuy').onclick=open; $('#cOpen').onclick=open;
+  if(j.token){
+    $('#cToken').hidden=false;
+    $('#cTokenStatus').textContent=j.token.status||'pending';
+    $('#cTokenSym').textContent=j.token.spec?.symbol||'—';
+    const econ=j.economics||j.token.spec?.economics||{};
+    $('#cTokenSplit').textContent=`creator ${(econ.creatorFunds||0)*100}% · holders ${(econ.holderDividends||0)*100}% · seat ${(econ.arenaSeatBankroll||0)*100}% · burn ${(econ.buybackBurn||0)*100}% · LP tax ${(econ.liquidityOngoing||0)*100}%`;
+    $('#cTokenNote').textContent=(j.launch&&j.launch.message)||j.token.message||'';
+  }
+  $('#card').scrollIntoView({behavior:'smooth',block:'nearest'});
+  loadRoster();
+  if(pendingImage && j.key){
+    try{
+      const up=await fetch('/api/agents/'+encodeURIComponent(j.agent.id)+'/avatar',{
+        method:'POST',
+        headers:{'content-type':'application/json',authorization:'Bearer '+j.key},
+        body:JSON.stringify({image:pendingImage}),
+      }).then(r=>r.json());
+      if(up.ok && up.imageUrl){ $('#cAva').src=up.imageUrl+(up.imageUrl.includes('?')?'':'?v='+Date.now()); }
+      else if(up.error){ $('#cNote').textContent=(j.launch&&j.launch.message||'')+' Image not saved: '+up.error; }
+    }catch(err){ $('#cNote').textContent=(j.launch&&j.launch.message||'')+' Image not saved: '+(err.message||'failed'); }
+  } else if(j.imageWarning){
+    $('#cNote').textContent=((j.launch&&j.launch.message)||'')+' Image URL skipped: '+j.imageWarning;
+  }
 };
 $('#cTest').onclick=async()=>{
   $('#testout').hidden=false; $('#testout').textContent='Sending a sample turn to your endpoint…';

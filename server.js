@@ -16,6 +16,7 @@ const { impliedMultipliers } = require("./src/betting");
 const llm = require("./src/llm");
 const { Stats } = require("./src/stats");
 const argus = require("./src/argus");
+const avatar = require("./src/avatar");
 const { resolvePublicFile, shouldReleaseTxClaim } = require("./src/httputil");
 const { TableManager, TABLE_ID_RE } = require("./src/tables");
 const stats = new Stats();
@@ -175,8 +176,42 @@ function sendFile(res, file) {
 }
 
 function json(res, code, obj) { res.writeHead(code, { "content-type": "application/json", "cache-control": "no-cache" }); res.end(JSON.stringify(obj)); }
-function readBody(req) { return new Promise((r) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > 20000) req.destroy(); }); req.on("end", () => r(b)); }); }
+function readBody(req, max = 20000) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let n = 0;
+    let done = false;
+    const finish = (fn, v) => { if (done) return; done = true; fn(v); };
+    req.on("data", (c) => {
+      n += c.length;
+      if (n > max) { req.destroy(); finish(reject, new Error("Body too large.")); return; }
+      chunks.push(c);
+    });
+    req.on("end", () => finish(resolve, Buffer.concat(chunks).toString("utf8")));
+    req.on("error", (e) => finish(reject, e));
+  });
+}
 function bearer(req) { const h = req.headers.authorization || ""; return h.startsWith("Bearer ") ? h.slice(7) : null; }
+
+function sendAvatarBytes(res, { buf, mime, generated }) {
+  res.writeHead(200, {
+    "content-type": mime,
+    "cache-control": generated ? "public, max-age=86400" : "public, max-age=3600",
+    "content-length": buf.length,
+    "x-content-type-options": "nosniff",
+  });
+  res.end(buf);
+}
+
+function siteOrigin() { return process.env.PUBLIC_BASE_URL || process.env.SITE_ORIGIN || null; }
+
+function stampTokenImage(rec, image) {
+  const tok = rec?.token;
+  if (!tok?.spec?.metadata) return tok;
+  tok.spec.metadata.image = image;
+  if (tok.spec.metadata.argusForm) tok.spec.metadata.argusForm.image = image;
+  return tok;
+}
 
 async function agentsApi(req, res, urlPath) {
   const parts = urlPath.split("/").filter(Boolean); // api, agents, :id?, :action?
@@ -210,6 +245,17 @@ async function agentsApi(req, res, urlPath) {
       if (!body.type) body.type = (persona.length >= 20 && llmComplete) ? "prompt" : "heuristic";
       if (body.type === "prompt" && !llmComplete) throw new Error("Prompt agents need a model key on this server — choose heuristic or endpoint for now.");
       const rec = registry.register(body);
+      // Optional image URL at create — never fail the happy path if ingest dies.
+      let imageWarning = null;
+      if (body.imageUrl) {
+        try {
+          const av = await avatar.ingestFromUrl(rec.id, body.imageUrl, { allowLocal: registry.allowLocal });
+          registry.setAvatar(rec.id, av);
+          rec.avatar = av;
+        } catch (e) {
+          imageWarning = String(e.message || e).slice(0, 180);
+        }
+      }
       const w = await ensureWallet(rec);
       let token = null;
       try {
@@ -217,7 +263,7 @@ async function agentsApi(req, res, urlPath) {
           agent: rec, seatWallet: w, ownerAddress: rec.ownerAddress,
           deployerAddress: wallet.house?.address || process.env.HOUSE_ADDRESS || null,
           houseAddress: wallet.house?.address || process.env.HOUSE_ADDRESS || null,
-          siteOrigin: process.env.PUBLIC_BASE_URL || process.env.SITE_ORIGIN || null,
+          siteOrigin: siteOrigin(),
         });
         token = argus.publicTokenView(launched);
         registry.setToken(rec.id, token);
@@ -250,10 +296,21 @@ async function agentsApi(req, res, urlPath) {
             { id: "token", ok: tokenOk, status: token?.status || null, label: tokenOk ? "Argus token queued (30/35/25/10, creator = you)" : "Token hook failed — spec still saved" },
           ],
         },
+        imageWarning,
       });
     }
 
     const rec = registry.get(parts[2]); if (!rec) return json(res, 404, { ok: false, error: "No such agent." });
+
+    if (parts[3] === "avatar" && req.method === "GET") {
+      const up = avatar.readUpload(rec.avatar);
+      if (up) {
+        const buf = fs.readFileSync(up.full);
+        return sendAvatarBytes(res, { buf, mime: up.mime, generated: false });
+      }
+      const svg = avatar.svg({ name: rec.name, id: rec.id });
+      return sendAvatarBytes(res, { buf: Buffer.from(svg, "utf8"), mime: "image/svg+xml; charset=utf-8", generated: true });
+    }
 
     if (parts.length === 3 && req.method === "GET") {
       const w = rec.wallet ? await wallet.getBalance(rec.wallet.walletId).catch(() => null) : null;
@@ -302,6 +359,31 @@ async function agentsApi(req, res, urlPath) {
       if (ok) registry.reactivate(rec.id);
       return json(res, 200, { ok, ms, result, error: why, sentView: view, status: registry.get(rec.id).status });
     }
+    if (parts[3] === "avatar" && req.method === "POST") {
+      const body = JSON.parse(await readBody(req, 450000) || "{}");
+      let recAvatar;
+      if (body.kind === "generated" || body.reset) {
+        recAvatar = { kind: "generated", updatedAt: Date.now() };
+      } else if (body.image) {
+        const { buf, mime } = avatar.decodeDataUrl(body.image);
+        recAvatar = avatar.saveUpload(rec.id, buf, mime);
+      } else if (body.imageUrl) {
+        recAvatar = await avatar.ingestFromUrl(rec.id, body.imageUrl, { allowLocal: registry.allowLocal });
+      } else {
+        throw new Error("Send an image data URL, imageUrl, or kind=generated.");
+      }
+      registry.setAvatar(rec.id, recAvatar);
+      const fresh = registry.get(rec.id);
+      const image = avatar.publicUrl(rec.id, recAvatar, { siteOrigin: siteOrigin() });
+      const tok = stampTokenImage(fresh, image);
+      if (tok) registry.setToken(rec.id, tok);
+      return json(res, 200, {
+        ok: true,
+        avatar: registry.publicView(registry.get(rec.id)).avatar,
+        imageUrl: image,
+        todos: ["TODO(argus): if the live create form only accepts a file, GET this image URL and attach it — no Argus image API is documented"],
+      });
+    }
     if (parts[3] === "retire" && req.method === "POST") { registry.retire(rec.id); return json(res, 200, { ok: true }); }
     if (parts[3] === "reactivate" && req.method === "POST") { registry.reactivate(rec.id); return json(res, 200, { ok: true }); }
     return json(res, 404, { ok: false, error: "Unknown agents endpoint." });
@@ -328,6 +410,17 @@ const server = http.createServer(async (req, res) => {
   if (url === "/api/leaderboard") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(stats.leaderboard())); }
   if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(lobbyState())); }
   if (url.startsWith("/static/")) return sendFile(res, url.slice("/static/".length));
+  if (url === "/api/avatars/preview" && req.method === "GET") {
+    const name = String(q.get("name") || "Agent").slice(0, 24);
+    const id = String(q.get("id") || "").slice(0, 40);
+    const svg = avatar.svg({ name, id });
+    res.writeHead(200, {
+      "content-type": "image/svg+xml; charset=utf-8",
+      "cache-control": "no-cache",
+      "x-content-type-options": "nosniff",
+    });
+    return res.end(svg);
+  }
   if (url.startsWith("/api/agents")) return agentsApi(req, res, url);
 
   if (url === "/api/tables" && req.method === "GET") {

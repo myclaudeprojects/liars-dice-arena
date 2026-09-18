@@ -55,6 +55,8 @@
   details.adv{margin-top:16px;border-top:1px solid #e6dcc6;padding-top:10px}
   details.adv summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:#5c5a52;font-size:14px}
   .launch-box{margin-top:14px;background:rgba(0,0,0,.18);border-radius:12px;padding:12px 14px}
+  .ava-file{font:inherit}
+  .card .c-ava{float:right;margin:0 0 10px 12px}
   @media (max-width:640px){
     .head{padding:12px 0 0}
     .head h1{font-size:28px}
@@ -84,7 +86,7 @@
 
   <div class="head">
     <h1>Create an agent</h1>
-    <p class="lede">Connect your wallet, name it, done. Creator fees go to you. The agent gets its own seat wallet and an Argus token (30/35/25/10).</p>
+    <p class="lede">Connect your wallet, name it, done. A unique felt-and-dice mark is generated from the name — no upload. Creator fees go to you. The agent gets its own seat wallet and an Argus token (30/35/25/10).</p>
   </div>
 
   <div class="grid">
@@ -100,6 +102,10 @@
         <p class="who" id="whoLine"></p>
         <label for="name">Agent name</label>
         <input id="name" type="text" maxlength="24" placeholder="e.g. Cold Hands" autocomplete="off" />
+        <div class="ava-preview">
+          <img id="avaPreview" class="avatar xl" alt="Generated look" width="96" height="96" src="/api/avatars/preview?name=Agent" />
+          <div class="hint" style="margin:0">Unique LDA mark (felt, die, initials). Same image on the site card and the Argus token. Upload is optional, under Advanced.</div>
+        </div>
         <label for="persona">Persona <span class="opt">(optional)</span></label>
         <textarea id="persona" maxlength="600" rows="2" placeholder="Short vibe — aggressive bluffer, tight caller…"></textarea>
         <div class="hint">Leave blank for a default heuristic. A longer persona (20+ characters) is used when this server has a model key.</div>
@@ -116,7 +122,13 @@
         </div>
 
         <details class="adv">
-          <summary>Advanced — aggression, endpoint, handle</summary>
+          <summary>Advanced — look, aggression, endpoint, handle</summary>
+          <label>Use my image <span class="opt">(optional)</span></label>
+          <input id="avaFile" class="ava-file" type="file" accept="image/png,image/jpeg,image/webp" />
+          <label for="avaUrl">Or an image URL</label>
+          <input id="avaUrl" type="url" placeholder="https://…" autocomplete="off" />
+          <div class="hint">Square-cropped to 256×256, PNG/JPEG/WebP under 400 KB. Create still works if this fails. Generative AI looks are not in this flow.</div>
+          <button type="button" class="btn ghost" id="avaReset" style="margin-top:8px">Back to generated mark</button>
           <label for="owner">Your handle <span class="opt">(optional)</span></label>
           <input id="owner" type="text" maxlength="24" placeholder="shown as “by yourhandle” — defaults from your wallet" />
           <label>How it plays</label>
@@ -142,6 +154,7 @@
       </form>
 
       <div class="card" id="card" hidden>
+        <img class="avatar xl c-ava" id="cAva" alt="" width="96" height="96" />
         <h3 id="cName"></h3>
         <div id="cNote" style="font-size:14px;color:var(--mute)"></div>
         <ol class="launch-steps" id="cSteps"></ol>
@@ -240,7 +253,7 @@ function loadMine(){
       : '<button type="button" class="chip felt" data-lda-connect>Connect wallet</button> then create your first agent.';
     return;
   }
-  $('#mineList').innerHTML=mine.slice(0,12).map(a=>`<div style="margin:6px 0"><button type="button" class="agent-open" data-agent-open="${esc(a.id)}"><b>${esc(a.name)}</b></button> · ${esc(a.id)} · <a href="/tables?agent=${encodeURIComponent(a.id)}">tables</a></div>`).join('');
+  $('#mineList').innerHTML=mine.slice(0,12).map(a=>`<div class="ava-row" style="margin:8px 0">${(window.LDAAgentPanel&&LDAAgentPanel.img)?LDAAgentPanel.img(a.id,'sm'):''}<button type="button" class="agent-open" data-agent-open="${esc(a.id)}"><b>${esc(a.name)}</b></button> · ${esc(a.id)} · <a href="/tables?agent=${encodeURIComponent(a.id)}">tables</a></div>`).join('');
 }
 function rememberAgent(ag, owner){
   let mine=[]; try{ mine=JSON.parse(localStorage.getItem('ldaMyAgents')||'[]'); }catch{ mine=[]; }
@@ -286,7 +299,7 @@ async function loadRoster(){
   $('#rosterHint').textContent=`${r.tableCount||1} tables, ${r.tableSize} seats each, ${r.ante} USDC ante. A funded agent sits at most one live table (one wallet). Community agents rotate by who has waited longest; house agents fill the rest — including in parallel.`;
   const rows=r.agents.sort((a,b)=>(b.elo-a.elo));
   $('#roster').innerHTML=`<tr><th>Agent</th><th>By</th><th>Type</th><th class="num">Rating</th><th class="num">Won / played</th><th>Status</th><th>Tables</th></tr>`+
-    rows.map(a=>`<tr><td><div class="name"><button type="button" class="agent-open" data-agent-open="${esc(a.id)}">${esc(a.name)}</button></div></td><td>${a.house?'house':esc(a.owner)}</td><td>${esc(a.type)}${a.token?.status?` · token ${esc(a.token.status)}`:''}</td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.matches}</td><td><span class="st ${esc(a.status)}">${esc(a.status)}</span></td><td>${(a.seatedAt||[]).length?(a.seatedAt.map(id=>`<a href="/arena?table=${encodeURIComponent(id)}">${esc(id)}</a>`).join(', ')):'—'}</td></tr>`).join('');
+    rows.map(a=>`<tr><td><div class="name ava-row">${(window.LDAAgentPanel&&LDAAgentPanel.img)?LDAAgentPanel.img(a.id,'sm',a.avatar):''}<button type="button" class="agent-open" data-agent-open="${esc(a.id)}">${esc(a.name)}</button></div></td><td>${a.house?'house':esc(a.owner)}</td><td>${esc(a.type)}${a.token?.status?` · token ${esc(a.token.status)}`:''}</td><td class="num">${a.elo}</td><td class="num">${a.won} / ${a.matches}</td><td><span class="st ${esc(a.status)}">${esc(a.status)}</span></td><td>${(a.seatedAt||[]).length?(a.seatedAt.map(id=>`<a href="/arena?table=${encodeURIComponent(id)}">${esc(id)}</a>`).join(', ')):'—'}</td></tr>`).join('');
 }
 loadMine();
 loadRoster(); setInterval(loadRoster,8000);
@@ -324,6 +337,50 @@ function setStep(id, cls){
   li.className=cls||'';
 }
 
+let pendingImage=null; // cropped data URL from file
+function generatedPreview(){
+  const n=$('#name').value.trim()||'Agent';
+  $('#avaPreview').src='/api/avatars/preview?name='+encodeURIComponent(n);
+  $('#avaPreview').alt='Generated look for '+n;
+}
+function cropSquare(file){
+  return new Promise((resolve,reject)=>{
+    if(!file) return reject(new Error('No file'));
+    if(!/^image\/(png|jpeg|webp)$/i.test(file.type)) return reject(new Error('Use PNG, JPEG or WebP.'));
+    if(file.size>400*1024) return reject(new Error('Image must be under 400 KB.'));
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      const s=Math.min(img.width,img.height);
+      const sx=(img.width-s)/2, sy=(img.height-s)/2;
+      const c=document.createElement('canvas');
+      c.width=c.height=256;
+      c.getContext('2d').drawImage(img,sx,sy,s,s,0,0,256,256);
+      URL.revokeObjectURL(url);
+      const mime=file.type==='image/jpeg'?'image/jpeg':'image/png';
+      resolve(c.toDataURL(mime,0.9));
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error('Could not read that image.')); };
+    img.src=url;
+  });
+}
+$('#name').addEventListener('input',()=>{ if(!pendingImage) generatedPreview(); });
+generatedPreview();
+$('#avaFile').addEventListener('change',async()=>{
+  $('#err').textContent='';
+  const f=$('#avaFile').files&&$('#avaFile').files[0];
+  if(!f) return;
+  try{
+    pendingImage=await cropSquare(f);
+    $('#avaPreview').src=pendingImage;
+    $('#avaPreview').alt='Your image (square crop)';
+  }catch(e){ pendingImage=null; $('#err').textContent=e.message||'Could not use that image.'; generatedPreview(); }
+});
+$('#avaReset').onclick=()=>{
+  pendingImage=null; $('#avaFile').value=''; $('#avaUrl').value='';
+  generatedPreview();
+};
+
 $('#createForm').onsubmit=async(e)=>{
   e.preventDefault();
   $('#err').textContent='';
@@ -334,6 +391,8 @@ $('#createForm').onsubmit=async(e)=>{
   setStep('register','on wait'); setStep('seat',''); setStep('token','');
   const persona=$('#persona').value.trim();
   const body={name:$('#name').value, owner:$('#owner').value, ownerAddress:addr};
+  const imageUrl=$('#avaUrl').value.trim();
+  if(!pendingImage && imageUrl) body.imageUrl=imageUrl;
   if(advancedType){
     body.type=type;
     if(type==='heuristic') body.aggression=Number($('#agg').value);
@@ -359,6 +418,8 @@ $('#createForm').onsubmit=async(e)=>{
   mine=j; rememberAgent(j.agent, $('#owner').value.trim());
   $('#card').hidden=false;
   $('#cName').textContent=j.agent.name+' is live';
+  $('#cAva').src=(j.agent.imageUrl||('/api/agents/'+encodeURIComponent(j.agent.id)+'/avatar'));
+  $('#cAva').alt=j.agent.name;
   $('#cNote').textContent=(j.launch&&j.launch.message)||j.note||'';
   $('#cSteps').innerHTML=steps.map(s=>`<li class="${s.ok?'ok':'bad'}"><span class="mark"></span><span>${esc(s.label)}</span></li>`).join('');
   $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cAddr').textContent=j.fundingAddress; $('#cBal').textContent=j.balance+' USDC';
@@ -379,6 +440,19 @@ $('#createForm').onsubmit=async(e)=>{
   }
   $('#card').scrollIntoView({behavior:'smooth',block:'nearest'});
   loadRoster();
+  if(pendingImage && j.key){
+    try{
+      const up=await fetch('/api/agents/'+encodeURIComponent(j.agent.id)+'/avatar',{
+        method:'POST',
+        headers:{'content-type':'application/json',authorization:'Bearer '+j.key},
+        body:JSON.stringify({image:pendingImage}),
+      }).then(r=>r.json());
+      if(up.ok && up.imageUrl){ $('#cAva').src=up.imageUrl+(up.imageUrl.includes('?')?'':'?v='+Date.now()); }
+      else if(up.error){ $('#cNote').textContent=(j.launch&&j.launch.message||'')+' Image not saved: '+up.error; }
+    }catch(err){ $('#cNote').textContent=(j.launch&&j.launch.message||'')+' Image not saved: '+(err.message||'failed'); }
+  } else if(j.imageWarning){
+    $('#cNote').textContent=((j.launch&&j.launch.message)||'')+' Image URL skipped: '+j.imageWarning;
+  }
 };
 $('#cTest').onclick=async()=>{
   $('#testout').hidden=false; $('#testout').textContent='Sending a sample turn to your endpoint…';

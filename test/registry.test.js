@@ -50,6 +50,16 @@ const recSolo = reg.register({ name: "Solo", ownerAddress: addr("cc") });
 assert(recSolo.type === "heuristic" && recSolo.aggression === 0.5, "name-only defaults to heuristic 0.5");
 assert(/^0x/.test(recSolo.owner) && recSolo.owner.length >= 2, "owner derived from wallet");
 
+const view = reg.publicView(rec);
+assert(view.avatar && view.avatar.kind === "generated", "default generated avatar");
+assert(/\/api\/agents\/cold-hands\/avatar/.test(view.imageUrl), "public imageUrl");
+assert(!view.avatar.file, "no disk filename in public view");
+assert(!("key" in view), "no key leak");
+reg.setAvatar(rec.id, { kind: "upload", file: "secret.png", mime: "image/png", updatedAt: 1 });
+const viewUp = reg.publicView(reg.get(rec.id));
+assert(viewUp.avatar.kind === "upload" && !viewUp.avatar.file, "upload kind, file stripped");
+assert(viewUp.imageUrl.includes("v=1"), "cache buster");
+
 const extra = [];
 for (const n of ["One", "Two", "Three"]) extra.push(reg.register({ name: n, type: "heuristic", owner: "rot", aggression: 0.3, ownerAddress: addr(n) }));
 const seated = reg.pickSeats(2, { eligible: () => true, excludeIds: [] });

@@ -29,6 +29,7 @@
   .live .seats{display:flex;justify-content:center;gap:18px;font-size:14px;flex-wrap:wrap}
   .live .seats b{display:block;font:600 17px/1.1 var(--serif)}
   .live .seats span{color:var(--mute);font-size:12px}
+  .live .seats img{display:block;margin:0 auto 6px}
   .live .pot{color:var(--gold);font:600 22px/1 var(--serif)}
   .live:hover{filter:brightness(1.06)}
 
@@ -178,7 +179,7 @@ async function refresh(){
     const [st,lb,tb]=await Promise.all([fetch('/api/state').then(r=>r.json()),fetch('/api/leaderboard').then(r=>r.json()),fetch('/api/tables').then(r=>r.json())]);
     const n=tb.tableCount||(tb.tables||[]).length||1;
     const seats=st.seats||[];
-    $('#seats').innerHTML=seats.map(s=>`<div><b>${String(s.name).replace(/[<>]/g,'')}</b><span>${s.kind==='llm'?'LLM':s.kind==='remote'?'endpoint':'heuristic'}</span></div>`).join('');
+    $('#seats').innerHTML=seats.map(s=>`<div><img class="avatar sm" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="28" height="28" decoding="async" style="margin-bottom:4px" /><b>${String(s.name).replace(/[<>]/g,'')}</b><span>${s.kind==='llm'?'LLM':s.kind==='remote'?'endpoint':'heuristic'}</span></div>`).join('');
     const feat=st.tableId?`table ${st.tableId} · `:'';
     if(st.phase==='betting'){ const secs=Math.max(0,Math.ceil((st.betCloseAt-(st.serverNow||Date.now()))/1000));
       $('#phase').textContent=`${n} tables · ${feat}match #${st.matchNo} · betting open`; $('#headline').textContent=`Deal in ${secs}s`; $('#pot').textContent=st.poolTotal?`${st.poolTotal} USDC in this table's pool`:'be first into this table\'s pool'; }

@@ -102,20 +102,23 @@ function tokenMetadata(agent, { siteOrigin } = {}) {
   const link = agentDeepLink(agent?.id, { siteOrigin });
   const description = tokenDescription(agent, link);
   const website = link.absolute ? link.url : null;
+  const { publicUrl } = require("./avatar");
+  const image = agent?.id ? publicUrl(agent.id, agent.avatar, { siteOrigin }) : null;
   return {
     name,
     symbol,
     description,
     website,
-    image: null,
+    image,
     // Argus terms (retrieved 2026-09): creators supply names, symbols, images,
     // descriptions, and links. No public schema for twitter/telegram — do not
     // invent those APIs. Map website onto "links" / a website slot if present.
+    // Image is our hosted avatar URL (generated LDA mark, or an optional upload).
     argusForm: {
       name,
       symbol,
       description,
-      image: null,
+      image,
       links: website ? [website] : [],
       website,
     },
@@ -194,6 +197,7 @@ function buyView(token, { house = false, name, id } = {}) {
     argusUrl: tokenPageUrl(token),
     website: spec.metadata?.website || null,
     description: spec.metadata?.description || null,
+    image: spec.metadata?.image || (id ? `/api/agents/${encodeURIComponent(id)}/avatar` : null),
     inAppSwap: false,
     economics: spec.economics || { ...AGENT_TOKEN_ECONOMICS },
     message: address
@@ -263,6 +267,8 @@ function buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, hous
       "TODO(argus): confirm buy/sell tax bps against the live create form (cap 10% each)",
       "TODO(argus): confirm create-form keys for description/website/social — terms list names, symbols, images, descriptions, and links; map metadata.argusForm, do not invent twitter/telegram endpoints",
       "TODO(argus): set PUBLIC_BASE_URL so metadata.website is an absolute /agent/<id> deep link",
+      "TODO(argus): image is our hosted /api/agents/:id/avatar (generated SVG or upload). If the live create form only accepts a file, the operator must GET this URL and attach it — no Argus image/CDN API is documented",
+      "TODO(argus): if Argus later hosts images, POST the same bytes; keep the LDA URL so site cards and token art stay in sync",
     ],
   };
 }

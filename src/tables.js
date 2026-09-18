@@ -161,7 +161,10 @@ class Table {
     }
 
     this.matchNo++;
-    this.seats = agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house" }));
+    this.seats = agents.map((a) => ({
+      id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house",
+      imageUrl: `/api/agents/${encodeURIComponent(a.id)}/avatar`,
+    }));
     this.busyIds = this.seats.filter((s) => s.owner && s.owner !== "house").map((s) => s.id);
     const labels = tableLabels(this.id, this.matchNo);
 

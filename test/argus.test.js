@@ -56,6 +56,10 @@ const specAbs = buildTokenSpec({
 assert(specAbs.metadata.website === "https://arena.example/agent/cold-hands", "absolute website");
 assert(specAbs.metadata.argusForm.links[0] === specAbs.metadata.website, "links map to website");
 assert(specAbs.metadata.description.includes("https://arena.example/agent/cold-hands"), "abs url in description");
+assert(/\/api\/agents\/cold-hands\/avatar/.test(spec.metadata.image), "generated avatar on spec");
+assert(spec.metadata.argusForm.image === spec.metadata.image, "form image");
+assert(specAbs.metadata.image === "https://arena.example/api/agents/cold-hands/avatar", "abs image");
+assert(spec.todos.some((t) => /image URL|hosted/.test(t)), "image upload TODO");
 assert(spec.liquidity.ongoingTax === false, "lp seed only");
 assert(spec.recipients.seatBankroll, "seat recipient");
 assert(spec.recipients.creator === ("0x" + "22".repeat(20)), "creator is user wallet");

@@ -12,6 +12,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const dns = require("dns").promises;
+const avatar = require("./avatar");
 
 const REG_PATH = process.env.REGISTRY_PATH || path.join(__dirname, "..", "data", "agents.json");
 
@@ -80,11 +81,14 @@ class Registry {
 
   get(id) { return this.agents[id] || null; }
 
-  // Public view: never leaks keys or full endpoints.
+  // Public view: never leaks keys, full endpoints, or avatar filenames on disk.
   publicView(a) {
-    const { key, endpoint, ...rest } = a;
+    const { key, endpoint, avatar: avRaw, ...rest } = a;
+    const av = avatar.publicMeta(a.id, avRaw);
     return {
       ...rest,
+      avatar: av,
+      imageUrl: av.url,
       endpointHost: endpoint ? safeHost(endpoint) : null,
       fundingAddress: a.wallet?.address || null,
       token: a.token || null,
@@ -140,6 +144,7 @@ class Registry {
 
   setWallet(id, wallet) { if (this.agents[id]) { this.agents[id].wallet = wallet; this._save(); } }
   setToken(id, token) { if (this.agents[id]) { this.agents[id].token = token; this._save(); } }
+  setAvatar(id, av) { if (this.agents[id]) { this.agents[id].avatar = av; this._save(); } }
   retire(id) { if (this.agents[id]) { this.agents[id].status = "retired"; this._save(); } }
   reactivate(id) { const a = this.agents[id]; if (a) { a.status = "active"; a.failures = 0; this._save(); } }
 

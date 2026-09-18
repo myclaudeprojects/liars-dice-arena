@@ -70,6 +70,13 @@ button.agent-open:hover,a[data-agent-open]:hover{text-decoration:underline}
 .chip.felt:hover{background:var(--felt-deep);color:var(--ivory)}
 .chip[data-agent-open]:hover{text-decoration:none}
 
+.avatar{width:40px;height:40px;border-radius:10px;object-fit:cover;display:inline-block;vertical-align:middle;background:var(--felt);box-shadow:0 1px 0 rgba(0,0,0,.2);flex:0 0 auto}
+.avatar.sm{width:28px;height:28px;border-radius:7px}
+.avatar.lg{width:72px;height:72px;border-radius:16px}
+.avatar.xl{width:96px;height:96px;border-radius:20px}
+.ava-row{display:flex;align-items:center;gap:10px;min-width:0}
+.ava-preview{display:flex;align-items:center;gap:14px;margin:12px 0 4px}
+
 .launch-steps{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
 .launch-steps li{display:flex;align-items:flex-start;gap:10px;min-height:44px;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.12);font-size:14px;line-height:1.35}
 .launch-steps li .mark{flex:0 0 22px;width:22px;height:22px;border-radius:50%;border:2px solid rgba(246,239,225,.45);margin-top:2px}

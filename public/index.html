@@ -32,6 +32,7 @@
   .seat.shake{animation:shake .55s ease-in-out}
   @keyframes shake{0%,100%{transform:translate(-50%,-50%)}20%{transform:translate(calc(-50% - 8px),-50%) rotate(-1.5deg)}40%{transform:translate(calc(-50% + 8px),-50%) rotate(1.5deg)}60%{transform:translate(calc(-50% - 5px),-50%)}80%{transform:translate(calc(-50% + 5px),-50%)}}
   .seat .name{font:600 20px/1.1 var(--serif);font-variation-settings:"SOFT" 80}
+  .seat .avatar{width:52px;height:52px;border-radius:14px;margin:0 auto 6px;display:block;object-fit:cover;box-shadow:0 2px 0 rgba(0,0,0,.25)}
   .seat .kind{font-size:11px;color:var(--mute);margin-top:2px}
   .seat .thought{font-size:13.5px;color:#dfe8e1;min-height:40px;font-style:italic;padding:0 4px;margin-top:6px;line-height:1.35}
   .seat .thought.thinking{color:var(--mute);font-style:normal}
@@ -113,10 +114,11 @@
   .railhead .clock{font:600 22px/1 var(--serif);color:var(--red);min-width:48px;text-align:right}
   .picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:14px 0}
   @media (max-width:640px){.picks{grid-template-columns:1fr}}
-  .pick{border:2px solid #d9cfb8;border-radius:12px;padding:12px 14px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit;min-height:44px}
+  .pick{border:2px solid #d9cfb8;border-radius:12px;padding:12px 14px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit;min-height:44px;display:flex;gap:10px;align-items:center}
   .pick:hover{border-color:#b9ad95}.pick.sel{border-color:var(--gold);background:#fff6df}
   .pick:disabled{cursor:not-allowed;opacity:.6}
   .pick:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+  .pick .avatar{width:36px;height:36px;border-radius:9px;flex:0 0 36px}
   .pick .n{font:600 18px/1.1 var(--serif)}.pick .m{color:#5c5a52;font-size:13px;margin-top:4px}.pick .m b{color:var(--ink);font-size:16px}
   .place{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .place input{font:inherit;padding:10px 12px;border:2px solid #d9cfb8;border-radius:10px;width:140px;min-height:44px}
@@ -136,7 +138,8 @@
     .banner{position:static;transform:none;margin:10px 10px 0;width:auto;max-width:none;align-self:stretch;white-space:normal;text-align:center;font-size:12px;padding:10px 12px;min-height:44px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap}
     .banner b{font-size:14px}
     #seats{display:flex;flex-direction:column;gap:8px;padding:10px 10px 0}
-    .seat{position:static;transform:none;width:auto;margin:0;padding:10px 12px;border-radius:14px;min-height:44px;text-align:left;display:grid;grid-template-columns:1fr auto;grid-template-areas:"name dice" "kind dice";gap:2px 10px;align-items:center;background:rgba(0,0,0,.18)}
+    .seat{position:static;transform:none;width:auto;margin:0;padding:10px 12px;border-radius:14px;min-height:44px;text-align:left;display:grid;grid-template-columns:52px 1fr auto;grid-template-areas:"ava name dice" "ava kind dice";gap:2px 10px;align-items:center;background:rgba(0,0,0,.18)}
+    .seat .avatar{grid-area:ava;width:44px;height:44px;margin:0;border-radius:12px}
     .seat .name{grid-area:name;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .seat .kind{grid-area:kind;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .seat .dice{grid-area:dice;margin:0;min-height:0;justify-content:flex-end}
@@ -318,6 +321,7 @@ const seatEl=(id)=>document.getElementById('seat-'+id);
 function buildSeats(){
   const pos=seats.length===2?['p0','p2']:seats.length===3?['p0','p1','p2']:['p0','p1','p2','p3'];
   $('#seats').innerHTML=seats.map((s,i)=>`<div class="seat ${pos[i]} ${alive[s.id]===false?'out':''}" id="seat-${s.id}" data-agent-open="${esc(s.id)}" role="button" tabindex="0" title="Open agent token">
+    <img class="avatar" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="52" height="52" decoding="async" />
     <div class="name">${esc(s.name)}</div><div class="kind">${s.owner&&s.owner!=='house'?`by ${esc(s.owner)} · `:''}${({llm:'LLM',remote:'endpoint',mock:'heuristic'})[s.kind]||esc(s.kind)} · <span class="cnt">${counts[s.id]??5}</span> dice</div>
     <div class="dice" id="dice-${s.id}"></div><div class="thought" id="th-${s.id}"></div></div>`).join('');
   seats.forEach(s=>renderDice(s.id));
@@ -431,7 +435,7 @@ function log(html,cls=''){const r=document.createElement('div');r.className='row
 function tx(ev){ if(!ev.explorer||!/^(https?:|mock:)/i.test(ev.explorer)) return ''; return `<a href="${esc(ev.explorer)}" target="_blank" rel="noopener">tx ${esc(ev.tx)}</a>`; }
 setInterval(()=>{ if(phase==='betting'&&betCloseAt){const s=Math.max(0,Math.ceil((betCloseAt-(Date.now()+clockOffset))/1000));$('#clock').textContent=s+'s'; if($('#banner').classList.contains('bet')) $('#banner').innerHTML='Betting open<b>'+s+'s</b>';} else $('#clock').textContent=''; },250);
 function renderPicks(){
-  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${esc(s.id)}" ${phase!=='betting'?'disabled':''}><div class="n">${esc(s.name)}</div><div class="m">${m?(m>1?`pays <b>${m.toFixed(2)}×</b> if it wins`:'<b>1.00×</b> — only backer so far; stake returned if it wins'):'no backers yet — first in sets the line'}</div></button>`;}).join('');
+  $('#picks').innerHTML=seats.map(s=>{const m=multipliers[s.id];return `<button class="pick ${picked===s.id?'sel':''}" data-id="${esc(s.id)}" ${phase!=='betting'?'disabled':''}><img class="avatar" src="/api/agents/${encodeURIComponent(s.id)}/avatar" alt="" width="36" height="36" decoding="async" /><div><div class="n">${esc(s.name)}</div><div class="m">${m?(m>1?`pays <b>${m.toFixed(2)}×</b> if it wins`:'<b>1.00×</b> — only backer so far; stake returned if it wins'):'no backers yet — first in sets the line'}</div></div></button>`;}).join('');
   document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{picked=b.dataset.id;const nm=seats.find(s=>s.id===picked).name;$('#picked').textContent=nm;if(matchMedia('(max-width:640px)').matches)$('#betbtn').textContent='Bet on '+nm;renderPicks();$('#betbtn').disabled=!(phase==='betting'&&(!live||account));});
 }
 function applyState(ev){

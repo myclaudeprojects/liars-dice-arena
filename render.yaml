@@ -30,6 +30,7 @@ services:
       # CIRCLE_API_KEY / CIRCLE_ENTITY_SECRET are not sufficient — CircleArcWallet is a stub
       # ARGUS_CREATE_URL — optional operator webhook for agent-token specs
       # PUBLIC_BASE_URL — https origin for Argus metadata deep links (no trailing path)
+      # AVATAR_DIR defaults to dirname(REGISTRY_PATH)/avatars on the disk
     disk:
       name: arena-data
       mountPath: /var/data

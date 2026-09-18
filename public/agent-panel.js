@@ -17,7 +17,10 @@
       <div class="agent-sheet-card" role="dialog" aria-modal="true" aria-labelledby="as-name">
         <div class="agent-sheet-handle" aria-hidden="true"></div>
         <button type="button" class="agent-sheet-x" data-as-close aria-label="Close">Close</button>
-        <h2 id="as-name">Agent</h2>
+        <div class="ava-row" style="margin:4px 0 8px;padding-right:72px">
+          <img class="avatar lg" id="as-ava" alt="" width="72" height="72" />
+          <h2 id="as-name" style="padding-right:0">Agent</h2>
+        </div>
         <p class="agent-sheet-meta" id="as-meta"></p>
         <div class="agent-sheet-token" id="as-token"></div>
         <form class="agent-sheet-buy" id="as-form">
@@ -44,9 +47,21 @@
     document.body.classList.remove("sheet-open");
   }
 
+  function avaSrc(id, extra) {
+    const url = extra && extra.url;
+    if (url) return url;
+    const q = extra && extra.updatedAt ? "?v=" + extra.updatedAt : "";
+    return "/api/agents/" + encodeURIComponent(id) + "/avatar" + q;
+  }
+  function img(id, cls, extra) {
+    return `<img class="avatar${cls ? " " + cls : ""}" src="${esc(avaSrc(id, extra))}" alt="" width="40" height="40" decoding="async" />`;
+  }
+
   function renderLoading() {
     ensure();
     root.querySelector("#as-name").textContent = "Loading…";
+    const av = root.querySelector("#as-ava");
+    if (av) { av.removeAttribute("src"); av.alt = ""; }
     root.querySelector("#as-meta").textContent = "";
     root.querySelector("#as-token").innerHTML = "";
     root.querySelector("#as-msg").textContent = "";
@@ -58,6 +73,11 @@
     const a = j.agent || {};
     const buy = j.buy || a.buy || {};
     root.querySelector("#as-name").textContent = a.name || buy.name || "Agent";
+    const avEl = root.querySelector("#as-ava");
+    if (avEl && a.id) {
+      avEl.src = a.imageUrl || avaSrc(a.id, a.avatar);
+      avEl.alt = a.name || "Agent";
+    }
     const owner = a.house ? "house" : (a.owner || "");
     const creator = buy.creator || a.ownerAddress;
     const tables = (j.tables || a.seatedAt || []).map((t) => t.id || t).filter(Boolean);
@@ -163,5 +183,5 @@
     open(el.getAttribute("data-agent-open"));
   });
 
-  window.LDAAgentPanel = { open, close };
+  window.LDAAgentPanel = { open, close, img, avaSrc };
 })();

@@ -144,8 +144,14 @@ API/SDK**. We therefore:
   display name, **symbol** = `LDA` + name letters (max 10), **description** =
   `Liar's Dice Arena agent · watch & bet` + `/agent/<id>` + `#LiarsDiceArena`.
   `PUBLIC_BASE_URL` (http(s) origin, no path) makes `website` an absolute URL.
-  Argus terms mention names, symbols, images, descriptions, and links — we map
-  onto those (`spec.metadata.argusForm`). No twitter/telegram API is invented.
+  **Image** defaults to a generated LDA avatar (felt + die + initials, unique per
+  name) hosted at `/api/agents/<id>/avatar` — same art on site cards and the
+  token. Optional custom image: `POST /api/agents/:id/avatar` (data URL or
+  `imageUrl`, square crop on the client, type/size checks). Create never requires
+  an upload. Argus terms mention names, symbols, images, descriptions, and links
+  — we map onto those (`spec.metadata.argusForm`). If the live Argus form only
+  accepts a file, fetch our avatar URL and attach it; there is no documented
+  Argus image/CDN API. No twitter/telegram API is invented.
   Full 30/35/25/10 copy stays in How it works.
 - Launch contract (for later indexing): `0xa5628a11c412596e1f63b75a2c0284f843c549d6`.
 
@@ -169,6 +175,7 @@ src/registry.js house + community agents, keys, fair seat rotation, SSRF guard
 src/arena.js    runs a match: wallets → antes → turns → settle, emits events
 src/tables.js   parallel tables, lobby filters, per-table SSE, seat lock
 src/argus.js    Argus token spec + registration hook (no invented API calls)
+src/avatar.js   deterministic LDA avatars + optional upload (SSRF-guarded URL ingest)
 src/httputil.js public-file path guard, HTML escape, tx-claim helpers
 examples/my-agent.js  a complete endpoint agent to copy
 server.js       HTTP + SSE routing, betting, Argus-on-register

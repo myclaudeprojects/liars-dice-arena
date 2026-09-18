@@ -195,11 +195,19 @@ async function agentsApi(req, res, urlPath) {
         agents: registry.list().map(decorate), ante: ANTE, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT,
         promptAgentsEnabled: !!llmComplete, allowLocal: registry.allowLocal, walletKind: wallet.kind, live: LIVE_CHAIN,
         economics: argus.AGENT_TOKEN_ECONOMICS,
+        onboarding: {
+          live: LIVE_CHAIN, mock: wallet.kind === "mock", walletKind: wallet.kind,
+          injected: true,
+          walletConnect: false,
+          todos: ["TODO(wallet): WalletConnect v2 + Arc is not wired — use an injected wallet (MetaMask/Rabby in-app) or mock demo connect"],
+        },
       });
     }
 
     if (parts.length === 2 && req.method === "POST") {
       const body = JSON.parse(await readBody(req) || "{}");
+      const persona = String(body.persona || "").trim();
+      if (!body.type) body.type = (persona.length >= 20 && llmComplete) ? "prompt" : "heuristic";
       if (body.type === "prompt" && !llmComplete) throw new Error("Prompt agents need a model key on this server — choose heuristic or endpoint for now.");
       const rec = registry.register(body);
       const w = await ensureWallet(rec);
@@ -217,11 +225,31 @@ async function agentsApi(req, res, urlPath) {
         try { registry.setToken(rec.id, token); } catch {}
       }
       tables.notifyLobby();
+      const tokenOk = token && token.status && token.status !== "hook_failed" && token.status !== "webhook_failed";
+      const launchMsg = wallet.kind === "mock"
+        ? "Demo: token spec stored (30/35/25/10). No chain call — Argus has no public create API."
+        : (token?.status === "webhook_posted"
+          ? "Operator webhook accepted the token spec. Creator = your connected wallet."
+          : (token?.message || "Argus has no public create API. Spec is stored; finish launch on argus.world (creator = you)."));
       return json(res, 201, { ok: true, agent: decorate(registry.publicView(rec)), key: rec.key, fundingAddress: w.address,
         balance: await wallet.getBalance(w.walletId), token, economics: argus.AGENT_TOKEN_ECONOMICS,
         tablesUrl: `/tables?agent=${encodeURIComponent(rec.id)}`,
+        agentUrl: `/agent/${encodeURIComponent(rec.id)}`,
         buy: argus.buyView(token, { house: false, name: rec.name, id: rec.id }),
-        note: wallet.kind === "mock" ? "Mock wallet auto-funded with 100 USDC for local play." : `Send at least ${ANTE} USDC on Arc to the funding address to be seated.` });
+        mock: wallet.kind === "mock", live: LIVE_CHAIN,
+        note: wallet.kind === "mock" ? "Mock wallet auto-funded with 100 USDC for local play." : `Send at least ${ANTE} USDC on Arc to the funding address to be seated.`,
+        launch: {
+          mock: wallet.kind === "mock", live: LIVE_CHAIN,
+          status: token?.status || "unknown",
+          argusUrl: argus.tokenPageUrl(token),
+          message: launchMsg,
+          steps: [
+            { id: "register", ok: true, label: "Agent registered" },
+            { id: "seat", ok: true, label: wallet.kind === "mock" ? "Demo seat wallet funded" : "Seat wallet created" },
+            { id: "token", ok: tokenOk, status: token?.status || null, label: tokenOk ? "Argus token queued (30/35/25/10, creator = you)" : "Token hook failed — spec still saved" },
+          ],
+        },
+      });
     }
 
     const rec = registry.get(parts[2]); if (!rec) return json(res, 404, { ok: false, error: "No such agent." });

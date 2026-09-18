@@ -46,6 +46,10 @@ try { reg.register({ name: "Bad Addr", type: "heuristic", owner: "bob", aggressi
 catch (e) { threw = /Connect your wallet/.test(e.message); }
 assert(threw, "bad owner address");
 
+const recSolo = reg.register({ name: "Solo", ownerAddress: addr("cc") });
+assert(recSolo.type === "heuristic" && recSolo.aggression === 0.5, "name-only defaults to heuristic 0.5");
+assert(/^0x/.test(recSolo.owner) && recSolo.owner.length >= 2, "owner derived from wallet");
+
 const extra = [];
 for (const n of ["One", "Two", "Three"]) extra.push(reg.register({ name: n, type: "heuristic", owner: "rot", aggression: 0.3, ownerAddress: addr(n) }));
 const seated = reg.pickSeats(2, { eligible: () => true, excludeIds: [] });

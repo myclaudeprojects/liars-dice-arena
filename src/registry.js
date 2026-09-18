@@ -93,18 +93,22 @@ class Registry {
   list() { return Object.values(this.agents).filter((a) => a.status !== "retired").map((a) => this.publicView(a)); }
 
   register({ name, type, owner, aggression, persona, endpoint, ownerAddress }) {
-    name = String(name || "").trim(); owner = slug(owner || "");
-    if (name.length < 2 || name.length > 24) throw new Error("Name must be 2–24 characters.");
-    if (!/^[\w .'!-]+$/.test(name)) throw new Error("Name can use letters, numbers, spaces and . ' ! -");
-    if (owner.length < 2) throw new Error("Owner handle must be at least 2 characters.");
-    if (!["heuristic", "prompt", "endpoint"].includes(type)) throw new Error("Type must be heuristic, prompt or endpoint.");
+    name = String(name || "").trim();
     if (!ownerAddress || !/^0x[0-9a-fA-F]{40}$/.test(String(ownerAddress))) {
       throw new Error("Connect your wallet — creator fees go to that address, not the arena's.");
     }
+    // Happy path is Connect → name → Create. Handle is optional; default from the wallet.
+    owner = slug(owner || "") || ("0x" + String(ownerAddress).slice(-6).toLowerCase());
+    if (owner.length < 2) owner = "creator";
+    if (name.length < 2 || name.length > 24) throw new Error("Name must be 2–24 characters.");
+    if (!/^[\w .'!-]+$/.test(name)) throw new Error("Name can use letters, numbers, spaces and . ' ! -");
+    type = type || "heuristic";
+    if (!["heuristic", "prompt", "endpoint"].includes(type)) throw new Error("Type must be heuristic, prompt or endpoint.");
 
     const rec = { type, owner, house: false, createdAt: Date.now(), lastPlayedAt: 0, played: 0, status: "active", failures: 0, wallet: null, token: null, ownerAddress: String(ownerAddress) };
     if (type === "heuristic") {
-      const ag = Number(aggression); if (!(ag >= 0 && ag <= 1)) throw new Error("Aggression must be between 0 and 1.");
+      const ag = (aggression == null || aggression === "") ? 0.5 : Number(aggression);
+      if (!(ag >= 0 && ag <= 1)) throw new Error("Aggression must be between 0 and 1.");
       rec.aggression = ag;
     } else if (type === "prompt") {
       persona = String(persona || "").trim();

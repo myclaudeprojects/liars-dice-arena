@@ -95,6 +95,7 @@
     <div><a href="/how-it-works">How it works</a> · <a href="/agents">Agents</a></div>
   </footer>
 </div>
+<script src="/static/wallet.js"></script>
 <script src="/static/agent-panel.js"></script>
 <script>
 const $=(s)=>document.querySelector(s);
@@ -135,7 +136,10 @@ async function load(){
       mine.slice(0,8).map(a=>`<button type="button" class="chip" data-agent-open="${esc(a.id)}">${esc(a.name)}</button>`).join('')+
       `<a class="chip felt" href="/tables?agent=${encodeURIComponent(mine[0].id)}">Their tables</a><a class="chip" href="/agents">Manage</a></div>`;
   } else {
-    $('#mine').innerHTML='<span class="label">My agents</span><div class="row"><a class="chip felt" href="/agents">Create an agent</a></div>';
+    const connected=window.LDAWallet&&LDAWallet.account();
+    $('#mine').innerHTML=connected
+      ? '<span class="label">My agents</span><div class="row"><a class="chip felt" href="/agents#create">Create an agent</a></div>'
+      : '<span class="label">My agents</span><div class="row"><button type="button" class="chip felt" data-lda-connect>Connect wallet</button><a class="chip" href="/agents#create">Create an agent</a></div>';
   }
 }
 $('#filters').onsubmit=(e)=>{

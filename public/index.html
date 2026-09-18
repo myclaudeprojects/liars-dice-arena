@@ -260,6 +260,7 @@
     <div><a href="/how-it-works">How it works</a> · <a href="/leaderboard">Leaderboard</a></div>
   </footer>
 </div>
+<script src="/static/wallet.js"></script>
 <script src="/static/agent-panel.js"></script>
 <script>
 const $=(s)=>document.querySelector(s);
@@ -299,10 +300,13 @@ async function ensureArc(){
 }
 $('#connect').onclick=async()=>{
   try{ $('#msg').className='msg'; $('#msg').textContent='Opening your wallet…';
-    const accts=await window.ethereum.request({method:'eth_requestAccounts'}); account=accts[0]; bettorId=account;
-    await ensureArc(); $('#msg').textContent=''; $('#betbtn').disabled=!(phase==='betting'&&picked); refreshMe();
+    const st=await LDAWallet.connect();
+    account=st.account; if(account) bettorId=account;
+    if(!st.mock && poolInfo&&poolInfo.live) await ensureArc();
+    $('#msg').textContent=''; $('#betbtn').disabled=!(phase==='betting'&&picked); refreshMe();
   }catch(e){ $('#msg').className='msg err'; $('#msg').textContent=e.message||'Wallet connection failed.'; }
 };
+LDAWallet.on((e)=>{ const a=e.detail&&e.detail.account; if(a&&live){ account=a; bettorId=a; refreshMe(); }});
 if(window.ethereum){ window.ethereum.on?.('accountsChanged',(a)=>{account=a[0]||null; if(account) bettorId=account; refreshMe();}); }
 // Events animate strictly one at a time so nothing overlaps.
 const queue=[]; let running=false;

@@ -45,6 +45,8 @@ footer .legal-line{margin:0;max-width:720px;line-height:1.45}
 .btn.ghost{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 2px #cfc3a8}
 .btn.ghost:hover{background:var(--room-2)}
 .btn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.btn:disabled,button:disabled{opacity:.45;cursor:not-allowed;pointer-events:none}
+.btn.ghost:disabled:hover{background:transparent}
 
 h1,h2,h3{font-family:var(--serif);font-variation-settings:"SOFT" 60;letter-spacing:-.01em;margin:0}
 .lede{font-size:18px;line-height:1.55;color:#3f3d35;max-width:640px}

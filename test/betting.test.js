@@ -41,7 +41,8 @@ console.log("betting math ok");
   eq(await w.getBalance(pool.poolWallet.walletId), 0, "pool empty");
   assert(s.houseCut === 0.6, "houseCut 0.6");
 
-  const p2 = new BettingPool({ wallet: w, houseFeeBps: 200 }); await p2.init();
+  const p2 = new BettingPool({ wallet: w, houseFeeBps: 200, potLabel: "pool:t-2:1" }); await p2.init();
+  assert(p2.poolWallet.walletId !== pool.poolWallet.walletId, "labeled pools are distinct");
   p2.claimTx("0xabc");
   let threw = false; try { p2.claimTx("0xabc"); } catch (e) { threw = e.message === "tx_already_used"; }
   assert(threw, "duplicate tx claimed");

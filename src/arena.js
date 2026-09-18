@@ -16,12 +16,12 @@ async function refundAntes({ agents, wallet, pot, seatWallets, ante, onEvent }) 
   }
 }
 
-async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.now(), onEvent = () => {}, maxSteps = 1000 }) {
+async function runMatch({ agents, wallet, ante = 1, diceCount = 5, seed = Date.now(), onEvent = () => {}, maxSteps = 1000, potLabel = "pot" }) {
   const seatWallets = {};
   for (const ag of agents) {
     seatWallets[ag.id] = ag.walletInfo || await wallet.createSeatWallet(ag.name);
   }
-  const pot = await wallet.createPot();
+  const pot = await wallet.createPot(potLabel);
 
   // Collect antes; if a later ante fails, refund whoever already paid so funds
   // are not stuck in the pot.

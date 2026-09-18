@@ -62,9 +62,10 @@ function impliedMultipliers(bets, agentIds, houseFeeBps = 0) {
 function round6(x) { return Math.round(x * 1e6) / 1e6; } // USDC has 6 decimals
 
 class BettingPool {
-  constructor({ wallet, houseFeeBps = 200 }) {
+  constructor({ wallet, houseFeeBps = 200, potLabel = "pool" }) {
     this.wallet = wallet;
     this.houseFeeBps = houseFeeBps;
+    this.potLabel = potLabel;
     this.bets = [];
     this.bettorWallets = {}; // bettorId -> { walletId, address }
     this.poolWallet = null;
@@ -98,7 +99,7 @@ class BettingPool {
   }
 
   async init() {
-    this.poolWallet = await this.wallet.createPot("pool"); // separate from the agents' pot
+    this.poolWallet = await this.wallet.createPot(this.potLabel); // per-table pool; never share "pool" across matches
     return this.poolWallet;
   }
 

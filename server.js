@@ -1,5 +1,5 @@
 // server.js — Live arena. Serves the spectator UI, streams every event over
-// SSE, and runs the betting window -> match -> settlement cycle.
+// SSE, and runs many parallel tables (betting window → match → settlement).
 //   node server.js            (mock agents + mock wallet, zero keys)
 //   USE_LLM=1 node server.js  (real models via ANTHROPIC_API_KEY / OPENAI_API_KEY)
 
@@ -12,14 +12,15 @@ const path = require("path");
 const { MockAgent, LLMAgent, RemoteAgent } = require("./src/agents");
 const { Registry } = require("./src/registry");
 const { makeWallet } = require("./src/wallet");
-const { runMatch } = require("./src/arena");
-const { BettingPool, impliedMultipliers } = require("./src/betting");
+const { impliedMultipliers } = require("./src/betting");
 const llm = require("./src/llm");
 const { Stats } = require("./src/stats");
 const argus = require("./src/argus");
 const { resolvePublicFile, shouldReleaseTxClaim } = require("./src/httputil");
+const { TableManager, TABLE_ID_RE } = require("./src/tables");
 const stats = new Stats();
 const TABLE_SIZE = Math.max(2, Math.min(4, Math.round(Number(process.env.TABLE_SIZE) || 3)));
+const TABLE_COUNT = Math.max(1, Math.min(24, Math.round(Number(process.env.TABLE_COUNT) || 3)));
 const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "1" || !process.env.RENDER });
 
 // Env numbers: tolerate "1600ms", " 30000 ", "0.1 USDC" etc.; fall back to the default on garbage.
@@ -46,15 +47,11 @@ const wallet = makeWallet(process.env.MOCK === "1" ? { startingBalance: 100 } : 
 } : { startingBalance: 100 });
 const LIVE_CHAIN = wallet.kind === "evm";
 
-const clients = new Set();
-let state = { phase: "idle", matchNo: 0, seats: [], pool: null, bets: [], multipliers: {}, betCloseAt: null };
-let pool = null;
-let houseWallet = null;
 const spectatorWallets = {}; // bettorId -> wallet (mock: auto-funded)
 
-function broadcast(ev) {
-  const line = `data: ${JSON.stringify(ev)}\n\n`;
-  for (const res of clients) res.write(line);
+function parseReq(req) {
+  const u = new URL(req.url, "http://local");
+  return { path: u.pathname, q: u.searchParams };
 }
 
 // LLM provider for prompt-type agents (community personas). Optional.
@@ -83,92 +80,91 @@ function instantiate(rec) {
   ag.owner = rec.owner; return ag;
 }
 
-async function buildAgents() {
-  // Seat community agents that can cover the ante; house fills the rest.
-  const funded = new Set();
-  for (const a of registry.list()) {
-    if (a.house || a.status !== "active") continue;
-    try { const w = await ensureWallet(registry.get(a.id)); if ((await wallet.getBalance(w.walletId)) >= ANTE) funded.add(a.id); } catch {}
-  }
-  const recs = registry.pickSeats(TABLE_SIZE, { eligible: (a) => funded.has(a.id) });
-  const agents = [];
-  for (const rec of recs) {
-    const ag = instantiate(rec); ag.walletInfo = await ensureWallet(rec);
-    if (rec.house && wallet.ensureFunded) {           // house bankrolls its own bots
-      try { const tx = await wallet.ensureFunded(ag.walletInfo, ANTE); if (tx) broadcast({ type: "funded", agentId: rec.id, name: rec.name, tx, explorer: wallet.explorerUrl(tx) }); }
-      catch (e) { console.error(`could not fund ${rec.id}:`, e.message); }
-    }
-    agents.push(ag);
-  }
-  registry.markPlayed(recs.map((r) => r.id));
-  return agents;
+const tables = new TableManager({
+  wallet, registry, stats, instantiate, ensureWallet,
+  ante: ANTE, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT, liveChain: LIVE_CHAIN,
+  betWindowMs: BET_WINDOW_MS, turnDelayMs: TURN_DELAY_MS, revealDelayMs: REVEAL_DELAY_MS,
+  dealDelayMs: DEAL_DELAY_MS, minStake: MIN_STAKE, shouldReleaseTxClaim,
+  staggerMs: Math.max(1500, Math.round(BET_WINDOW_MS / Math.max(1, TABLE_COUNT))),
+});
+
+function lobbyState() {
+  const feat = tables.featured();
+  return {
+    ...(feat ? feat.publicState() : { phase: "idle", matchNo: 0, seats: [], bets: [], multipliers: {}, betCloseAt: null, poolTotal: 0 }),
+    tables: tables.list(),
+    tableCount: tables.tables.length,
+    ante: ANTE, walletKind: wallet.kind, live: LIVE_CHAIN, betWindowMs: BET_WINDOW_MS,
+  };
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-let lastError = null;
-async function cycle() {
-  if (!houseWallet) houseWallet = await wallet.createSeatWallet("house");
-  while (true) {
-    try { await oneMatch(); lastError = null; }
-    catch (e) {
-      // A failed match must never take the site down. Log, tell viewers, pause, move on.
-      lastError = { at: Date.now(), message: String(e?.message || e).slice(0, 300) };
-      console.error(`match #${state.matchNo} failed:`, e?.stack || e);
-      state.phase = "paused";
-      broadcast({ type: "phase", ...publicState(), error: lastError.message });
-      await sleep(15000);
-    }
-  }
+function poolView(table) {
+  return {
+    tableId: table?.id || null,
+    walletKind: wallet.kind, live: LIVE_CHAIN,
+    poolAddress: table?.pool?.poolWallet?.address || null,
+    open: !!(table && table.pool && table.pool.open),
+    closeAt: table?.betCloseAt || null,
+    matchNo: table?.matchNo || 0,
+    chain: wallet.chainInfo ? wallet.chainInfo() : null,
+    minStake: MIN_STAKE, betWindowMs: BET_WINDOW_MS,
+  };
 }
 
-async function oneMatch() {
-  {
-    const agents = await buildAgents();
-    state.matchNo++;
-    state.seats = agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house" }));
+async function placeBetOnTable(table, body) {
+  if (!table) throw new Error("Unknown table.");
+  const { bettorId, agentId, amount, txHash, address } = body;
+  if (!table.seats.find((s) => s.id === agentId)) throw new Error("Unknown seat.");
+  const claimedAmt = Number(amount);
+  const pool = table.pool;
 
-    // 1) betting window
-    pool = new BettingPool({ wallet, houseFeeBps: 200 });
-    await pool.init();
-    state.phase = "betting"; state.bets = []; state.multipliers = impliedMultipliers([], agents.map(a => a.id), 200);
-    state.betCloseAt = Date.now() + BET_WINDOW_MS; pool.closeAt = state.betCloseAt;
-    broadcast({ type: "phase", ...publicState() });
-    await sleep(BET_WINDOW_MS);
-    pool.close();
-
-    // 2) match
-    state.phase = "playing";
-    broadcast({ type: "phase", ...publicState() });
-    const result = await runMatch({
-      agents, wallet, ante: ANTE, seed: Date.now(),
-      onEvent: async (ev) => { broadcast(ev); if (ev.type === "turn") await sleep(TURN_DELAY_MS); else if (ev.type === "reveal") await sleep(REVEAL_DELAY_MS); else if (ev.type === "hand_start") await sleep(DEAL_DELAY_MS); else if (ev.type === "ante") await sleep(500); },
-    });
-
-    // 3) spectator settlement — a null winner refunds the pool (same as no one backed the winner).
-    pool.settledAt = Date.now();
-    if (result.winnerId && !result.aborted) {
-      stats.recordMatch({ matchNo: state.matchNo, seats: state.seats, winnerId: result.winnerId, potTotal: result.potTotal,
-                          ante: ANTE, log: result.log, poolTotal: pool.bets.reduce((s, b) => s + b.amount, 0), seed: result.seed });
+  if (txHash && wallet.verifyDeposit) {
+    if (!pool) throw new Error("No match is open.");
+    pool.claimTx(txHash);
+    try {
+      const dep = await wallet.verifyDeposit(txHash, pool.poolWallet.address);
+      const amt = dep.amount;
+      if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
+      if (Number.isFinite(claimedAmt) && Math.abs(dep.amount - claimedAmt) > 0.000001) {
+        throw new Error(`Transfer was ${dep.amount} USDC, not ${claimedAmt}.`);
+      }
+      if (address && dep.from.toLowerCase() !== String(address).toLowerCase()) throw new Error("Transfer came from a different wallet.");
+      if (!pool.open && !(dep.timestamp <= (pool.closeAt || 0) + 3000 && table.phase === "playing" && !pool.settledAt)) {
+        const rtx = await wallet.settle(pool.poolWallet, { address: dep.from }, dep.amount);
+        throw new Error(`Betting had closed — refunded ${dep.amount} USDC to your wallet (tx ${rtx.slice(0, 10)}…).`);
+      }
+      pool.recordExternal({ bettorId: dep.from, address: dep.from, agentId, amount: amt, txHash, claimed: true });
+      table.bets = pool.bets;
+      table.multipliers = impliedMultipliers(pool.bets, table.seats.map((s) => s.id), pool.houseFeeBps);
+      table.broadcast({ type: "bet", bettorId: dep.from, agentId, amount: amt, tx: txHash, explorer: wallet.explorerUrl(txHash), ...table.publicState() });
+      tables.notifyLobby();
+      return { ok: true, tx: txHash, explorer: wallet.explorerUrl(txHash), payoutTo: dep.from, amount: amt, tableId: table.id };
+    } catch (e) {
+      if (shouldReleaseTxClaim(e)) pool.releaseTx(txHash);
+      throw e;
     }
-    const settlement = await pool.settle(result.winnerId || null, houseWallet);
-    stats.recordBets(pool.bets, result.winnerId || null, settlement.payouts);
-    state.phase = "settled";
-    broadcast({ type: "pool_settled", winnerId: result.winnerId || null, winnerName: result.winnerName || null,
-      aborted: !!result.aborted, ...settlement, ...publicState() });
-    await sleep(8000);
   }
-}
 
-function publicState() {
-  return { serverNow: Date.now(), phase: state.phase, matchNo: state.matchNo, seats: state.seats, bets: state.bets,
-           multipliers: state.multipliers, betCloseAt: state.betCloseAt, poolTotal: state.bets.reduce((s, b) => s + b.amount, 0),
-           ante: ANTE, walletKind: wallet.kind, live: LIVE_CHAIN, betWindowMs: BET_WINDOW_MS };
+  const amt = claimedAmt;
+  if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
+  if (!pool || !pool.open) throw new Error("Betting is closed — wait for the next match.");
+  if (LIVE_CHAIN) throw new Error("On a live chain, bet from your own wallet (send USDC to the pool and include txHash).");
+  if (!spectatorWallets[bettorId]) spectatorWallets[bettorId] = await wallet.createSeatWallet("spectator:" + bettorId);
+  const r = await pool.placeBet({ bettorId, bettorWallet: spectatorWallets[bettorId], agentId, amount: amt });
+  table.bets = pool.bets;
+  table.multipliers = impliedMultipliers(pool.bets, table.seats.map((s) => s.id), pool.houseFeeBps);
+  table.broadcast({ type: "bet", bettorId, agentId, amount: amt, tx: r.tx, explorer: r.explorer, ...table.publicState() });
+  tables.notifyLobby();
+  const bal = await wallet.getBalance(spectatorWallets[bettorId].walletId);
+  return { ok: true, tx: r.tx, explorer: r.explorer, balance: bal, poolAddress: pool.poolWallet.address, tableId: table.id };
 }
 
 // ---- http ---------------------------------------------------------------
 const PUBLIC = path.join(__dirname, "public");
-const PAGES = { "/": "landing.html", "/arena": "index.html", "/leaderboard": "leaderboard.html", "/how-it-works": "how.html", "/agents": "agents.html" };
+const PAGES = {
+  "/": "landing.html", "/arena": "index.html", "/tables": "tables.html",
+  "/leaderboard": "leaderboard.html", "/how-it-works": "how.html", "/agents": "agents.html",
+};
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".txt": "text/plain" };
 function sendFile(res, file) {
   const full = resolvePublicFile(PUBLIC, file);
@@ -181,13 +177,20 @@ function json(res, code, obj) { res.writeHead(code, { "content-type": "applicati
 function readBody(req) { return new Promise((r) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > 20000) req.destroy(); }); req.on("end", () => r(b)); }); }
 function bearer(req) { const h = req.headers.authorization || ""; return h.startsWith("Bearer ") ? h.slice(7) : null; }
 
-async function agentsApi(req, res, url) {
-  const parts = url.split("/").filter(Boolean); // api, agents, :id?, :action?
+async function agentsApi(req, res, urlPath) {
+  const parts = urlPath.split("/").filter(Boolean); // api, agents, :id?, :action?
   const lb = stats.leaderboard(); const eloById = Object.fromEntries(lb.agents.map((a) => [a.id, a]));
-  const decorate = (a) => ({ ...a, elo: eloById[a.id]?.elo ?? 1200, won: eloById[a.id]?.won ?? 0, matches: eloById[a.id]?.played ?? 0 });
+  const seated = tables.seatedIndex();
+  const decorate = (a) => ({ ...a, elo: eloById[a.id]?.elo ?? 1200, won: eloById[a.id]?.won ?? 0, matches: eloById[a.id]?.played ?? 0, seatedAt: seated[a.id] || [] });
 
   try {
-    if (parts.length === 2 && req.method === "GET") return json(res, 200, { agents: registry.list().map(decorate), ante: ANTE, tableSize: TABLE_SIZE, promptAgentsEnabled: !!llmComplete, allowLocal: registry.allowLocal, walletKind: wallet.kind, live: LIVE_CHAIN, economics: argus.AGENT_TOKEN_ECONOMICS });
+    if (parts.length === 2 && req.method === "GET") {
+      return json(res, 200, {
+        agents: registry.list().map(decorate), ante: ANTE, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT,
+        promptAgentsEnabled: !!llmComplete, allowLocal: registry.allowLocal, walletKind: wallet.kind, live: LIVE_CHAIN,
+        economics: argus.AGENT_TOKEN_ECONOMICS,
+      });
+    }
 
     if (parts.length === 2 && req.method === "POST") {
       const body = JSON.parse(await readBody(req) || "{}");
@@ -203,9 +206,10 @@ async function agentsApi(req, res, url) {
         token = { status: "hook_failed", error: String(e.message || e).slice(0, 200) };
         try { registry.setToken(rec.id, token); } catch {}
       }
-      broadcast({ type: "agent_joined", id: rec.id, name: rec.name, owner: rec.owner });
+      tables.notifyLobby();
       return json(res, 201, { ok: true, agent: decorate(registry.publicView(rec)), key: rec.key, fundingAddress: w.address,
         balance: await wallet.getBalance(w.walletId), token, economics: argus.AGENT_TOKEN_ECONOMICS,
+        tablesUrl: `/tables?agent=${encodeURIComponent(rec.id)}`,
         note: wallet.kind === "mock" ? "Mock wallet auto-funded with 100 USDC for local play." : `Send at least ${ANTE} USDC on Arc to the funding address to be seated.` });
     }
 
@@ -213,7 +217,10 @@ async function agentsApi(req, res, url) {
 
     if (parts.length === 3 && req.method === "GET") {
       const w = rec.wallet ? await wallet.getBalance(rec.wallet.walletId).catch(() => null) : null;
-      return json(res, 200, { ok: true, agent: decorate(registry.publicView(rec)), balance: w });
+      return json(res, 200, {
+        ok: true, agent: decorate(registry.publicView(rec)), balance: w,
+        tables: tables.featuring(rec.id),
+      });
     }
 
     // Everything below needs the owner's key.
@@ -235,67 +242,70 @@ async function agentsApi(req, res, url) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = req.url.split("?")[0];
+  const { path: url, q } = parseReq(req);
   if (PAGES[url]) return sendFile(res, PAGES[url]);
-  if (url === "/health") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, phase: state.phase, matchNo: state.matchNo, wallet: wallet.kind, clients: clients.size, house: wallet.houseBalance ? await wallet.houseBalance().catch(() => null) : null, lastError })); }
+  if (url.startsWith("/agent/")) {
+    const id = decodeURIComponent(url.slice("/agent/".length).split("/")[0] || "");
+    res.writeHead(302, { location: `/tables?agent=${encodeURIComponent(id)}` });
+    return res.end();
+  }
+  if (url === "/health") {
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({
+      ok: true, tables: tables.health(), tableCount: tables.tables.length,
+      wallet: wallet.kind, clients: tables.clientCount(),
+      house: wallet.houseBalance ? await wallet.houseBalance().catch(() => null) : null,
+      lastError: tables.tables.map((t) => t.lastError).find(Boolean) || null,
+    }));
+  }
   if (url === "/api/leaderboard") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(stats.leaderboard())); }
-  if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(publicState())); }
+  if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(lobbyState())); }
   if (url.startsWith("/static/")) return sendFile(res, url.slice("/static/".length));
   if (url.startsWith("/api/agents")) return agentsApi(req, res, url);
-  if (url === "/api/pool") return json(res, 200, { walletKind: wallet.kind, live: LIVE_CHAIN, poolAddress: pool?.poolWallet?.address || null, open: !!(pool && pool.open), closeAt: state.betCloseAt, matchNo: state.matchNo, chain: wallet.chainInfo ? wallet.chainInfo() : null, minStake: MIN_STAKE, betWindowMs: BET_WINDOW_MS });
+
+  if (url === "/api/tables" && req.method === "GET") {
+    return json(res, 200, {
+      tables: tables.list({ agent: q.get("agent"), owner: q.get("owner"), q: q.get("q") }),
+      tableCount: tables.tables.length, tableSize: TABLE_SIZE, ante: ANTE,
+      walletKind: wallet.kind, live: LIVE_CHAIN, betWindowMs: BET_WINDOW_MS,
+    });
+  }
+
+  const tableParts = url.split("/").filter(Boolean); // api, tables, t-1, events|pool|bet
+  if (tableParts[0] === "api" && tableParts[1] === "tables" && tableParts[2] && TABLE_ID_RE.test(tableParts[2])) {
+    const table = tables.get(tableParts[2]);
+    if (!table) return json(res, 404, { ok: false, error: "No such table." });
+    const action = tableParts[3] || "";
+    if (!action && req.method === "GET") return json(res, 200, { ok: true, table: table.summary(), state: table.publicState() });
+    if (action === "events" && req.method === "GET") return table.subscribe(req, res);
+    if (action === "pool" && req.method === "GET") return json(res, 200, poolView(table));
+    if (action === "bet" && req.method === "POST") {
+      try { return json(res, 200, await placeBetOnTable(table, JSON.parse(await readBody(req) || "{}"))); }
+      catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+    }
+    return json(res, 404, { ok: false, error: "Unknown table endpoint." });
+  }
+
+  if (url === "/api/pool") {
+    const table = tables.findTableForBet({ tableId: q.get("table"), agentId: q.get("agent") });
+    return json(res, 200, poolView(table));
+  }
 
   if (url === "/events") {
-    res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
-    res.write(`data: ${JSON.stringify({ type: "phase", ...publicState() })}\n\n`);
-    clients.add(res);
-    req.on("close", () => clients.delete(res));
-    return;
+    const tid = q.get("table");
+    if (tid) {
+      const table = tables.get(tid);
+      if (!table) return json(res, 404, { ok: false, error: "No such table." });
+      return table.subscribe(req, res);
+    }
+    return tables.subscribeLobby(req, res);
   }
 
   if (url === "/api/bet" && req.method === "POST") {
     try {
-      const { bettorId, agentId, amount, txHash, address } = JSON.parse(await readBody(req) || "{}");
-      if (!state.seats.find((s) => s.id === agentId)) throw new Error("Unknown seat.");
-      const claimedAmt = Number(amount);
-
-      // Connected-wallet path: stake already moved on-chain. Amount comes from the tx, not the client.
-      if (txHash && wallet.verifyDeposit) {
-        if (!pool) throw new Error("No match is open.");
-        pool.claimTx(txHash);
-        try {
-          const dep = await wallet.verifyDeposit(txHash, pool.poolWallet.address);
-          const amt = dep.amount;
-          if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
-          if (Number.isFinite(claimedAmt) && Math.abs(dep.amount - claimedAmt) > 0.000001) {
-            throw new Error(`Transfer was ${dep.amount} USDC, not ${claimedAmt}.`);
-          }
-          if (address && dep.from.toLowerCase() !== String(address).toLowerCase()) throw new Error("Transfer came from a different wallet.");
-          if (!pool.open && !(dep.timestamp <= (pool.closeAt || 0) + 3000 && state.phase === "playing" && !pool.settledAt)) {
-            const rtx = await wallet.settle(pool.poolWallet, { address: dep.from }, dep.amount);
-            throw new Error(`Betting had closed — refunded ${dep.amount} USDC to your wallet (tx ${rtx.slice(0, 10)}…).`);
-          }
-          pool.recordExternal({ bettorId: dep.from, address: dep.from, agentId, amount: amt, txHash, claimed: true });
-          state.bets = pool.bets;
-          state.multipliers = impliedMultipliers(pool.bets, state.seats.map((s) => s.id), pool.houseFeeBps);
-          broadcast({ type: "bet", bettorId: dep.from, agentId, amount: amt, tx: txHash, explorer: wallet.explorerUrl(txHash), ...publicState() });
-          return json(res, 200, { ok: true, tx: txHash, explorer: wallet.explorerUrl(txHash), payoutTo: dep.from, amount: amt });
-        } catch (e) {
-          if (shouldReleaseTxClaim(e)) pool.releaseTx(txHash);
-          throw e;
-        }
-      }
-
-      const amt = claimedAmt;
-      if (!(amt >= MIN_STAKE) || amt > 1000) throw new Error(`Stake must be between ${MIN_STAKE} and 1000 USDC.`);
-      if (!pool || !pool.open) throw new Error("Betting is closed — wait for the next match.");
-      if (LIVE_CHAIN) throw new Error("On a live chain, bet from your own wallet (send USDC to the pool and include txHash).");
-      if (!spectatorWallets[bettorId]) spectatorWallets[bettorId] = await wallet.createSeatWallet("spectator:" + bettorId);
-      const r = await pool.placeBet({ bettorId, bettorWallet: spectatorWallets[bettorId], agentId, amount: amt });
-      state.bets = pool.bets;
-      state.multipliers = impliedMultipliers(pool.bets, state.seats.map((s) => s.id), pool.houseFeeBps);
-      broadcast({ type: "bet", bettorId, agentId, amount: amt, tx: r.tx, explorer: r.explorer, ...publicState() });
-      const bal = await wallet.getBalance(spectatorWallets[bettorId].walletId);
-      return json(res, 200, { ok: true, tx: r.tx, explorer: r.explorer, balance: bal, poolAddress: pool.poolWallet.address });
+      const body = JSON.parse(await readBody(req) || "{}");
+      const table = tables.findTableForBet({ tableId: body.tableId || q.get("table"), agentId: body.agentId });
+      return json(res, 200, await placeBetOnTable(table, body));
     } catch (e) {
       return json(res, 400, { ok: false, error: e.message });
     }
@@ -313,11 +323,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Liar's Dice Arena → http://${HOST}:${PORT}   (wallet: ${wallet.kind}, live: ${LIVE_CHAIN}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms)`);
+  console.log(`Liar's Dice Arena → http://${HOST}:${PORT}   (wallet: ${wallet.kind}, live: ${LIVE_CHAIN}, tables: ${TABLE_COUNT}×${TABLE_SIZE}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms)`);
   if (wallet.kind === "circle") {
     console.warn("CircleArcWallet is a stub (TODO(circle) on every money call). Set HOUSE_PRIVATE_KEY for live Arc, or MOCK=1 for local play.");
   }
-  cycle().catch((e) => { console.error("cycle crashed (unrecoverable):", e); });
+  tables.start().catch((e) => { console.error("tables start crashed (unrecoverable):", e); });
   process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
   process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
 });

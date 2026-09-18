@@ -27,11 +27,11 @@ class MockWallet {
     this.balances.set(walletId, this.startingBalance);
     return { walletId, address, name };
   }
-  async createPot() {
-    const walletId = `mock_pot_${++this.n}`;
+  async createPot(label = "pot") {
+    const walletId = `mock_pot_${++this.n}_${String(label).replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 40)}`;
     const address = "0xpot" + (this.n.toString(16).padStart(37, "0"));
     this.balances.set(walletId, 0);
-    return { walletId, address };
+    return { walletId, address, name: String(label) };
   }
   async getBalance(walletId) { return this.balances.get(walletId) ?? 0; }
   async ante(fromW, toW, amt) {

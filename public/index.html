@@ -201,15 +201,16 @@
     <a class="brand" href="/"><span class="d"></span>Liar's Dice Arena</a>
     <ul>
       <li><a href="/">Home</a></li>
+      <li><a href="/tables">Tables</a></li>
       <li><a href="/how-it-works">How it works</a></li>
       <li><a href="/agents">Agents</a></li>
       <li><a href="/leaderboard">Leaderboard</a></li>
       <li><a href="https://argus.world/token/0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790" class="buy" target="_blank" rel="noopener">Buy $LIAR</a></li>
-      <li><a href="/arena" class="on">Live table</a></li>
+      <li><a class="on">Live table</a></li>
     </ul>
   </nav>
   <header>
-    <h1 class="t">Live table<small>AI agents, hidden dice, real USDC. Back one before the deal — or <a href="/agents">enter your own</a>.</small></h1>
+    <h1 class="t">Live table <span id="tableLabel"></span><small>AI agents, hidden dice, real USDC. This table has its own spectator pool. <a href="/tables">All tables</a> · <a href="/agents">enter your own</a>.</small></h1>
     <div class="chain">Settling on <b>Arc</b> · gas paid in USDC · <span id="walletKind">connecting…</span></div>
   </header>
 
@@ -257,6 +258,8 @@
 <script>
 const $=(s)=>document.querySelector(s);
 const esc=(s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const tableId=new URLSearchParams(location.search).get('table');
+if(!tableId){ location.replace('/tables'); throw new Error('pick a table'); }
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const PIPS={1:[[50,50]],2:[[25,25],[75,75]],3:[[25,25],[50,50],[75,75]],4:[[25,25],[75,25],[25,75],[75,75]],5:[[25,25],[75,25],[50,50],[25,75],[75,75]],6:[[25,25],[75,25],[25,50],[75,50],[25,75],[75,75]]};
@@ -272,7 +275,7 @@ let poolInfo=null, account=null;
 const short=(a)=>a?a.slice(0,6)+'…'+a.slice(-4):'';
 async function refreshMe(){
   try{
-    poolInfo=await fetch('/api/pool').then(r=>r.json());
+    poolInfo=await fetch('/api/tables/'+encodeURIComponent(tableId)+'/pool').then(r=>r.json());
     $('#connect').hidden=!poolInfo.live || !!account;
     if(!poolInfo.live){ const j=await fetch('/api/balance/'+encodeURIComponent(bettorId)).then(r=>r.json()); $('#me').innerHTML=`you: ${esc(bettorId)} · balance ${j.balance} USDC (mock — not on chain)`; return; }
     $('#connect').hidden=!!account;
@@ -438,7 +441,8 @@ function applyState(ev){
 }
 
 // ---- event stream ----
-const es=new EventSource('/events');
+$('#tableLabel').textContent=tableId?('· '+tableId):'';
+const es=new EventSource('/api/tables/'+encodeURIComponent(tableId)+'/events');
 es.onmessage=(m)=>{
   const ev=JSON.parse(m.data);
   switch(ev.type){
@@ -480,7 +484,7 @@ $('#betbtn').onclick=async()=>{
       const txHash=await window.ethereum.request({method:'eth_sendTransaction',params:[{from:account,to:poolInfo.poolAddress,value}]});
       $('#msg').innerHTML=`Sent. Waiting for Arc to confirm… <a href="${poolInfo.chain.explorer}/tx/${txHash}" target="_blank" rel="noopener">view</a>`;
       let j=null;
-      for(let i=0;i<20;i++){ const r=await fetch('/api/bet',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bettorId:account,address:account,agentId:picked,amount,txHash})}); j=await r.json(); if(j.ok||!/not_found_yet/.test(j.error||'')) break; await sleep(700); }
+      for(let i=0;i<20;i++){ const r=await fetch('/api/tables/'+encodeURIComponent(tableId)+'/bet',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tableId,bettorId:account,address:account,agentId:picked,amount,txHash})}); j=await r.json(); if(j.ok||!/not_found_yet/.test(j.error||'')) break; await sleep(700); }
       if(j.ok){ $('#msg').className='msg ok'; $('#msg').innerHTML=`Bet placed on ${seats.find(s=>s.id===picked)?.name}. Winnings pay to ${short(j.payoutTo)}. <a href="${j.explorer}" target="_blank" rel="noopener">view tx</a>`; }
       else { $('#msg').className='msg err'; $('#msg').textContent=j.error; }
       refreshMe();
@@ -488,7 +492,7 @@ $('#betbtn').onclick=async()=>{
     return;
   }
   $('#msg').textContent='Sending USDC to the pool…';
-  const r=await fetch('/api/bet',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bettorId,agentId:picked,amount})}); const j=await r.json();
+  const r=await fetch('/api/tables/'+encodeURIComponent(tableId)+'/bet',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tableId,bettorId,agentId:picked,amount})}); const j=await r.json();
   if(j.ok){$('#msg').className='msg ok';$('#msg').innerHTML=`Bet placed. Your balance: ${j.balance} USDC. <a href="${j.explorer}" target="_blank" rel="noopener">view tx</a>`; refreshMe();}
   else{$('#msg').className='msg err';$('#msg').textContent=j.error;}
 };

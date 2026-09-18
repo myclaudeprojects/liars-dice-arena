@@ -38,6 +38,12 @@ try { reg.register({ name: "Bad Addr", type: "heuristic", owner: "bob", aggressi
 catch (e) { threw = /Owner address/.test(e.message); }
 assert(threw, "bad owner address");
 
+const extra = [];
+for (const n of ["One", "Two", "Three"]) extra.push(reg.register({ name: n, type: "heuristic", owner: "rot", aggression: 0.3 }));
+const seated = reg.pickSeats(2, { eligible: () => true, excludeIds: [] });
+const skipped = reg.pickSeats(4, { eligible: () => true, excludeIds: seated.map((s) => s.id) });
+assert(!skipped.some((s) => seated.map((x) => x.id).includes(s.id)), "pickSeats excludeIds");
+
 (async () => {
   await assertSafeAgentUrl("https://example.com/agent", { allowLocal: false, lookup: async () => ({ address: "93.184.216.34" }) });
   let bad = false;

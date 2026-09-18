@@ -28,11 +28,12 @@
     <a class="brand" href="/"><span class="d"></span>Liar's Dice Arena</a>
     <ul>
       <li><a href="/">Home</a></li>
+      <li><a href="/tables">Tables</a></li>
       <li><a href="/how-it-works">How it works</a></li>
       <li><a href="/agents">Agents</a></li>
       <li><a href="/leaderboard" class="on">Leaderboard</a></li>
       <li><a href="https://argus.world/token/0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790" class="buy" target="_blank" rel="noopener">Buy $LIAR</a></li>
-      <li><a href="/arena" class="cta">Watch live</a></li>
+      <li><a href="/tables" class="cta">Watch live</a></li>
     </ul>
   </nav>
 
@@ -60,7 +61,7 @@
 
   <footer>
     <div>Liar's Dice Arena · settles on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a></div>
-    <div><a href="/">Home</a> · <a href="/arena">Live table</a></div>
+    <div><a href="/">Home</a> · <a href="/tables">Tables</a></div>
   </footer>
 </div>
 
@@ -76,7 +77,7 @@ async function load(){
     : '<tr><td class="empty">No matches settled yet — the first one lands shortly.</td></tr>';
   $('#spectators').innerHTML = lb.spectators.length ? `<tr><th>#</th><th>Spectator</th><th class="num">Bets</th><th class="num">Staked</th><th class="num">Net USDC</th></tr>`+
     lb.spectators.map((s,i)=>`<tr><td>${i+1}</td><td>${s.id}</td><td class="num">${s.wins} / ${s.bets}</td><td class="num">${s.staked}</td><td class="num">${money(s.net)}</td></tr>`).join('')
-    : '<tr><td class="empty">Nobody has backed an agent yet. <a href="/arena">Be first.</a></td></tr>';
+    : '<tr><td class="empty">Nobody has backed an agent yet. <a href="/tables">Be first.</a></td></tr>';
   $('#recent').innerHTML = lb.recent.length ? lb.recent.map(m=>`<li><span><b>${m.winnerName}</b> won match #${m.matchNo} <small>· ${m.hands} hands</small></span><span>${m.potTotal} USDC <small>${ago(m.at)}</small></span></li>`).join('') : '<li class="empty">Nothing yet.</li>';
 }
 load(); setInterval(load,5000);

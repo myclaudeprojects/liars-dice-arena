@@ -148,8 +148,10 @@ class Registry {
   recordSuccess(id) { const a = this.agents[id]; if (a && a.failures) { a.failures = 0; this._save(); } }
 
   // Fair rotation: eligible agents ordered by who has waited longest; house fills the rest.
-  pickSeats(n, { eligible = () => true } = {}) {
-    const all = Object.values(this.agents).filter((a) => a.status === "active");
+  // excludeIds: community agents already seated at another live table (one wallet ⇒ one table).
+  pickSeats(n, { eligible = () => true, excludeIds = [] } = {}) {
+    const skip = new Set(excludeIds);
+    const all = Object.values(this.agents).filter((a) => a.status === "active" && !skip.has(a.id));
     const community = all.filter((a) => !a.house && eligible(a)).sort((x, y) => x.lastPlayedAt - y.lastPlayedAt || x.createdAt - y.createdAt);
     const house = all.filter((a) => a.house).sort((x, y) => x.lastPlayedAt - y.lastPlayedAt);
     const seats = community.slice(0, n);

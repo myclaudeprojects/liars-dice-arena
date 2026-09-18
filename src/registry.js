@@ -155,8 +155,8 @@ class Registry {
   retire(id) { if (this.agents[id]) { this.agents[id].status = "retired"; this._save(); } }
   reactivate(id) { const a = this.agents[id]; if (a) { a.status = "active"; a.failures = 0; a.sidelineReason = null; this._save(); } }
 
-  // Below MIN_SEAT (3 USDC) the agent is sidelined until a deposit or token-tax top-up.
-  sideline(id, reason = "below_min_seat") {
+  // Community agents sit unless already at another live table. Credits are free.
+  sideline(id, reason = "unresponsive") {
     const a = this.agents[id];
     if (!a || a.house) return;
     a.status = "sidelined";
@@ -164,8 +164,8 @@ class Registry {
     this._save();
   }
 
-  // Token-tax 25% bankroll is an *extra* top-up, never a substitute for creator funding.
-  recordBankrollTopUp(id, { amount, txHash, source = "token_tax" } = {}) {
+  // Operator extra seat top-up. Not a token-tax slice — token tax has no seat-bankroll leg.
+  recordBankrollTopUp(id, { amount, txHash, source = "operator" } = {}) {
     const a = this.agents[id];
     if (!a) throw new Error("No such agent.");
     const amt = Number(amount);
@@ -184,7 +184,7 @@ class Registry {
       extraTopUp: a.bankrollExtra || 0,
       count: ups.length,
       last: ups.length ? ups[ups.length - 1] : null,
-      source: "token_tax_25pct_extra",
+      source: "operator_seat_topup",
     };
   }
 

@@ -54,7 +54,7 @@
     </section>
     <section class="panel buy" style="grid-column:1/-1">
       <h2>Tip with influence</h2>
-      <p class="lede">Pick <b>one</b> influence. 100% of the USDC is a gift to this agent’s seat. You are never entitled to winnings. Spectators cannot stake into a win pool.</p>
+      <p class="lede">Pick <b>one</b> influence. 100% of the USDC is a gift to this agent’s persona creator (crowd / pre-lock only). You are never entitled to winnings. Spectators cannot stake into a win pool.</p>
       <form id="tipform">
         <div class="influence-picks" id="infpicks" role="radiogroup" aria-label="Pick one influence">
           <button type="button" class="inf" data-inf="aggressive" aria-pressed="false"><b>Aggressive</b><span>Bluff more, challenge more</span></button>
@@ -88,7 +88,7 @@
       <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
       <div><a href="/how-it-works">How it works</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
     </div>
-    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with real USDC seats on Arc (ante 1 USDC; minimum 3 USDC to sit). Spectators cannot stake into a win pool. Table pot is agent antes only — 20% to the creator wallet, 80% stays in the seat bankroll. Tips are personality-influence gifts: 100% to the agent's seat. Tippers are never entitled to winnings. Agent tokens can lose value. Not investment advice or a security offering.</p>
+    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with Arena Credits (free, nonredeemable). Personality tips (pre-lock only) are gifts: 100% to the persona creator. After lock, the table shows a native WHO WINS book; a regulated DCM partner lists, clears, and settles — LDA is not the exchange and does not custody prediction USDC. Token holders get no prediction payout from holding. Agent tokens can lose value. Not investment advice or a security offering.</p>
   </footer>
 </div>
 <script src="/static/wallet.js"></script>
@@ -114,26 +114,33 @@ async function load(){
     kv('Record', `${a.won??0}–${Math.max(0,(a.matches??a.played??0)-(a.won??0))}`)+
     kv('Form', (a.form&&a.form.length)?a.form.join(' '):'—')+
     kv('Persona', a.personaTag||'—')+
-    kv('Net USDC', (a.net!=null?a.net:'—'))+
+    kv('Net credits', (a.net!=null?a.net:'—'))+
     kv('Tips received', (a.tipsUsdc!=null?a.tipsUsdc+' USDC':'—'));
-  const bal=h.seatBalance!=null?Number(h.seatBalance)+' USDC':(j.balance!=null?j.balance+' USDC':'—');
+  const cred=h.credits!=null?Number(h.credits)+' credits':(a.credits!=null?a.credits+' credits':'—');
   $('#hold').innerHTML=
-    kv('Seat bankroll', bal)+
-    kv('Min to sit', (h.minSeat??3)+' USDC')+
-    kv('Ante', (h.ante??1)+' USDC')+
-    kv('Funding address', h.fundingAddress?`<code>${esc(h.fundingAddress)}</code>`:'—')+
+    kv('Arena Credits', cred)+
+    kv('Ante', (h.ante??1)+' '+(h.unit||'credits'))+
     kv('Creator', h.creatorAddress?`<code>${esc(h.creatorAddress)}</code>`:'house')+
     kv('Sidelined', h.sidelined?'yes':'no');
   const ca=buy.address?`<code>${esc(buy.address)}</code>`:'no contract yet';
   const link=buy.argusUrl?` · <a href="${esc(buy.argusUrl)}" target="_blank" rel="noopener">Argus</a>`:'';
   $('#token').innerHTML=`<p><b>${esc(buy.symbol?('$'+buy.symbol):'Token')}</b> · ${esc(buy.status||buy.kind||'—')}<br>${ca}${link}</p>`+
+    (buy.taxLabel?`<p>${esc(buy.taxLabel)}</p>`:'')+
     (buy.description?`<p>${esc(buy.description)}</p>`:'');
   $('#hint').textContent=buy.message||'';
   const inf=j.influence||(j.tip&&j.tip.current)||{};
   $('#inflive').textContent=inf.dominant?`${inf.label} — ${inf.blurb}.`:(j.tip?'No influence yet.':'');
-  window.__ldaTipsOpen=true;
-  $('#tipcta').disabled=!$('#infval').value;
-  document.querySelectorAll('#infpicks .inf').forEach((b)=>{ b.disabled=false; });
+  const tipsOpen=j.tip?j.tip.tipsOpen!==false:true;
+  window.__ldaTipsOpen=tipsOpen;
+  if(!tipsOpen){
+    $('#tipcta').disabled=true;
+    $('#tipcta').textContent='Tips locked';
+    document.querySelectorAll('#infpicks .inf').forEach((b)=>{ b.disabled=true; });
+    $('#inflive').textContent='Tips are pre-lock only. After lock, WHO WINS is on the table page — LDA is not the exchange.';
+  } else {
+    $('#tipcta').disabled=!$('#infval').value;
+    document.querySelectorAll('#infpicks .inf').forEach((b)=>{ b.disabled=false; });
+  }
   $('#tables').href='/tables?agent='+encodeURIComponent(id);
   const house=buy.kind==='house';
   $('#form').hidden=house;
@@ -161,7 +168,7 @@ $('#tipform').onsubmit=async(e)=>{
     const from=localStorage.getItem('tipperId')||localStorage.getItem('bettorId')||'spectator';
     const r=await fetch('/api/agents/'+encodeURIComponent(id)+'/tip',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount,from,influence})});
     const j=await r.json();
-    if(j.ok){ msg.textContent=`Gift recorded: ${j.amount} USDC → seat (100%), ${j.influence}. ${j.mock?'Demo wallets, not on chain. ':''}You are never entitled to winnings.`; }
+    if(j.ok){ msg.textContent=`Gift recorded: ${j.amount} USDC → persona creator (100%), ${j.influence}. ${j.mock?'Demo wallets, not on chain. ':''}You are never entitled to winnings.`; }
     else { msg.textContent=j.error||'Could not tip.'; msg.classList.add('err'); }
   }catch(err){ msg.textContent=err.message||'Failed.'; msg.classList.add('err'); }
 };
@@ -172,6 +179,7 @@ document.querySelectorAll('#infpicks .inf').forEach(b=>b.onclick=()=>{
     const on=x===b; x.classList.toggle('sel',on); x.setAttribute('aria-pressed',on?'true':'false');
   });
   const labels={aggressive:'Aggressive',calculated:'Calculated',chaos:'Chaos',defensive:'Defensive'};
+  if(window.__ldaTipsOpen===false){ $('#tipcta').disabled=true; $('#tipcta').textContent='Tips locked'; return; }
   $('#tipcta').disabled=false;
   $('#tipcta').textContent='Tip · '+(labels[id]||id);
 });

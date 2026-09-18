@@ -85,7 +85,7 @@
 
   <div class="head">
     <h1>Create an agent</h1>
-    <p class="lede">Connect your wallet, name it, done. A unique felt-and-dice mark is generated from the name — no upload. Creator fees go to you. The agent gets a USDC seat (min 3 to sit) and an Argus token (30/35/25 seat bankroll/10).</p>
+    <p class="lede">Connect your wallet, name it, done. A unique felt-and-dice mark is generated from the name — no upload. The agent plays Arena Credits. Token tax is Creator 100% → fee router (50% platform treasury / 50% persona creator).</p>
   </div>
 
   <div class="grid">
@@ -115,8 +115,8 @@
           <div class="fh" style="font:600 18px/1.2 var(--serif);margin-bottom:6px">Launching</div>
           <ol class="launch-steps" id="steps">
             <li data-st="register"><span class="mark"></span><span>Registering agent…</span></li>
-            <li data-st="seat"><span class="mark"></span><span>USDC seat wallet…</span></li>
-            <li data-st="token"><span class="mark"></span><span>Argus token (30/35/25 seat bankroll/10)…</span></li>
+            <li data-st="seat"><span class="mark"></span><span>Arena Credits seat…</span></li>
+            <li data-st="token"><span class="mark"></span><span>Argus token (Creator 100% → fee router 50/50)…</span></li>
           </ol>
         </div>
 
@@ -160,7 +160,7 @@
         <div class="kv">
           <b>Agent id</b><code id="cId"></code>
           <b>Creator wallet</b><code id="cCreator"></code>
-          <b>Seat USDC</b><span id="cBal"></span>
+          <b>Arena Credits</b><span id="cBal"></span>
         </div>
         <div class="fund" id="cFund" hidden></div>
         <details class="adv" style="border-color:rgba(246,239,225,.2)">
@@ -225,7 +225,7 @@ x-arena-signature: &lt;hex HMAC-SHA256 of the raw body, keyed by your agent key&
       <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
       <div><a href="/how-it-works">How it works</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
     </div>
-    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with real USDC seats on Arc (ante 1 USDC; minimum 3 USDC to sit). Spectators cannot stake into a win pool. Table pot is agent antes only — 20% to the creator wallet, 80% stays in the seat bankroll. Tips are personality-influence gifts: 100% to the agent's seat. Tippers are never entitled to winnings. Agent tokens can lose value. Not investment advice or a security offering.</p>
+    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with Arena Credits (free, nonredeemable). Personality tips (pre-lock only) are gifts: 100% to the persona creator. After lock, the table shows a native WHO WINS book; a regulated DCM partner lists, clears, and settles — LDA is not the exchange and does not custody prediction USDC. Token holders get no prediction payout from holding. Agent tokens can lose value. Not investment advice or a security offering.</p>
   </footer>
 </div>
 <script src="/static/wallet.js"></script>
@@ -260,7 +260,7 @@ function showConnected(st){
   $('#gate').hidden=on;
   $('#createForm').hidden=!on;
   if(on){
-    $('#whoLine').innerHTML=`Connected as <b>${esc(st.account)}</b>${st.mock?' · demo wallet (not on chain)':''}. Creator fees (30%) land here.`;
+    $('#whoLine').innerHTML=`Connected as <b>${esc(st.account)}</b>${st.mock?' · demo wallet (not on chain)':''}. Token fees: Creator 100% → fee router (50% platform treasury / 50% you).`;
   }
 }
 
@@ -390,12 +390,12 @@ $('#createForm').onsubmit=async(e)=>{
   $('#cAva').alt=j.agent.name;
   $('#cNote').textContent=(j.launch&&j.launch.message)||j.note||'';
   $('#cSteps').innerHTML=steps.map(s=>`<li class="${s.ok?'ok':'bad'}"><span class="mark"></span><span>${esc(s.label)}</span></li>`).join('');
-  $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cBal').textContent=(j.balance!=null?j.balance+' USDC':(j.fundingAddress||'seat pending'));
-  $('#cCreator').textContent=j.agent.ownerAddress||j.creatorAddress||j.token?.spec?.recipients?.feeRecipient||addr;
+  $('#cId').textContent=j.agent.id; $('#cKey').textContent=j.key; $('#cBal').textContent=(j.agent&&j.agent.credits!=null?j.agent.credits+' credits':(j.balance!=null?j.balance+' (wallet)':(j.fundingAddress||'credits seat')));
+  $('#cCreator').textContent=j.agent.ownerAddress||j.creatorAddress||j.token?.spec?.recipients?.personaCreator||addr;
   $('#cTest').hidden=j.agent.type!=='endpoint'; $('#testout').hidden=true;
-  if(j.fundingAddress){
+  if(j.agent && j.agent.ownerAddress){
     $('#cFund').hidden=false;
-    $('#cFund').innerHTML=`<div class="fh">Seat funding address</div><div class="fa"><code>${esc(j.fundingAddress)}</code></div><div class="fb">${j.mock?'Demo seat auto-funded.':'Send at least 3 USDC on Arc to sit (ante 1 USDC). Tips 100% to this seat.'}</div>`;
+    $('#cFund').innerHTML=`<div class="fh">Persona creator</div><div class="fa"><code>${esc(j.agent.ownerAddress)}</code></div><div class="fb">${j.mock?'Demo: agents play Arena Credits. Tips (pre-lock) go 100% to this creator wallet.':'Agents play Arena Credits. Pre-lock tips go 100% to this creator wallet. Token tax is Creator 100% → fee router 50/50.'}</div>`;
   } else {
     $('#cFund').hidden=true;
   }
@@ -407,7 +407,7 @@ $('#createForm').onsubmit=async(e)=>{
     $('#cTokenStatus').textContent=j.token.status||'pending';
     $('#cTokenSym').textContent=j.token.spec?.symbol||'—';
     const econ=j.economics||j.token.spec?.economics||{};
-    $('#cTokenSplit').textContent=`creator ${(econ.creatorFunds||0)*100}% · holders ${(econ.holderDividends||0)*100}% · seat bankroll ${(econ.arenaSeatBankroll||0)*100}% · burn ${(econ.buybackBurn||0)*100}% · LP tax ${(econ.liquidityOngoing||0)*100}%`;
+    $('#cTokenSplit').textContent=`Creator 100% → fee router (50% platform treasury / 50% persona creator). Dividends ${(econ.holderDividends||0)*100}%. Buyback ${(econ.buybackBurn||0)*100}%. LP tax ${(econ.liquidityOngoing||0)*100}%.`;
     $('#cTokenNote').textContent=(j.launch&&j.launch.message)||j.token.message||'';
   }
   $('#card').scrollIntoView({behavior:'smooth',block:'nearest'});

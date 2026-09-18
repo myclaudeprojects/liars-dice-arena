@@ -27,7 +27,7 @@
         <div class="agent-sheet-stats" id="as-stats"></div>
         <div class="agent-sheet-hold" id="as-hold"></div>
         <form class="agent-sheet-tip" id="as-tip">
-          <p class="agent-sheet-tip-lede" id="as-tip-lede">Pick <b>one</b> influence. 100% of the USDC is a gift to the agent's seat. You are never entitled to winnings. Spectators cannot stake into a win pool.</p>
+          <p class="agent-sheet-tip-lede" id="as-tip-lede">Pick <b>one</b> influence. 100% of the USDC is a gift to the persona creator (crowd / pre-lock only). You are never entitled to winnings. Spectators cannot stake into a win pool.</p>
           <div class="influence-picks" id="as-inf" role="radiogroup" aria-label="Pick one influence">
             <button type="button" class="inf" data-inf="aggressive" aria-pressed="false"><b>Aggressive</b><span>Bluff more, challenge more</span></button>
             <button type="button" class="inf" data-inf="calculated" aria-pressed="false"><b>Calculated</b><span>Play tighter / probability-focused</span></button>
@@ -146,37 +146,47 @@
     const formLine = (a.form || []).map((x) => `<i class="${x === "W" ? "w" : "l"}">${esc(x)}</i>`).join("") || "—";
     root.querySelector("#as-stats").innerHTML =
       cell(`${a.won ?? 0}–${Math.max(0, (a.matches ?? a.played ?? 0) - (a.won ?? 0))}`, "record") +
-      cell((a.net != null ? a.net + " USDC" : "—"), "net USDC") +
+      cell((a.net != null ? a.net + " credits" : "—"), "net credits") +
       `<div><b class="form">${formLine}</b><span>form</span></div>`;
 
-    const bal = h.seatBalance != null ? Number(h.seatBalance) + " USDC" : (j.balance != null ? Number(j.balance) + " USDC" : "—");
+    const cred = h.credits != null ? Number(h.credits) + " credits" : (a.credits != null ? Number(a.credits) + " credits" : "—");
     root.querySelector("#as-hold").innerHTML =
-      cell(bal, "seat") +
-      cell(String(h.minSeat ?? 3) + " USDC", "min to sit") +
-      cell(String(h.ante ?? 1) + " USDC", "ante");
+      cell(cred, "Arena Credits") +
+      cell(String(h.ante ?? 1) + " " + (h.unit || "credits"), "ante") +
+      cell(h.creatorAddress ? String(h.creatorAddress).slice(0, 6) + "…" + String(h.creatorAddress).slice(-4) : "—", "creator");
 
     const tip = j.tip || {};
     const tipForm = root.querySelector("#as-tip");
     const tipCta = root.querySelector("#as-tip-cta");
     const tipMsg = root.querySelector("#as-tip-msg");
     const liveEl = root.querySelector("#as-inf-live");
-    const tipsOpen = true;
+    const tipsOpen = tip.tipsOpen !== false;
     if (tipForm) {
       tipForm.hidden = false;
       if (tipCta) {
-        delete tipCta.dataset.locked;
-        const chosen = root.querySelector("#as-inf-val").value;
-        tipCta.disabled = !chosen;
-        tipCta.textContent = chosen ? "Tip · " + chosen.charAt(0).toUpperCase() + chosen.slice(1) : "Pick an influence";
+        if (!tipsOpen) {
+          tipCta.disabled = true;
+          tipCta.dataset.locked = "1";
+          tipCta.textContent = "Tips locked";
+        } else {
+          delete tipCta.dataset.locked;
+          const chosen = root.querySelector("#as-inf-val").value;
+          tipCta.disabled = !chosen;
+          tipCta.textContent = chosen ? "Tip · " + chosen.charAt(0).toUpperCase() + chosen.slice(1) : "Pick an influence";
+        }
       }
       if (tipMsg) {
-        tipMsg.textContent = "100% to the agent's seat. You are never entitled to winnings.";
+        tipMsg.textContent = tipsOpen
+          ? "100% to the persona creator. You are never entitled to winnings."
+          : "Tips are pre-lock only. After lock, WHO WINS is on the table — LDA is not the exchange.";
       }
       const cur = tip.current || j.influence;
       if (liveEl) {
-        liveEl.textContent = cur && cur.dominant
-          ? `Lean: ${cur.label} — ${cur.blurb}. Weighted by tip size.`
-          : "No influence yet — your tip shifts how this seat plays.";
+        liveEl.textContent = !tipsOpen
+          ? "Crowd closed — influence is frozen for this match."
+          : (cur && cur.dominant
+            ? `Lean: ${cur.label} — ${cur.blurb}. Weighted by tip size.`
+            : "No influence yet — your tip shifts how this seat plays.");
       }
       const choices = tip.choices;
       if (choices && choices.length) {
@@ -187,8 +197,10 @@
           const bold = b.querySelector("b");
           if (bold) bold.textContent = c.label;
           if (span) span.textContent = c.blurb;
+          b.disabled = !tipsOpen;
         });
       }
+      root.querySelectorAll("#as-inf [data-inf]").forEach((b) => { b.disabled = !tipsOpen; });
     }
 
     const mEl = root.querySelector("#as-market");
@@ -200,9 +212,11 @@
       : "";
     const profile = a.id ? `<a href="/agent/${encodeURIComponent(a.id)}">Agent page</a>` : "";
     const econ = buy.economics;
-    const split = econ
-      ? `Tax after protocol cut: creator ${(econ.creatorFunds || 0) * 100}% · holders ${(econ.holderDividends || 0) * 100}% · seat bankroll ${(econ.arenaSeatBankroll || 0) * 100}% · burn ${(econ.buybackBurn || 0) * 100}% · LP tax ${(econ.liquidityOngoing || 0) * 100}%`
-      : "";
+    const split = buy.taxLabel
+      ? buy.taxLabel
+      : (econ
+        ? `Creator ${(econ.creatorFunds || 0) * 100}% → fee router 50/50. Dividends ${(econ.holderDividends || 0) * 100}%. Buyback ${(econ.buybackBurn || 0) * 100}%. LP tax ${(econ.liquidityOngoing || 0) * 100}%.`
+        : "");
     const desc = buy.description ? `<p>${esc(buy.description)}</p>` : "";
     root.querySelector("#as-token").innerHTML =
       `<div><b>${esc(buy.symbol ? "$" + buy.symbol : "Token")}</b> · ${esc(buy.status || buy.kind || "—")}</div>` +
@@ -292,14 +306,18 @@
       const cfg = await fetch("/api/config").then((r) => r.json()).catch(() => ({}));
       const live = !!cfg.live;
       const agent = await fetch("/api/agents/" + encodeURIComponent(currentId) + (tableId ? ("?table=" + encodeURIComponent(tableId)) : "")).then((r) => r.json());
-      const dest = (agent.tip && (agent.tip.seatAddress || agent.tip.fundingAddress)) || (agent.holdings && agent.holdings.fundingAddress);
+      const dest = (agent.tip && (agent.tip.creatorAddress || agent.tip.fundingAddress)) || (agent.holdings && agent.holdings.creatorAddress);
       const from = (window.LDAWallet && LDAWallet.account()) || localStorage.getItem("tipperId") || localStorage.getItem("bettorId") || "spectator";
+      if (agent.tip && agent.tip.tipsOpen === false) {
+        msg.textContent = "Tips are pre-lock only. After lock, WHO WINS is on the table — LDA is not the exchange.";
+        return;
+      }
       if (live) {
         if (!window.ethereum) throw new Error("Connect a wallet to tip on Arc.");
         const st = await LDAWallet.connect();
         const account = st.account;
         if (!account) throw new Error("Connect a wallet to tip.");
-        if (!dest) throw new Error("This agent has no seat wallet to tip.");
+        if (!dest) throw new Error("This agent has no persona creator wallet to tip.");
         const chain = cfg.chain;
         if (chain && chain.chainIdHex) {
           try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain.chainIdHex }] }); }
@@ -323,7 +341,7 @@
           if (j.ok || !/not_found_yet/.test(j.error || "")) break;
           await new Promise((res) => setTimeout(res, 700));
         }
-        if (j && j.ok) msg.textContent = `Gift recorded: ${j.amount} USDC → seat (100%), influence ${j.influence}. Never entitled to winnings.`;
+        if (j && j.ok) msg.textContent = `Gift recorded: ${j.amount} USDC → persona creator (100%), influence ${j.influence}. Never entitled to winnings.`;
         else msg.textContent = (j && j.error) || "Could not record tip.";
         return;
       }
@@ -333,7 +351,7 @@
         body: JSON.stringify({ amount: amt, from, tableId, influence: inf }),
       });
       const j = await r.json();
-      if (j.ok) msg.textContent = `Gift recorded: ${j.amount} USDC → seat (100%), ${j.influence}. ${j.mock ? "Demo wallets, not on chain. " : ""}You are never entitled to winnings.`;
+      if (j.ok) msg.textContent = `Gift recorded: ${j.amount} USDC → persona creator (100%), ${j.influence}. ${j.mock ? "Demo wallets, not on chain. " : ""}You are never entitled to winnings.`;
       else msg.textContent = j.error || "Could not tip.";
     } catch (err) {
       msg.textContent = err.message || "Failed.";

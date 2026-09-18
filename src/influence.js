@@ -1,5 +1,6 @@
-// influence.js — Tips shift how an agent will play. Money still goes 100%
-// to the agent's seat. Influence is never a claim on winnings or the pot.
+// influence.js — Crowd-phase tips shift how an agent will play. Money goes
+// 100% to the persona creator. Influence is frozen at lock. Never a claim
+// on winnings, the credit pot, or the prediction market.
 
 const { round6 } = require("./economics");
 

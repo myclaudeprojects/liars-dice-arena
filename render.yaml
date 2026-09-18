@@ -14,10 +14,12 @@ services:
         value: "0.0.0.0"
       - key: ANTE
         value: "1"
-      - key: MIN_SEAT
-        value: "3"
       - key: START_DELAY_MS
         value: "4000"
+      - key: CROWD_DELAY_MS
+        value: "8000"
+      - key: MARKET_DELAY_MS
+        value: "8000"
       - key: TURN_DELAY_MS
         value: "1600"
       - key: TURN_TIMEOUT_MS
@@ -33,11 +35,13 @@ services:
       - key: REGISTRY_PATH
         value: /var/data/agents.json
       # Set these in the Render dashboard (never commit them):
-      # MOCK=1 for in-memory wallets; HOUSE_PRIVATE_KEY for live Arc (seats + tips)
+      # MOCK=1 for in-memory wallets; HOUSE_PRIVATE_KEY for live Arc (creator tips)
       # USE_LLM, ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY
       # CIRCLE_API_KEY / CIRCLE_ENTITY_SECRET are not sufficient — CircleArcWallet is a stub
       # ARGUS_CREATE_URL — optional operator webhook for agent-token specs
-      # BANKROLL_WEBHOOK_SECRET — optional POST /api/agents/:id/bankroll (token-tax seat top-up)
+      # LDA_FACTORY_ADDRESS / FEE_ROUTER_ADDRESS — factory deploys; router is 50/50 fee recipient
+      # DCM_EMBED_URL / PREDICTION_MARKET_URL / DCM_API_URL — partner WHO WINS; empty = awaiting DCM
+      # BANKROLL_WEBHOOK_SECRET — optional POST /api/agents/:id/bankroll (manual extra, not a tax slice)
       # PUBLIC_BASE_URL — https origin for Argus metadata deep links (no trailing path)
       # AVATAR_DIR defaults to dirname(REGISTRY_PATH)/avatars on the disk
     disk:

@@ -1,12 +1,15 @@
 // lifecycle.js — Phased match architecture.
 //
 // BUILD (agent register) → CROWD (pre-lock influence tips) → LOCK (freeze
-// config, disable tips) → MARKET (partner prediction venue, LDA does not
-// custody bets) → MATCH (Arena Credits, autonomous) → SETTLEMENT (oracle).
+// config, disable tips) → MARKET (native WHO WINS UI; partner DCM lists) →
+// MATCH (Arena Credits) → SETTLEMENT (verifiable oracle for the DCM).
 //
-// LDA never runs a spectator pool and never pays winners from losers.
+// LDA is not the exchange. The partner DCM owns listing, order book,
+// eligibility/KYC, collateral, execution, clearing, and surveillance.
+// LDA never custodies prediction USDC and never pays winners from losers.
 
 const crypto = require("crypto");
+const { dcmListing } = require("./market");
 
 const PHASES = Object.freeze([
   "idle", "waiting", "crowd", "locked", "market", "playing", "settled", "paused",
@@ -26,9 +29,13 @@ function tipsOpen(phase) {
   return String(phase) === "crowd";
 }
 
-function marketOpen(phase) {
+function bookVisible(phase) {
   const p = String(phase);
   return p === "locked" || p === "market" || p === "playing" || p === "settled";
+}
+
+function marketOpen(phase) {
+  return bookVisible(phase);
 }
 
 function assertTipsOpen(phase) {
@@ -72,57 +79,16 @@ function buildLockedConfig({ tableId, matchNo, seats, lockedAt = Date.now() }) {
     publish: {
       kind: "hash",
       status: "signed_local",
-      note: "TODO(chain): optionally publish this hash on Arc. Partners should treat lockedConfigHash as the official freeze.",
+      note: "TODO(chain): optionally publish this hash on Arc. The DCM should treat lockedConfigHash as the official freeze.",
     },
     tipsOpen: false,
     entitlesWinnings: false,
+    unit: "credits",
   };
 }
 
-const VENUES = Object.freeze({
-  placeholder: { id: "placeholder", label: "Partner venue", url: null },
-  polymarket: { id: "polymarket", label: "Polymarket US", url: "https://polymarket.com" },
-  kalshi: { id: "kalshi", label: "Kalshi", url: "https://kalshi.com" },
-});
-
-function resolveVenue(id) {
-  const k = String(id || "placeholder").toLowerCase();
-  return VENUES[k] || VENUES.placeholder;
-}
-
-function marketListing({ matchId, tableId, matchNo, seats, venueId, listedUrl = null }) {
-  const venue = resolveVenue(venueId);
-  const listed = !!(listedUrl || process.env.PREDICTION_MARKET_URL);
-  const url = listedUrl || process.env.PREDICTION_MARKET_URL || null;
-  const contracts = (seats || []).map((s) => ({
-    kind: "yesno",
-    agentId: s.id,
-    name: s.name,
-    question: `Will ${s.name} win Match #${matchNo}?`,
-    settlement: "$1 YES/NO on the partner venue",
-    url: url || null,
-  }));
-  return {
-    matchId, tableId, matchNo,
-    venue: venue.id,
-    venueLabel: venue.label,
-    status: listed ? "listed" : "awaiting_partner_listing",
-    custody: false,
-    ldaDoesNotCustodyBets: true,
-    ldaPaysWinnersFromLosers: false,
-    message: listed
-      ? "Predictions settle on the partner venue. LDA does not hold USDC bets."
-      : "Awaiting partner listing",
-    contracts,
-    whoWins: {
-      kind: "who_wins",
-      question: `Who wins Match #${matchNo} at ${tableId}?`,
-      agents: (seats || []).map((s) => ({ agentId: s.id, name: s.name })),
-      url: url || null,
-    },
-    url,
-    deepLinkOnly: true,
-  };
+function marketListing(opts) {
+  return dcmListing(opts);
 }
 
 class OracleBook {
@@ -142,7 +108,10 @@ class OracleBook {
         settledAt: null, aborted: false, seed: null,
         unit: "credits",
         custody: false,
+        firstParty: false,
+        ldaIsTheExchange: false,
         ldaPaysWinnersFromLosers: false,
+        tokenHoldersDoNotEarn: true,
         oracleVersion: 1,
       });
     }
@@ -205,11 +174,15 @@ class OracleBook {
       winnerAgentId: row.winnerAgentId,
       winnerName: row.winnerName,
       settledAt: row.settledAt,
+      timestamp: row.settledAt || row.lockedAt || null,
       aborted: !!row.aborted,
       seed: row.seed,
       unit: "credits",
       custody: false,
+      firstParty: false,
+      ldaIsTheExchange: false,
       ldaPaysWinnersFromLosers: false,
+      tokenHoldersDoNotEarn: true,
       market: row.market || null,
       oracleVersion: 1,
     };
@@ -217,8 +190,8 @@ class OracleBook {
 }
 
 module.exports = {
-  PHASES, VENUES,
-  matchIdFor, parseMatchId, tipsOpen, marketOpen, assertTipsOpen,
-  canonicalSeats, hashPayload, buildLockedConfig, resolveVenue, marketListing,
+  PHASES,
+  matchIdFor, parseMatchId, tipsOpen, bookVisible, marketOpen, assertTipsOpen,
+  canonicalSeats, hashPayload, buildLockedConfig, marketListing,
   OracleBook,
 };

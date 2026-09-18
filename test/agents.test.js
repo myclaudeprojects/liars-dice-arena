@@ -1,6 +1,6 @@
 const { LLMAgent, MockAgent, parseAction, safeFallback } = require("../src/agents");
 const { personaTag } = require("../src/llm");
-const { makeWallet } = require("../src/wallet");
+const { CreditBook } = require("../src/credits");
 const { runMatch } = require("../src/arena");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
@@ -41,11 +41,10 @@ const fakeComplete = async ({ user }) => {
     new LLMAgent({ id: "b", name: "FakeLLM-B", persona: "y", complete: fakeComplete }),
     new MockAgent({ id: "c", name: "Mock-C", aggression: 0.5 }),
   ];
-  const w = makeWallet({ startingBalance: 20 });
-  for (const ag of agents) ag.walletInfo = await w.createSeatWallet(ag.id);
+  const credits = new CreditBook({ persist: false, starting: 20 });
   let fallbacks = 0, illegal = 0, turns = 0;
   const r = await runMatch({
-    agents, wallet: w, ante: 1, seed: 3, onEvent: (e) => {
+    agents, credits, ante: 1, seed: 3, onEvent: (e) => {
       if (e.type === "turn") { turns++; if (/^\(/.test(e.thought)) fallbacks++; }
       if (e.type === "illegal") illegal++;
     },

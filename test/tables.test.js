@@ -10,6 +10,8 @@ const { Registry } = require("../src/registry");
 const { makeWallet } = require("../src/wallet");
 const { MockAgent } = require("../src/agents");
 const { Stats } = require("../src/stats");
+const { CreditBook } = require("../src/credits");
+const { OracleBook } = require("../src/lifecycle");
 const {
   TableManager, communityBusyIds, filterTableSummaries, TABLE_ID_RE,
 } = require("../src/tables");
@@ -20,7 +22,7 @@ function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${a} !== ${
 assert(TABLE_ID_RE.test("t-3") && !TABLE_ID_RE.test("global") && !TABLE_ID_RE.test("t-x"), "table id re");
 
 const filtered = filterTableSummaries([
-  { id: "t-1", phase: "starting", seats: [{ id: "cold-hands", name: "Cold Hands", owner: "alice" }] },
+  { id: "t-1", phase: "crowd", seats: [{ id: "cold-hands", name: "Cold Hands", owner: "alice" }] },
   { id: "t-2", phase: "playing", seats: [{ id: "shark", name: "The Shark", owner: "house" }] },
 ], { agent: "cold-hands" });
 eq(filtered.length, 1, "filter agent");
@@ -43,22 +45,21 @@ const c = reg.register({ name: "Charlie", type: "heuristic", owner: "cara", aggr
 
 (async () => {
   const w = makeWallet({ startingBalance: 80 });
+  const credits = new CreditBook({ persist: false, starting: 1000 });
+  const oracle = new OracleBook();
   const ensureWallet = async (rec) => {
     if (rec.wallet && w.balances?.has(rec.wallet.walletId)) return rec.wallet;
     const wal = await w.createSeatWallet(rec.id);
     reg.setWallet(rec.id, wal);
     return wal;
   };
-  await ensureWallet(reg.get(a.id));
-  await ensureWallet(reg.get(b.id));
-  await ensureWallet(reg.get(c.id));
 
   const mgr = new TableManager({
-    wallet: w, registry: reg, stats: new Stats(),
+    wallet: w, registry: reg, stats: new Stats(), credits, oracle,
     instantiate: (rec) => { const ag = new MockAgent({ id: rec.id, name: rec.name, aggression: rec.aggression ?? 0.5 }); ag.owner = rec.owner; return ag; },
     ensureWallet,
-    ante: 1, minSeat: 3, tableSize: 2, tableCount: 3, liveChain: false,
-    startDelayMs: 5, turnDelayMs: 0, revealDelayMs: 0, dealDelayMs: 0,
+    ante: 1, tableSize: 2, tableCount: 3, liveChain: false,
+    crowdDelayMs: 5, marketDelayMs: 5, turnDelayMs: 0, revealDelayMs: 0, dealDelayMs: 0,
     settlePauseMs: 1, errorPauseMs: 1, waitingMs: 1, staggerMs: 0,
     sleep: async () => {},
     minTip: 0.05,
@@ -74,7 +75,7 @@ const c = reg.register({ name: "Charlie", type: "heuristic", owner: "cara", aggr
   mgr.tables[0].phase = "playing";
   const t2 = await mgr.seatLock.run(() => mgr.buildAgents(mgr.tables[1]));
   mgr.tables[1].seats = t2.map((ag) => ({ id: ag.id, name: ag.name, owner: ag.owner || "house" }));
-  mgr.tables[1].phase = "starting";
+  mgr.tables[1].phase = "crowd";
   const community1 = t1.filter((ag) => ag.owner !== "house").map((ag) => ag.id);
   const community2 = t2.filter((ag) => ag.owner !== "house").map((ag) => ag.id);
   assert(community1.every((id) => !community2.includes(id)), "community exclusive across tables");
@@ -85,22 +86,23 @@ const c = reg.register({ name: "Charlie", type: "heuristic", owner: "cara", aggr
   assert(mgr.findTableFeaturing(community1[0]).id === "t-1", "tip routing to featuring table");
   const st = mgr.tables[0].publicState();
   assert(st.noSpectatorPool === true, "public state flags no pool");
-  eq(st.unit, "USDC", "USDC unit");
-  eq(st.minSeat, 3, "min seat");
+  eq(st.unit, "credits", "credits unit");
+  assert(st.firstPartyMarkets === false && st.ldaIsTheExchange === false, "not the exchange");
+  assert(st.custody === false, "no prediction custody");
   assert(!("bets" in st) && !("multipliers" in st) && !("poolTotal" in st), "no bet fields on table state");
-  assert(t1[0].walletInfo && t1[0].walletInfo.address, "seat wallet on agent");
 
   const phases = [];
   const life = new TableManager({
-    wallet: w, registry: reg, stats: new Stats(),
+    wallet: w, registry: reg, stats: new Stats(), credits, oracle,
     instantiate: (rec) => {
       const ag = new MockAgent({ id: rec.id, name: rec.name, aggression: rec.aggression ?? 0.5 });
       ag.owner = rec.owner;
+      ag.ownerAddress = rec.ownerAddress;
       return ag;
     },
     ensureWallet,
-    ante: 1, minSeat: 3, tableSize: 3, tableCount: 1, liveChain: false,
-    startDelayMs: 1, turnDelayMs: 0, revealDelayMs: 0, dealDelayMs: 0,
+    ante: 1, tableSize: 3, tableCount: 1, liveChain: false,
+    crowdDelayMs: 1, marketDelayMs: 1, turnDelayMs: 0, revealDelayMs: 0, dealDelayMs: 0,
     settlePauseMs: 1, errorPauseMs: 1, waitingMs: 1, staggerMs: 0,
     sleep: async () => {},
     minTip: 0.05,
@@ -109,8 +111,13 @@ const c = reg.register({ name: "Charlie", type: "heuristic", owner: "cara", aggr
   const orig = tLife.broadcast.bind(tLife);
   tLife.broadcast = (ev) => { phases.push(tLife.phase); orig(ev); };
   await tLife.oneMatch();
-  assert(phases.includes("starting") && phases.includes("playing") && phases.includes("settled"), "lifecycle phases");
-  eq(tLife.tipsOpen, undefined, "no crowd-only tip gate");
+  assert(phases.includes("crowd") && phases.includes("locked") && phases.includes("market") && phases.includes("playing") && phases.includes("settled"), "lifecycle phases");
+  assert(tLife.listing && tLife.listing.status === "awaiting_dcm", "DCM stub listing");
+  assert(tLife.listing.custody === false, "listing no custody");
+  assert(tLife.lockedConfig && tLife.lockedConfig.lockedConfigHash, "oracle hash");
+  const row = oracle.get(tLife.matchId);
+  assert(row && row.winnerAgentId, "oracle settled");
+  assert(row.custody === false, "oracle no custody");
 
   console.log("tables ok");
 })().catch((e) => { console.error(e); process.exit(1); });

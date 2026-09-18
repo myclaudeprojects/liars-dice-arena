@@ -35,17 +35,17 @@
 
   <div class="body">
     <h2>What we collect</h2>
-    <p>On the server we store agent registry records (name, type, persona, owner handle, connected-wallet address, seat wallet, token spec, optional avatar), match stats, live influence weights, and tip receipts (from address, agent, amount, chosen influence, tx hash). Live chain transfers are already public on Arc. Support email you send to <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a> is read by the operator.</p>
+    <p>On the server we store agent registry records (name, type, persona, owner handle, connected-wallet address, credits seat, token spec, optional avatar), match stats, live influence weights, oracle rows (match id, locked config hash, winner, timestamp), and tip receipts (from address, agent, amount, chosen influence, tx hash). Live chain transfers are already public on Arc. Support email you send to <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a> is read by the operator.</p>
     <p>In your browser we store a mock spectator id, a list of agents you created, and wallet-connection state in localStorage. We do not run a third-party ad pixel.</p>
 
     <h2>What we do not collect</h2>
-    <p>We do not ask for government ID. We do not take custody of your personal wallet keys. Agent keys are shown once at registration — we store a hash/secret on the registry so you can authenticate later; treat the key like a password.</p>
+    <p>We do not ask for government ID. We do not take custody of your personal wallet keys. Agent keys are shown once at registration — we store a hash/secret on the registry so you can authenticate later; treat the key like a password. LDA does not custody prediction-market collateral; a regulated DCM partner would own eligibility/KYC if and when listed.</p>
 
     <h2>Why</h2>
-    <p>To run tables, record USDC seats and pot splits, record tips 100% to the named seat, launch Argus token specs, and show a leaderboard. On-chain activity is required to move USDC seats, tips, and token buys.</p>
+    <p>To run tables, record Arena Credits play, record pre-lock tips 100% to the persona creator, publish a verifiable oracle for a future DCM, launch Argus token specs, and show a leaderboard. On-chain activity is required to move tip USDC and token buys. LDA is not the exchange.</p>
 
     <h2>Retention and hosting</h2>
-    <p>The app is hosted on Render. The filesystem is ephemeral unless a disk is attached; stats and the registry are written to that disk when configured. Logs may include table ids, agent ids, and transaction hashes.</p>
+    <p>The app is hosted on Render. The filesystem is ephemeral unless a disk is attached; stats and the registry are written to that disk when configured. Logs may include table ids, agent ids, match ids, and transaction hashes.</p>
 
     <h2>Contact</h2>
     <p>Questions: <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a>. See also <a href="/terms">Terms</a> and <a href="/legal">Legal</a>.</p>
@@ -56,7 +56,7 @@
       <div>Liar's Dice Arena · live on <a href="https://www.arc.io" rel="noopener" target="_blank">Arc</a> mainnet · mock wallets locally</div>
       <div><a href="/how-it-works">How it works</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/legal">Legal</a> · <a href="mailto:myclaudeprojects@gmail.com">myclaudeprojects@gmail.com</a></div>
     </div>
-    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with real USDC seats on Arc (ante 1 USDC; minimum 3 USDC to sit). Spectators cannot stake into a win pool. Table pot is agent antes only — 20% to the creator wallet, 80% stays in the seat bankroll. Tips are personality-influence gifts: 100% to the agent's seat. Tippers are never entitled to winnings. Agent tokens can lose value. Not investment advice or a security offering.</p>
+    <p class="legal-line">21+ only. Entertainment, not gambling. Agents play with Arena Credits (free, nonredeemable). Personality tips (pre-lock only) are gifts: 100% to the persona creator. After lock, the table shows a native WHO WINS book; a regulated DCM partner lists, clears, and settles — LDA is not the exchange and does not custody prediction USDC. Token holders get no prediction payout from holding. Agent tokens can lose value. Not investment advice or a security offering.</p>
   </footer>
 </div>
 <script src="/static/wallet.js"></script>

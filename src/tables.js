@@ -1,16 +1,18 @@
-// tables.js — Many parallel matches, each with its own USDC seat pot.
+// tables.js — Many parallel matches.
 //
-// Spectators watch, tip the agent's seat (USDC gift + one influence), and
-// buy agent tokens. There is no spectator wagering pool.
+// BUILD seats → CROWD (tips open) → LOCK (freeze + oracle hash) →
+// MARKET (native WHO WINS UI; partner DCM) → MATCH (Arena Credits) →
+// SETTLEMENT (verifiable oracle). Personality tips are disabled after lock.
+// LDA is not the exchange and does not custody prediction USDC.
 
 const { runMatch } = require("./arena");
-const { HOUSE_FEE_ADDRESS, MIN_SEAT } = require("./economics");
+const { HOUSE_FEE_ADDRESS } = require("./economics");
+const {
+  matchIdFor, tipsOpen, bookVisible, marketOpen,
+  buildLockedConfig, marketListing,
+} = require("./lifecycle");
 
 const TABLE_ID_RE = /^t-\d+$/;
-
-function tableLabels(tableId, matchNo) {
-  return { pot: `pot:${tableId}:${matchNo}` };
-}
 
 function communityBusyIds(tables, exceptTableId) {
   const ids = new Set();
@@ -53,7 +55,11 @@ class Table {
     this.matchNo = 0;
     this.phase = "idle";
     this.seats = [];
-    this.startCloseAt = null;
+    this.matchId = null;
+    this.lockedConfig = null;
+    this.listing = null;
+    this.crowdCloseAt = null;
+    this.marketCloseAt = null;
     this.clients = new Set();
     this.lastError = null;
     this.busyIds = [];
@@ -64,22 +70,32 @@ class Table {
       const snap = this.mgr.influence ? this.mgr.influence.snapshot(s.id) : null;
       return snap ? { ...s, influence: snap } : s;
     });
+    const market = this.listing || null;
     return {
       tableId: this.id,
       serverNow: Date.now(),
       phase: this.phase,
       matchNo: this.matchNo,
+      matchId: this.matchId,
       seats,
       ante: this.mgr.ante,
-      minSeat: this.mgr.minSeat,
-      unit: "USDC",
+      unit: "credits",
       walletKind: this.mgr.wallet.kind,
       live: this.mgr.liveChain,
-      startDelayMs: this.mgr.startDelayMs,
-      startCloseAt: this.startCloseAt,
+      crowdDelayMs: this.mgr.crowdDelayMs,
+      marketDelayMs: this.mgr.marketDelayMs,
+      crowdCloseAt: this.crowdCloseAt,
+      marketCloseAt: this.marketCloseAt,
       tableCount: this.mgr.tables.length,
+      tipsOpen: tipsOpen(this.phase),
+      bookVisible: bookVisible(this.phase),
+      marketOpen: marketOpen(this.phase),
       noSpectatorPool: true,
-      potSplit: { creatorBps: 2000, seatBps: 8000 },
+      firstPartyMarkets: false,
+      ldaIsTheExchange: false,
+      custody: false,
+      lockedConfigHash: this.lockedConfig?.lockedConfigHash || null,
+      market,
     };
   }
 
@@ -88,9 +104,13 @@ class Table {
     return {
       id: this.id,
       matchNo: st.matchNo,
+      matchId: st.matchId,
       phase: st.phase,
       seats: st.seats,
       clients: this.clients.size,
+      tipsOpen: st.tipsOpen,
+      bookVisible: st.bookVisible,
+      ldaIsTheExchange: false,
       error: this.lastError?.message || null,
     };
   }
@@ -132,6 +152,8 @@ class Table {
       this.phase = "waiting";
       this.seats = [];
       this.busyIds = [];
+      this.matchId = null;
+      this.lockedConfig = null;
       this.broadcast({ type: "phase", ...this.publicState() });
       this.mgr.notifyLobby();
       await this.mgr.sleep(this.mgr.waitingMs);
@@ -139,54 +161,98 @@ class Table {
     }
 
     this.matchNo++;
+    this.matchId = matchIdFor(this.id, this.matchNo);
     this.seats = agents.map((a) => ({
       id: a.id, name: a.name, kind: a.kind, owner: a.owner || "house",
       ownerAddress: a.ownerAddress || null,
       personaTag: a.personaTag || null,
       aggression: a.aggression != null ? a.aggression : null,
       creatorAddress: a.creatorWallet?.address || a.ownerAddress || null,
-      fundingAddress: a.walletInfo?.address || null,
       imageUrl: `/api/agents/${encodeURIComponent(a.id)}/avatar`,
     }));
     this.busyIds = this.seats.filter((s) => s.owner && s.owner !== "house").map((s) => s.id);
 
-    this.phase = "starting";
-    this.startCloseAt = Date.now() + this.mgr.startDelayMs;
+    // CROWD — personality tips open; agents not yet locked.
+    this.phase = "crowd";
+    this.crowdCloseAt = Date.now() + this.mgr.crowdDelayMs;
+    this.marketCloseAt = null;
+    this.lockedConfig = null;
+    this.listing = null;
     this.broadcast({ type: "phase", ...this.publicState() });
     this.mgr.notifyLobby();
-    await this.mgr.sleep(this.mgr.startDelayMs);
+    await this.mgr.sleep(this.mgr.crowdDelayMs);
+
+    // LOCK — freeze influence, hash config, publish oracle freeze + DCM listing stub.
+    if (this.mgr.influence) this.mgr.influence.freezeAgents(agents.map((a) => a.id));
+    const cfg = buildLockedConfig({
+      tableId: this.id, matchNo: this.matchNo, seats: this.seats, lockedAt: Date.now(),
+    });
+    this.lockedConfig = cfg;
+    this.phase = "locked";
+    this.crowdCloseAt = null;
+    if (this.mgr.oracle) this.mgr.oracle.recordLock(cfg);
+    this.listing = marketListing({
+      matchId: cfg.matchId, tableId: this.id, matchNo: this.matchNo,
+      seats: cfg.seats, lockedConfigHash: cfg.lockedConfigHash,
+      oracle: this.mgr.oracle ? this.mgr.oracle.get(cfg.matchId) : null,
+    });
+    if (this.mgr.oracle) this.mgr.oracle.recordMarket(cfg.matchId, this.listing);
+    this.broadcast({ type: "lock", ...this.publicState(), lockedConfig: cfg });
+    this.mgr.notifyLobby();
+
+    // MARKET — trading open; tips closed. Short window before the deal.
+    this.phase = "market";
+    this.marketCloseAt = Date.now() + this.mgr.marketDelayMs;
+    this.broadcast({ type: "phase", ...this.publicState() });
+    this.mgr.notifyLobby();
+    await this.mgr.sleep(this.mgr.marketDelayMs);
 
     this.phase = "playing";
-    this.startCloseAt = null;
+    this.marketCloseAt = null;
     this.broadcast({ type: "phase", ...this.publicState() });
     this.mgr.notifyLobby();
 
-    const labels = tableLabels(this.id, this.matchNo);
     const { turnDelayMs, revealDelayMs, dealDelayMs } = this.mgr;
     const result = await runMatch({
-      agents, wallet: this.mgr.wallet, ante: this.mgr.ante, seed: Date.now(),
-      potLabel: labels.pot, influence: this.mgr.influence, freezeInfluence: true,
+      agents, credits: this.mgr.credits, ante: this.mgr.ante, seed: Date.now(),
+      influence: this.mgr.influence, freezeInfluence: true,
       onEvent: async (ev) => {
         this.broadcast(ev);
         if (ev.type === "turn") await this.mgr.sleep(turnDelayMs);
         else if (ev.type === "reveal") await this.mgr.sleep(revealDelayMs);
         else if (ev.type === "hand_start") await this.mgr.sleep(dealDelayMs);
-        else if (ev.type === "ante") await this.mgr.sleep(400);
+        else if (ev.type === "ante") await this.mgr.sleep(200);
       },
     });
 
     if (result.winnerId && !result.aborted) {
       this.mgr.stats.recordMatch({
         matchNo: this.matchNo, seats: this.seats, winnerId: result.winnerId, potTotal: result.potTotal,
-        ante: this.mgr.ante, log: result.log, seed: result.seed, tableId: this.id, unit: "USDC",
+        ante: this.mgr.ante, log: result.log, seed: result.seed, tableId: this.id, unit: "credits",
       });
     }
-    await this.mgr.reviewSeats(agents);
+
+    const oracleRow = this.mgr.oracle
+      ? this.mgr.oracle.settle(this.matchId, {
+        winnerAgentId: result.winnerId || null,
+        winnerName: result.winnerName || null,
+        aborted: !!result.aborted,
+        seed: result.seed,
+      })
+      : null;
+    if (this.listing) {
+      this.listing = { ...this.listing, oracle: oracleRow, settled: true };
+    }
+
+    if (this.mgr.influence) {
+      this.mgr.influence.resetAgents(agents.map((a) => a.id));
+    }
+
     this.phase = "settled";
     this.broadcast({
       type: "match_over", winnerId: result.winnerId || null, winnerName: result.winnerName || null,
-      aborted: !!result.aborted, potTotal: result.potTotal, unit: "USDC",
-      seatShare: result.seatShare, creatorShare: result.creatorShare,
+      aborted: !!result.aborted, potTotal: result.potTotal, unit: "credits",
+      oracle: oracleRow,
       ...this.publicState(),
     });
     this.mgr.notifyLobby();
@@ -200,14 +266,17 @@ class TableManager {
     this.wallet = opts.wallet;
     this.registry = opts.registry;
     this.stats = opts.stats;
+    this.credits = opts.credits;
     this.influence = opts.influence || null;
+    this.oracle = opts.oracle || null;
     this.instantiate = opts.instantiate;
     this.ensureWallet = opts.ensureWallet;
     this.ante = opts.ante;
-    this.minSeat = opts.minSeat ?? MIN_SEAT;
     this.tableSize = opts.tableSize;
     this.liveChain = opts.liveChain;
-    this.startDelayMs = opts.startDelayMs ?? 4000;
+    this.crowdDelayMs = opts.crowdDelayMs ?? opts.startDelayMs ?? 4000;
+    this.marketDelayMs = opts.marketDelayMs ?? 4000;
+    this.startDelayMs = this.crowdDelayMs;
     this.turnDelayMs = opts.turnDelayMs;
     this.revealDelayMs = opts.revealDelayMs;
     this.dealDelayMs = opts.dealDelayMs;
@@ -249,7 +318,9 @@ class TableManager {
 
   featured() {
     return this.tables.find((t) => t.phase === "playing")
-      || this.tables.find((t) => t.phase === "starting")
+      || this.tables.find((t) => t.phase === "market")
+      || this.tables.find((t) => t.phase === "crowd")
+      || this.tables.find((t) => t.phase === "locked")
       || this.tables[0];
   }
 
@@ -261,7 +332,7 @@ class TableManager {
 
   health() {
     return this.tables.map((t) => ({
-      id: t.id, phase: t.phase, matchNo: t.matchNo, clients: t.clients.size,
+      id: t.id, phase: t.phase, matchNo: t.matchNo, matchId: t.matchId, clients: t.clients.size,
       seats: t.seats.map((s) => s.id), error: t.lastError?.message || null,
     }));
   }
@@ -283,18 +354,8 @@ class TableManager {
 
   async buildAgents(table) {
     const excludeIds = communityBusyIds(this.tables, table.id);
-    const funded = new Set();
-    for (const a of this.registry.list()) {
-      if (a.house || a.status !== "active") continue;
-      try {
-        const rec = this.registry.get(a.id);
-        const w = await this.ensureWallet(rec);
-        if ((await this.wallet.getBalance(w.walletId)) >= this.minSeat) funded.add(a.id);
-        else this.registry.sideline(a.id, "below_min_seat");
-      } catch { /* skip unfundable */ }
-    }
     const recs = this.registry.pickSeats(this.tableSize, {
-      eligible: (a) => funded.has(a.id),
+      eligible: () => true,
       excludeIds,
     });
     if (recs.length < 2) {
@@ -314,17 +375,7 @@ class TableManager {
         const aid = rec.id;
         ag.influenceOf = () => book.snapshot(aid);
       }
-      if (rec.house) {
-        ag.walletInfo = await this.wallet.createSeatWallet(`${rec.id}:${table.id}`);
-        if (this.wallet.ensureFunded) {
-          try {
-            const tx = await this.wallet.ensureFunded(ag.walletInfo, this.minSeat);
-            if (tx) table.broadcast({ type: "funded", agentId: rec.id, name: rec.name, tx, explorer: this.wallet.explorerUrl(tx) });
-          } catch (e) { console.error(`could not fund ${rec.id} at ${table.id}:`, e.message); }
-        }
-      } else {
-        ag.walletInfo = await this.ensureWallet(rec);
-      }
+      if (this.credits) this.credits.ensure(rec.id);
       agents.push(ag);
     }
     this.registry.markPlayed(recs.map((r) => r.id));
@@ -332,17 +383,8 @@ class TableManager {
     return agents;
   }
 
-  async reviewSeats(agents) {
-    for (const ag of agents || []) {
-      if (!ag || ag.owner === "house") continue;
-      try {
-        const rec = this.registry.get(ag.id);
-        if (!rec || rec.house || !rec.wallet) continue;
-        const bal = await this.wallet.getBalance(rec.wallet.walletId);
-        if (bal < this.minSeat) this.registry.sideline(ag.id, "below_min_seat");
-        else if (rec.status === "sidelined") this.registry.reactivate(ag.id);
-      } catch { /* leave status as-is */ }
-    }
+  async reviewSeats() {
+    // Credits auto-refill; agents are not sidelined for a USDC seat floor.
   }
 
   findTableFeaturing(agentId, tableId) {
@@ -352,9 +394,6 @@ class TableManager {
   }
 
   async start() {
-    if (this.wallet && !this.houseWallet) {
-      try { this.houseWallet = await this.wallet.createSeatWallet("house"); } catch { /* mock/live */ }
-    }
     this.tables.forEach((t, i) => {
       this.sleep(i * this.staggerMs).then(() => t.cycle()).catch((e) => {
         console.error(`table ${t.id} cycle crashed:`, e);
@@ -365,5 +404,5 @@ class TableManager {
 
 module.exports = {
   Table, TableManager, Mutex, TABLE_ID_RE,
-  tableLabels, communityBusyIds, filterTableSummaries,
+  communityBusyIds, filterTableSummaries,
 };

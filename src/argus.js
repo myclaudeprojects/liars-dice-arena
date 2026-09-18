@@ -13,47 +13,63 @@
 //     creator funds, buyback and burn, holder dividends, and liquidity.
 //   - Launch seeds a Uniswap pool (one-time LP). Liquidity as an *ongoing*
 //     tax slice is a form option — we set it to 0.
-// There is no native “arena / seat bankroll” bucket. That 25% is a second
-// creator recipient (the agent’s funding address). Do not fold it into
-// the liquidity tax bucket.
+// Locked tax: 100% of the post-protocol remainder is Creator. The Argus
+// “creator fee recipient” is the LDA fee-router contract (not a raw EOA).
+// The router automatically splits 50% platform treasury / 50% persona creator.
+// Dividends 0, buyback-and-burn 0, ongoing LP tax 0. No seat-bankroll tax.
 
-const { PUBLIC_BASE_URL } = require("./economics");
+const {
+  PUBLIC_BASE_URL, PLATFORM_TREASURY, FEE_ROUTER_ADDRESS, LDA_FACTORY_ADDRESS,
+  TOKEN_FEE_PLATFORM_BPS, TOKEN_FEE_CREATOR_BPS,
+} = require("./economics");
 const ARGUS_LAUNCH_CONTRACT = "0xa5628a11c412596e1f63b75a2c0284f843c549d6";
 const ARGUS_APP = "https://argus.world/";
 const ARGUS_TOKEN_CREATED_TOPIC = "0x1d8917231579f8ce39407f0d616f36f357b07329b0ce5164d0754ac15145ce0a";
 
 // Intended split of post-protocol-tax proceeds. Must sum to 1.
 const AGENT_TOKEN_ECONOMICS = Object.freeze({
-  creatorFunds: 0.30,             // human owner
-  holderDividends: 0.35,          // USDC dividends to holders
-  arenaSeatBankroll: 0.25,        // extra top-up of the agent's play wallet
-  buybackBurn: 0.10,              // buyback and burn
+  creatorFunds: 1,                // 100% Creator → fee router (not a raw EOA)
+  holderDividends: 0,
+  buybackBurn: 0,
   liquidityOngoing: 0,            // LP is a one-time launch seed, not a tax slice
 });
 
 function assertEconomics(econ = AGENT_TOKEN_ECONOMICS) {
-  const sum = econ.creatorFunds + econ.holderDividends + econ.arenaSeatBankroll
+  if ((econ.arenaSeatBankroll || 0) !== 0) {
+    throw new Error("no arena/seat bankroll tax leg");
+  }
+  if ((econ.platformPrizeTreasury || 0) !== 0) {
+    throw new Error("no prize-treasury tax leg");
+  }
+  const sum = econ.creatorFunds + econ.holderDividends
     + econ.buybackBurn + econ.liquidityOngoing;
   if (Math.abs(sum - 1) > 1e-9) throw new Error(`token economics must sum to 1, got ${sum}`);
+  if (econ.creatorFunds !== 1) throw new Error("ongoing tax must be 100% Creator");
+  if (econ.holderDividends !== 0) throw new Error("dividends must be 0%");
+  if (econ.buybackBurn !== 0) throw new Error("buyback and burn must be 0%");
   if (econ.liquidityOngoing !== 0) throw new Error("liquidity must be launch-seed only (ongoing tax 0)");
-  if (econ.arenaSeatBankroll !== 0.25) throw new Error("25% must remain arena seat bankroll");
   return econ;
 }
 
-// Four Argus form buckets. Arena seat is NOT liquidity; it rides with creator
-// funds and must be split to the seat wallet (splitter or dual recipient).
+// Four Argus form buckets. Closest legal config is 100/0/0/0.
+// If the live form requires a non-zero dividends/burn/LP tax, that is a
+// launch blocker — do not fill those buckets to “make the form submit”.
 function toArgusFormAllocation(econ = AGENT_TOKEN_ECONOMICS) {
   assertEconomics(econ);
-  const creatorBucket = econ.creatorFunds + econ.arenaSeatBankroll; // 0.55
   return {
-    creatorFunds: creatorBucket,
+    creatorFunds: econ.creatorFunds,
     holderDividends: econ.holderDividends,
     buybackBurn: econ.buybackBurn,
     liquidity: econ.liquidityOngoing,
-    creatorSplit: {
-      owner: econ.creatorFunds / creatorBucket,                 // 30/55
-      arenaSeatBankroll: econ.arenaSeatBankroll / creatorBucket, // 25/55
+    creatorFeeRecipient: "fee_router_contract",
+    feeRouter: {
+      kind: "automatic",
+      notRawEoa: true,
+      platformTreasuryBps: TOKEN_FEE_PLATFORM_BPS,
+      personaCreatorBps: TOKEN_FEE_CREATOR_BPS,
     },
+    blockerIfNonZeroRequired:
+      "If Argus UI/API requires a non-zero dividends, buyback, or LP tax bucket, do not allocate. Closest legal config remains 100% Creator → fee router. TODO(argus): confirm zeros are accepted; otherwise this is a launch blocker.",
   };
 }
 
@@ -92,7 +108,7 @@ function agentDeepLink(agentId, { siteOrigin } = {}) {
   };
 }
 
-// Short on-chain copy. Full 30/35/25/10 economics live in How it works.
+// Short on-chain copy. Full 100% Creator → 50/50 router economics live in How it works.
 function tokenDescription(agent, link) {
   const where = link.absolute ? link.url : link.path;
   return `Liar's Dice Arena agent · watch & tip ${where} #LiarsDiceArena`;
@@ -134,15 +150,19 @@ function normalizeAddress(a) {
   return s.toLowerCase();
 }
 
-// Creator / fee recipient is the human's connected wallet — never the
-// agent's seat wallet and never the LDA/dev (house) key.
-function assertCreatorWallet(ownerAddress, { seatAddress, deployerAddress, houseAddress } = {}) {
+// Persona creator is the human's connected wallet — never the seat, never
+// the platform treasury, never the factory/deployment key, never the router.
+function assertCreatorWallet(ownerAddress, { seatAddress, deployerAddress, houseAddress, feeRouterAddress, factoryAddress } = {}) {
   const creator = normalizeAddress(ownerAddress);
   if (!creator) throw new Error("Creator must be your connected wallet (0x address).");
   const seat = normalizeAddress(seatAddress);
-  const house = normalizeAddress(houseAddress) || normalizeAddress(deployerAddress);
+  const treasury = normalizeAddress(houseAddress) || normalizeAddress(PLATFORM_TREASURY);
+  const deployer = normalizeAddress(deployerAddress) || normalizeAddress(factoryAddress);
+  const router = normalizeAddress(feeRouterAddress);
   if (seat && creator === seat) throw new Error("Creator wallet must not be the agent's seat wallet.");
-  if (house && creator === house) throw new Error("Creator wallet cannot be the arena/house wallet. Connect your own wallet.");
+  if (treasury && creator === treasury) throw new Error("Creator wallet cannot be the platform treasury. Connect your own wallet.");
+  if (deployer && creator === deployer) throw new Error("Creator wallet cannot be the factory deployment key.");
+  if (router && creator === router) throw new Error("Creator wallet cannot be the fee router contract.");
   return creator;
 }
 
@@ -171,6 +191,10 @@ function tokenPageUrl(token) {
   return ca ? `${base}/token/${ca}` : `${base}/`;
 }
 
+function tokenTaxLabel() {
+  return "100% Creator → fee router (50% platform treasury / 50% persona creator). Dividends 0%. Buyback and burn 0%. LP launch-seed only. No seat-bankroll tax.";
+}
+
 function buyView(token, { house = false, name, id } = {}) {
   if (house) {
     return {
@@ -193,7 +217,18 @@ function buyView(token, { house = false, name, id } = {}) {
     name: spec.name || name || null,
     symbol: spec.symbol || tokenSymbol(name, id),
     address,
-    creator: spec.recipients?.feeRecipient || spec.recipients?.creator || null,
+    creator: spec.recipients?.personaCreator || spec.recipients?.creator || null,
+    feeRecipient: spec.recipients?.feeRecipient || null,
+    feeRecipientKind: spec.recipients?.feeRecipientKind || "fee_router_contract",
+    feeRecipientIsRawEoa: false,
+    taxLabel: tokenTaxLabel(),
+    feeRouter: spec.feeRouter || {
+      kind: "automatic",
+      split: {
+        platformTreasuryBps: TOKEN_FEE_PLATFORM_BPS,
+        personaCreatorBps: TOKEN_FEE_CREATOR_BPS,
+      },
+    },
     argusUrl: tokenPageUrl(token),
     website: spec.metadata?.website || null,
     description: spec.metadata?.description || null,
@@ -220,35 +255,71 @@ function quoteMockBuy(amountUsdc, { symbol = "AGENT", rate = 1000 } = {}) {
   };
 }
 
-function buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress, siteOrigin } = {}) {
+function buildTokenSpec({
+  agent, seatWallet, ownerAddress, deployerAddress, houseAddress, siteOrigin,
+  feeRouterAddress, factoryAddress,
+} = {}) {
+  const factory = normalizeAddress(factoryAddress)
+    || normalizeAddress(LDA_FACTORY_ADDRESS)
+    || normalizeAddress(deployerAddress);
+  const router = normalizeAddress(feeRouterAddress) || normalizeAddress(FEE_ROUTER_ADDRESS);
+  const treasury = normalizeAddress(houseAddress) || normalizeAddress(PLATFORM_TREASURY);
   const creator = assertCreatorWallet(ownerAddress, {
     seatAddress: seatWallet?.address,
-    deployerAddress,
-    houseAddress,
+    deployerAddress: factory,
+    houseAddress: treasury,
+    feeRouterAddress: router,
+    factoryAddress: factory,
   });
   const econ = assertEconomics(AGENT_TOKEN_ECONOMICS);
   const form = toArgusFormAllocation(econ);
-  const deployer = normalizeAddress(deployerAddress) || normalizeAddress(houseAddress);
   const meta = tokenMetadata(agent, { siteOrigin });
+  const routerPending = !router;
   return {
     name: meta.name,
     symbol: meta.symbol,
     agentId: agent.id,
     metadata: meta,
     economics: { ...econ },
-    // Native Argus buckets (must sum to 100% on the create form).
     argusAllocation: form,
+    wallets: {
+      deploymentKey: factory,
+      platformTreasury: treasury,
+      personaCreator: creator,
+      feeRouter: router,
+    },
     recipients: {
-      creator,                 // 30% creator funds → connected user
-      feeRecipient: creator,   // must never be the LDA/dev wallet
-      seatBankroll: seatWallet?.address || null, // 25% — separate play wallet
-      deployer: deployer && deployer !== creator ? deployer : null,
+      personaCreator: creator,
+      creator, // alias — the human, not the Argus fee field
+      platformTreasury: treasury,
+      feeRecipient: router, // Argus creator-fee field = router contract, not EOA
+      feeRecipientKind: "fee_router_contract",
+      feeRecipientIsRawEoa: false,
+      factory,
+      deployer: factory,
+    },
+    feeRouter: {
+      address: router,
+      pending: routerPending,
+      kind: "automatic",
+      notRawEoa: true,
+      split: {
+        platformTreasuryBps: TOKEN_FEE_PLATFORM_BPS,
+        personaCreatorBps: TOKEN_FEE_CREATOR_BPS,
+      },
+      note: "Router automatically forwards 50% to platform treasury and 50% to the persona creator wallet. No manual accumulate-then-send.",
+    },
+    factory: {
+      kind: "lda_factory",
+      address: factory,
+      deploysOnRegister: true,
+      feeRecipientIsDeploymentKey: false,
     },
     creatorRights: {
-      feeRecipient: creator,
-      // House key may sponsor gas / factory-deploy. If deployer ≠ creator,
-      // set fee recipient (or transfer creator role) to the user in the same flow.
-      transferIfDeployerDiffers: !!(deployer && deployer !== creator),
+      feeRecipient: router,
+      feeRecipientKind: "fee_router_contract",
+      personaCreator: creator,
+      notRawEoa: true,
     },
     liquidity: { kind: "launch_seed_only", ongoingTax: false },
     launch: {
@@ -256,20 +327,18 @@ function buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, hous
       contract: ARGUS_LAUNCH_CONTRACT,
       tokenCreatedTopic: ARGUS_TOKEN_CREATED_TOPIC,
     },
-    // TODO(argus): No public create API/SDK is documented. When Argus ships one,
-    // submit buyTax/sellTax in 1–10% and the allocation above. If the form still
-    // has a single creator wallet, set it to a 30/25 payment splitter
-    // (owner vs seat), NEVER to the liquidity tax bucket.
     todos: [
       "TODO(argus): wallet-connect create on argus.world — no server-side create endpoint published",
-      "TODO(argus): single creator wallet → 30/25 splitter (owner vs agent funding address)",
-      "TODO(argus): if factory deployer is the house key, set fee recipient / transfer creator to ownerAddress in the same flow — never leave creator as LDA/dev",
-      "TODO(argus): confirm buy/sell tax bps against the live create form (cap 10% each)",
+      "TODO(factory): LDA factory deploys each agent token on register — deployment key is never the fee recipient",
+      "TODO(argus): set creator fee recipient to the fee-router CONTRACT, not the persona creator EOA and not the factory/dev key",
+      "TODO(chain): deploy automatic 50/50 fee router (platform treasury / persona creator) and set FEE_ROUTER_ADDRESS",
+      "TODO(argus): map 100% Creator / 0% dividends / 0% buyback / 0% LP tax onto the create form",
+      "TODO(argus): if the form requires a non-zero dividends, burn, or LP tax bucket, that is a launch blocker — closest legal config is still 100% Creator → router; do not fill other buckets",
+      "TODO(argus): confirm buy/sell tax bps against the live create form (cap 10% each) — those taxes still feed the 100% Creator remainder after Argus protocol share",
       "TODO(argus): confirm create-form keys for description/website/social — terms list names, symbols, images, descriptions, and links; map metadata.argusForm, do not invent twitter/telegram endpoints",
       "TODO(argus): set PUBLIC_BASE_URL so metadata.website is an absolute /agent/<id> deep link",
       "TODO(argus): image is our hosted /api/agents/:id/avatar (generated SVG or upload). If the live create form only accepts a file, the operator must GET this URL and attach it — no Argus image/CDN API is documented",
       "TODO(argus): if Argus later hosts images, POST the same bytes; keep the LDA URL so site cards and token art stay in sync",
-      "TODO(argus): 25% arena seat bankroll is an EXTRA top-up of the play wallet when tax is collected — never a substitute for creator deposits",
     ],
   };
 }
@@ -293,8 +362,14 @@ async function postOperatorWebhook(spec, { url, timeoutMs = 8000, fetchImpl = fe
   } finally { clearTimeout(t); }
 }
 
-async function onAgentRegistered({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress, siteOrigin, fetchImpl = fetch } = {}) {
-  const spec = buildTokenSpec({ agent, seatWallet, ownerAddress, deployerAddress, houseAddress, siteOrigin });
+async function onAgentRegistered({
+  agent, seatWallet, ownerAddress, deployerAddress, houseAddress, siteOrigin,
+  feeRouterAddress, factoryAddress, fetchImpl = fetch,
+} = {}) {
+  const spec = buildTokenSpec({
+    agent, seatWallet, ownerAddress, deployerAddress, houseAddress, siteOrigin,
+    feeRouterAddress, factoryAddress,
+  });
   const url = process.env.ARGUS_CREATE_URL || "";
   if (!url) {
     return {
@@ -326,6 +401,7 @@ module.exports = {
   tokenContract,
   tokenPageUrl,
   buyView,
+  tokenTaxLabel,
   quoteMockBuy,
   normalizeAddress,
   assertCreatorWallet,

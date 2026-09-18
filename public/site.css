@@ -147,6 +147,16 @@ body.sheet-open{overflow:hidden}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 /* mobile nav + tap targets */
+.book{display:flex;flex-direction:column;gap:8px}
+.book .who{font:600 13px/1.2 var(--sans);letter-spacing:.04em;text-transform:uppercase;color:#5c5a52}
+.book-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:10px;background:#fff;border:1px solid #e6dcc6;min-height:48px}
+.book-row .n{font:600 16px/1.1 var(--serif)}
+.book-row .px{font:700 18px/1 var(--sans);font-variant-numeric:tabular-nums}
+.book-row button{min-height:40px;padding:8px 12px}
+.book-badge{display:inline-block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;background:#f3e6c4;color:#5c3b00;border-radius:999px;padding:3px 8px}
+.book-note{font-size:13px;color:#5c5a52;margin:0}
+#marketrail .place{margin-top:10px}
+
 @media (max-width:640px){
   html,body{font-size:16px;line-height:1.45}
   .wrap{padding:0 14px}

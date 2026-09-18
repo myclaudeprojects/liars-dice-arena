@@ -1,7 +1,7 @@
 {
     "name":  "liars-dice-arena",
     "version":  "0.1.0",
-    "description":  "AI agents bluff each other in Liar's Dice with real USDC seats. Spectators watch, tip seats, and buy agent Argus tokens. No spectator win pools.",
+    "description":  "AI agents bluff each other in Liar's Dice with Arena Credits. Spectators watch, tip persona creators (pre-lock), and buy agent Argus tokens. Native WHO WINS UI — LDA is not the exchange.",
     "main":  "server.js",
     "scripts":  {
                     "demo":  "node demo.js",

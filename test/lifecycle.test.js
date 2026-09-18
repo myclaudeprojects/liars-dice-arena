@@ -10,7 +10,7 @@ assert(PHASES.includes("crowd") && PHASES.includes("locked") && PHASES.includes(
 eq(matchIdFor("t-1", 12), "lda:t-1:12", "match id");
 eq(parseMatchId("lda:t-2:3").tableId, "t-2", "parse");
 assert(tipsOpen("crowd") && !tipsOpen("locked") && !tipsOpen("market") && !tipsOpen("playing"), "tips only crowd");
-assert(marketOpen("locked") && marketOpen("market") && marketOpen("playing"), "market after lock");
+assert(marketOpen("locked") && marketOpen("market") && marketOpen("playing"), "book after lock");
 let threw = false;
 try { assertTipsOpen("playing"); } catch (e) { threw = /crowd phase/.test(e.message); }
 assert(threw, "assertTipsOpen");
@@ -28,13 +28,24 @@ const cfg2 = buildLockedConfig({ tableId: "t-1", matchNo: 4, seats, lockedAt: 10
 eq(cfg.lockedConfigHash, cfg2.lockedConfigHash, "hash stable");
 assert(hashPayload({ x: 1 }) !== hashPayload({ x: 2 }), "hash changes");
 
-const listing = marketListing({ matchId: cfg.matchId, tableId: "t-1", matchNo: 4, seats: cfg.seats });
-eq(listing.status, "awaiting_partner_listing", "stub listing");
+const listing = marketListing({ matchId: cfg.matchId, tableId: "t-1", matchNo: 4, seats: cfg.seats, lockedConfigHash: cfg.lockedConfigHash });
+eq(listing.status, "awaiting_dcm", "stub listing");
 assert(listing.custody === false && listing.ldaDoesNotCustodyBets === true, "no custody");
+assert(listing.ldaIsTheExchange === false && listing.firstParty === false, "LDA is not the exchange");
 assert(listing.ldaPaysWinnersFromLosers === false, "no lda payout");
+assert(listing.demo === true && listing.tradeCta === "disabled", "demo CTA disabled");
 assert(listing.contracts.length === 2 && /Will Alpha win Match #4/.test(listing.contracts[0].question), "yesno");
 assert(listing.whoWins.agents.length === 2, "who-wins");
-assert(!listing.url, "no url until partner");
+assert(listing.whoWins.pricesSumCents === 100, "demo prices sum 100¢");
+assert(!listing.embed.url, "no url until partner");
+
+const listed = marketListing({
+  matchId: cfg.matchId, tableId: "t-1", matchNo: 4, seats: cfg.seats,
+  embedUrl: "https://dcm.example/embed/m1",
+});
+eq(listed.status, "listed", "partner url lists");
+eq(listed.tradeCta, "partner", "cta partner");
+eq(listed.embed.kind, "iframe", "iframe stub");
 
 const book = new OracleBook();
 book.recordLock(cfg);
@@ -42,9 +53,11 @@ book.recordMarket(cfg.matchId, listing);
 const pending = book.get(cfg.matchId);
 eq(pending.lockedConfigHash, cfg.lockedConfigHash, "oracle hash");
 eq(pending.winnerAgentId, null, "not settled");
+assert(pending.custody === false && pending.ldaIsTheExchange === false, "oracle no custody");
 const settled = book.settle(cfg.matchId, { winnerAgentId: "a", winnerName: "Alpha", settledAt: 2000 });
 eq(settled.winnerAgentId, "a", "winner");
 eq(settled.settledAt, 2000, "timestamp");
+eq(settled.timestamp, 2000, "alias");
 eq(settled.phase, "settled", "settled phase");
 assert(book.list({ tableId: "t-1" }).length === 1, "list");
 

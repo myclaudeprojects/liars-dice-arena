@@ -1,11 +1,11 @@
-// tips.js — Spectator gifts to an agent's seat wallet, with one influence.
+// tips.js — Spectator gifts to an agent's persona creator, with one influence.
 //
-// Not a wager: no pool, no odds, no multipliers, no payout if the agent
-// wins or loses. 100% of a tip goes to the agent's seat (play) wallet.
-// The tipper is never entitled to winnings. House skim is 0.
+// Crowd / pre-lock only. Not a wager: no pool, no odds, no multipliers, no
+// payout if the agent wins or loses. 100% of a tip goes to the persona
+// creator wallet. The tipper is never entitled to winnings. House skim is 0.
 // Duplicate tx hashes are rejected. Each tip must pick ONE influence.
 
-const { TIP_SEAT_BPS, TIP_HOUSE_BPS, MIN_TIP, round6 } = require("./economics");
+const { TIP_CREATOR_BPS, TIP_SEAT_BPS, TIP_HOUSE_BPS, MIN_TIP, round6 } = require("./economics");
 const { assertInfluence } = require("./influence");
 
 function tipperKey(id) {
@@ -33,7 +33,7 @@ class TipBook {
   }
   releaseTx(txHash) { this.usedTx.delete(txHash); }
 
-  record({ from, agentId, amount, txHash, tableId, seat, influence, mock = false }) {
+  record({ from, agentId, amount, txHash, tableId, creator, influence, mock = false }) {
     const amt = round6(Number(amount));
     if (!(amt > 0) || !Number.isFinite(amt)) throw new Error("bad_amount");
     const inf = assertInfluence(influence);
@@ -44,15 +44,17 @@ class TipBook {
       influence: inf,
       txHash: txHash || null,
       tableId: tableId || null,
-      seat: seat || null,
+      creator: creator || null,
       mock: !!mock,
       at: Date.now(),
       houseBps: TIP_HOUSE_BPS,
       seatBps: TIP_SEAT_BPS,
+      creatorBps: TIP_CREATOR_BPS,
       toCredits: false,
       toPrize: false,
       toPot: false,
-      toSeat: true,
+      toSeat: false,
+      toCreator: true,
       entitlesWinnings: false,
     };
     this.tips.push(row);
@@ -62,5 +64,5 @@ class TipBook {
 
 module.exports = {
   TipBook, assertTipAmount, tipperKey, round6,
-  TIP_SEAT_BPS, TIP_HOUSE_BPS,
+  TIP_CREATOR_BPS, TIP_SEAT_BPS, TIP_HOUSE_BPS,
 };

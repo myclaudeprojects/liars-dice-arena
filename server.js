@@ -1,7 +1,9 @@
 // server.js — Live arena. Serves the spectator UI, streams every event over
-// SSE, and runs many parallel tables (start delay → USDC match → settlement).
-// Spectators watch, tip agent seats (USDC gifts), and buy agent tokens.
-// Agents play with real USDC seats. There is no spectator wagering pool.
+// SSE, and runs many parallel tables (crowd → lock → market → credits match).
+// Spectators tip persona creators (pre-lock only). After lock the table shows
+// a native WHO WINS book; a regulated DCM partner would list and settle.
+// LDA is not the exchange and refuses first-party prediction custody.
+// Agents play Arena Credits. Spectators may buy agent tokens.
 //   node server.js            (mock agents + mock wallet, zero keys)
 //   USE_LLM=1 node server.js  (real models via ANTHROPIC_API_KEY / OPENAI_API_KEY)
 
@@ -21,8 +23,13 @@ const argus = require("./src/argus");
 const avatar = require("./src/avatar");
 const { resolvePublicFile, shouldReleaseTxClaim, timingSafeEqualString } = require("./src/httputil");
 const { TableManager, TABLE_ID_RE } = require("./src/tables");
+const { CreditBook } = require("./src/credits");
+const { OracleBook, assertTipsOpen, tipsOpen } = require("./src/lifecycle");
+const { refuseCustodyTrade, CUSTODY_REFUSAL } = require("./src/market");
 const econ = require("./src/economics");
 const stats = new Stats();
+const credits = new CreditBook();
+const oracle = new OracleBook();
 const TABLE_SIZE = Math.max(2, Math.min(4, Math.round(Number(process.env.TABLE_SIZE) || econ.DEFAULT_TABLE_SIZE)));
 const TABLE_COUNT = Math.max(1, Math.min(24, Math.round(Number(process.env.TABLE_COUNT) || econ.DEFAULT_TABLE_COUNT)));
 const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "1" || !process.env.RENDER });
@@ -35,8 +42,9 @@ const TURN_TIMEOUT_MS = envNum("TURN_TIMEOUT_MS", 6000);
 const REVEAL_DELAY_MS = envNum("REVEAL_DELAY_MS", 3000);
 const DEAL_DELAY_MS = envNum("DEAL_DELAY_MS", 1000);
 const START_DELAY_MS = envNum("START_DELAY_MS", 4000);
-const ANTE = envNum("ANTE", econ.DEFAULT_ANTE);
-const MIN_SEAT = envNum("MIN_SEAT", econ.MIN_SEAT);
+const CROWD_DELAY_MS = envNum("CROWD_DELAY_MS", START_DELAY_MS);
+const MARKET_DELAY_MS = envNum("MARKET_DELAY_MS", 4000);
+const ANTE = envNum("ANTE", econ.DEFAULT_ANTE_CREDITS);
 const MIN_TIP = envNum("MIN_TIP", envNum("MIN_STAKE", econ.MIN_TIP));
 
 const wallet = makeWallet(process.env.MOCK === "1" ? { startingBalance: 100 } : process.env.HOUSE_PRIVATE_KEY ? {
@@ -108,25 +116,25 @@ function instantiate(rec) {
 }
 
 const tables = new TableManager({
-  wallet, registry, stats, influence, instantiate, ensureWallet,
-  ante: ANTE, minSeat: MIN_SEAT, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT, liveChain: LIVE_CHAIN,
-  startDelayMs: START_DELAY_MS,
+  wallet, registry, stats, credits, influence, oracle,
+  instantiate, ensureWallet,
+  ante: ANTE, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT, liveChain: LIVE_CHAIN,
+  crowdDelayMs: CROWD_DELAY_MS, marketDelayMs: MARKET_DELAY_MS, startDelayMs: CROWD_DELAY_MS,
   turnDelayMs: TURN_DELAY_MS, revealDelayMs: REVEAL_DELAY_MS,
-  dealDelayMs: DEAL_DELAY_MS, minTip: MIN_TIP, shouldReleaseTxClaim,
-  staggerMs: Math.max(1500, Math.round(START_DELAY_MS / Math.max(1, TABLE_COUNT)) * 4),
+  dealDelayMs: DEAL_DELAY_MS, minTip: MIN_TIP,
+  staggerMs: Math.max(1500, Math.round(CROWD_DELAY_MS / Math.max(1, TABLE_COUNT)) * 4),
 });
 
 function lobbyState() {
   const feat = tables.featured();
   return {
-    ...(feat ? feat.publicState() : { phase: "idle", matchNo: 0, seats: [], startCloseAt: null, unit: "USDC" }),
+    ...(feat ? feat.publicState() : { phase: "idle", matchNo: 0, seats: [], unit: "credits" }),
     tables: tables.list(),
     tableCount: tables.tables.length,
-    ante: ANTE, minSeat: MIN_SEAT, unit: "USDC", minTip: MIN_TIP,
-    walletKind: wallet.kind, live: LIVE_CHAIN, startDelayMs: START_DELAY_MS,
-    noSpectatorPool: true,
-    potSplit: { creatorBps: econ.POT_CREATOR_BPS, seatBps: econ.POT_SEAT_BPS },
-    tipSplit: { seatBps: econ.TIP_SEAT_BPS, houseBps: econ.TIP_HOUSE_BPS },
+    ante: ANTE, unit: "credits", minTip: MIN_TIP,
+    walletKind: wallet.kind, live: LIVE_CHAIN, crowdDelayMs: CROWD_DELAY_MS, marketDelayMs: MARKET_DELAY_MS,
+    noSpectatorPool: true, firstPartyMarkets: false, ldaIsTheExchange: false, custody: false,
+    tipSplit: { creatorBps: econ.TIP_CREATOR_BPS, seatBps: 0, houseBps: 0 },
     influences: influenceList(),
     entitlesWinnings: false,
   };
@@ -137,37 +145,42 @@ function chainView() {
 }
 
 function tipMeta(rec) {
-  const seat = rec?.wallet?.address || null;
+  const creator = rec?.ownerAddress || (rec?.house ? econ.PLATFORM_TREASURY : null);
+  const table = rec ? tables.findTableFeaturing(rec.id) : null;
   return {
     gift: true,
     notABet: true,
     toCredits: false,
     toPrize: false,
     toPot: false,
-    toSeat: true,
+    toSeat: false,
+    toCreator: true,
     entitlesWinnings: false,
     minTip: MIN_TIP,
-    seatBps: econ.TIP_SEAT_BPS,
-    houseBps: econ.TIP_HOUSE_BPS,
-    creatorAddress: rec?.ownerAddress || (rec?.house ? econ.HOUSE_FEE_ADDRESS : null),
-    fundingAddress: seat,
-    seatAddress: seat,
+    creatorBps: econ.TIP_CREATOR_BPS,
+    seatBps: 0,
+    houseBps: 0,
+    creatorAddress: creator,
+    fundingAddress: creator,
+    seatAddress: null,
+    tipsOpen: table ? tipsOpen(table.phase) : true,
+    phase: table ? table.phase : null,
     choices: influenceList(),
     current: influence.snapshot(rec.id),
   };
 }
 
-async function resolveTipDest(rec) {
-  if (rec.house) {
-    const w = await wallet.createSeatWallet("house-tips:" + rec.id);
-    return w;
-  }
-  return ensureWallet(rec);
+function creatorDest(rec) {
+  const address = rec.ownerAddress || (rec.house ? econ.PLATFORM_TREASURY : null);
+  if (!address) throw new Error("This agent has no persona creator wallet to tip.");
+  return { walletId: address, address };
 }
 
 async function placeTip(rec, body = {}) {
   const tableId = body.tableId || null;
-  const dest = await resolveTipDest(rec);
+  const table = tables.findTableFeaturing(rec.id, tableId);
+  if (table) assertTipsOpen(table.phase);
+  const dest = creatorDest(rec);
   const tipperId = String(body.from || body.address || body.tipperId || "spectator").slice(0, 64);
   const claimedAmt = Number(body.amount);
   const inf = assertInfluence(body.influence);
@@ -181,9 +194,9 @@ async function placeTip(rec, body = {}) {
       amount: row.amount, influence: row.influence,
       tx: extra.tx || row.txHash,
       explorer: extra.explorer || (row.txHash ? wallet.explorerUrl(row.txHash) : null),
-      tableId: t.id, gift: true, seat: dest.address,
-      seatBps: econ.TIP_SEAT_BPS, houseBps: econ.TIP_HOUSE_BPS,
-      entitlesWinnings: false,
+      tableId: t.id, gift: true, creator: dest.address,
+      creatorBps: econ.TIP_CREATOR_BPS, houseBps: 0,
+      entitlesWinnings: false, toCreator: true, toSeat: false,
       influenceSnapshot: extra.snap || influence.snapshot(rec.id),
       ...t.publicState(),
     });
@@ -203,23 +216,19 @@ async function placeTip(rec, body = {}) {
       }
       const row = tips.record({
         from: dep.from, agentId: rec.id, amount: amt, txHash: body.txHash,
-        tableId: tableId || null, seat: dest.address, influence: inf, mock: false,
+        tableId: tableId || null, creator: dest.address, influence: inf, mock: false,
       });
       const snap = influence.apply(rec.id, inf, amt);
       stats.recordTip({ from: dep.from, agentId: rec.id, amount: amt });
-      if (dest.walletId && rec.wallet) {
-        const bal = await wallet.getBalance(dest.walletId).catch(() => null);
-        if (bal != null && bal >= MIN_SEAT && rec.status === "sidelined") registry.reactivate(rec.id);
-      }
       broadcastTip(row, { tx: body.txHash, explorer: wallet.explorerUrl(body.txHash), snap });
       return {
         ok: true, gift: true, amount: amt, agentId: rec.id,
         influence: inf, influenceSnapshot: snap,
-        seatAddress: dest.address, tx: body.txHash,
+        creatorAddress: dest.address, tx: body.txHash,
         explorer: wallet.explorerUrl(body.txHash),
-        seatBps: econ.TIP_SEAT_BPS, houseBps: econ.TIP_HOUSE_BPS,
-        entitlesWinnings: false, toCredits: false, toPrize: false, toPot: false, toSeat: true,
-        note: "Gift to the agent's seat wallet. 100% stays in the seat. You are never entitled to winnings.",
+        creatorBps: econ.TIP_CREATOR_BPS, seatBps: 0, houseBps: 0,
+        entitlesWinnings: false, toCredits: false, toPrize: false, toPot: false, toSeat: false, toCreator: true,
+        note: "Gift to the persona creator. 100% of the USDC goes there. You are never entitled to winnings.",
       };
     } catch (e) {
       if (shouldReleaseTxClaim(e)) tips.releaseTx(body.txHash);
@@ -228,26 +237,22 @@ async function placeTip(rec, body = {}) {
   }
 
   const amt = assertTipAmount(claimedAmt, MIN_TIP);
-  if (LIVE_CHAIN) throw new Error("On a live chain, tip from your own wallet (send USDC to the seat address and include txHash).");
+  if (LIVE_CHAIN) throw new Error("On a live chain, tip from your own wallet (send USDC to the creator address and include txHash).");
   if (!spectatorWallets[tipperId]) spectatorWallets[tipperId] = await wallet.createSeatWallet("spectator:" + tipperId);
   const fromW = spectatorWallets[tipperId];
   const tx = await wallet.ante(fromW, dest, amt);
-  const row = tips.record({ from: tipperId, agentId: rec.id, amount: amt, txHash: tx, tableId, seat: dest.address, influence: inf, mock: true });
+  const row = tips.record({ from: tipperId, agentId: rec.id, amount: amt, txHash: tx, tableId, creator: dest.address, influence: inf, mock: true });
   const snap = influence.apply(rec.id, inf, amt);
   stats.recordTip({ from: tipperId, agentId: rec.id, amount: amt });
-  if (dest.walletId) {
-    const seatBal = await wallet.getBalance(dest.walletId).catch(() => null);
-    if (seatBal != null && seatBal >= MIN_SEAT && rec.status === "sidelined") registry.reactivate(rec.id);
-  }
   broadcastTip(row, { tx, explorer: wallet.explorerUrl(tx), snap });
   const bal = await wallet.getBalance(fromW.walletId);
   return {
     ok: true, gift: true, mock: true, amount: amt, agentId: rec.id,
     influence: inf, influenceSnapshot: snap,
-    seatAddress: dest.address, tx, explorer: wallet.explorerUrl(tx),
-    balance: bal, seatBps: econ.TIP_SEAT_BPS, houseBps: econ.TIP_HOUSE_BPS,
-    entitlesWinnings: false, toCredits: false, toPrize: false, toPot: false, toSeat: true,
-    note: "Demo tip: 100% to the agent's seat wallet (mock wallets, not on chain). You are never entitled to winnings.",
+    creatorAddress: dest.address, tx, explorer: wallet.explorerUrl(tx),
+    balance: bal, creatorBps: econ.TIP_CREATOR_BPS, seatBps: 0, houseBps: 0,
+    entitlesWinnings: false, toCredits: false, toPrize: false, toPot: false, toSeat: false, toCreator: true,
+    note: "Demo tip: 100% to the persona creator (mock wallets, not on chain). You are never entitled to winnings.",
   };
 }
 
@@ -319,32 +324,29 @@ async function agentsApi(req, res, urlPath, q) {
       form: st.form || [],
       personaTag: a.personaTag || llm.personaTag(a),
       seatedAt: seated[a.id] || [],
-      unit: "USDC",
+      unit: "credits",
+      credits: credits.balance(a.id),
       buy: argus.buyView(a.token, { house: a.house, name: a.name, id: a.id }),
     };
   };
-  const holdingsOf = async (rec, balance) => ({
-    seatBalance: balance,
-    fundingAddress: rec.wallet?.address || null,
+  const holdingsOf = async (rec) => ({
+    credits: credits.balance(rec.id),
     creatorAddress: rec.ownerAddress || (rec.house ? econ.HOUSE_FEE_ADDRESS : null),
-    minSeat: MIN_SEAT,
     ante: ANTE,
-    unit: "USDC",
+    unit: "credits",
     sidelined: rec.status === "sidelined",
     sidelineReason: rec.sidelineReason || null,
-    bankroll: registry.bankrollSummary(rec),
-    potSplit: { creatorBps: econ.POT_CREATOR_BPS, seatBps: econ.POT_SEAT_BPS },
   });
 
   try {
     if (parts.length === 2 && req.method === "GET") {
       return json(res, 200, {
-        agents: registry.list().map(decorate), ante: ANTE, minSeat: MIN_SEAT, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT,
+        agents: registry.list().map(decorate), ante: ANTE, unit: "credits", tableSize: TABLE_SIZE, tableCount: TABLE_COUNT,
         promptAgentsEnabled: !!llmComplete, allowLocal: registry.allowLocal, walletKind: wallet.kind, live: LIVE_CHAIN,
         economics: argus.AGENT_TOKEN_ECONOMICS,
-        potSplit: { creatorBps: econ.POT_CREATOR_BPS, seatBps: econ.POT_SEAT_BPS },
-        tipSplit: { seatBps: econ.TIP_SEAT_BPS, houseBps: econ.TIP_HOUSE_BPS, houseAddress: econ.HOUSE_FEE_ADDRESS },
-        noSpectatorPool: true,
+        tokenTaxLabel: argus.tokenTaxLabel(),
+        tipSplit: { creatorBps: econ.TIP_CREATOR_BPS, seatBps: 0, houseBps: 0, houseAddress: econ.HOUSE_FEE_ADDRESS },
+        noSpectatorPool: true, firstPartyMarkets: false, ldaIsTheExchange: false, custody: false,
         influences: influenceList(),
         entitlesWinnings: false,
         supportEmail: econ.SUPPORT_EMAIL,
@@ -379,8 +381,10 @@ async function agentsApi(req, res, urlPath, q) {
       try {
         const launched = await argus.onAgentRegistered({
           agent: rec, seatWallet: w, ownerAddress: rec.ownerAddress,
-          deployerAddress: wallet.house?.address || process.env.HOUSE_ADDRESS || null,
-          houseAddress: wallet.house?.address || process.env.HOUSE_ADDRESS || null,
+          factoryAddress: econ.LDA_FACTORY_ADDRESS || null,
+          deployerAddress: econ.LDA_FACTORY_ADDRESS || wallet.house?.address || process.env.HOUSE_ADDRESS || null,
+          houseAddress: econ.PLATFORM_TREASURY,
+          feeRouterAddress: econ.FEE_ROUTER_ADDRESS || null,
           siteOrigin: siteOrigin(),
         });
         token = argus.publicTokenView(launched);
@@ -392,17 +396,17 @@ async function agentsApi(req, res, urlPath, q) {
       tables.notifyLobby();
       const tokenOk = token && token.status && token.status !== "hook_failed" && token.status !== "webhook_failed";
       const launchMsg = wallet.kind === "mock"
-        ? "Demo: token spec stored (30/35/25 seat bankroll/10). No chain call — Argus has no public create API."
+        ? "Demo: token spec stored (100% Creator → fee router 50/50). No chain call — Argus has no public create API."
         : (token?.status === "webhook_posted"
-          ? "Operator webhook accepted the token spec. Creator = your connected wallet."
-          : (token?.message || "Argus has no public create API. Spec is stored; finish launch on argus.world (creator = you)."));
+          ? "Operator webhook accepted the token spec. Creator-fee recipient = fee router (50% platform treasury / 50% persona creator)."
+          : (token?.message || "Argus has no public create API. Spec is stored; finish launch on argus.world (creator-fee recipient = fee router, not your EOA)."));
       return json(res, 201, { ok: true, agent: decorate(registry.publicView(rec)), key: rec.key, fundingAddress: w.address,
         balance: await wallet.getBalance(w.walletId), token, economics: argus.AGENT_TOKEN_ECONOMICS,
         tablesUrl: `/tables?agent=${encodeURIComponent(rec.id)}`,
         agentUrl: `/agent/${encodeURIComponent(rec.id)}`,
         buy: argus.buyView(token, { house: false, name: rec.name, id: rec.id }),
         mock: wallet.kind === "mock", live: LIVE_CHAIN,
-        note: wallet.kind === "mock" ? "Mock wallet auto-funded with 100 USDC for local play." : `Send at least ${MIN_SEAT} USDC on Arc to the funding address to be seated (ante is ${ANTE}; below ${MIN_SEAT} sidelines the agent).`,
+        note: "Agents play Arena Credits (free, nonredeemable). Tips (pre-lock) go 100% to your creator wallet. Token tax is 100% Creator → fee router 50/50.",
         launch: {
           mock: wallet.kind === "mock", live: LIVE_CHAIN,
           status: token?.status || "unknown",
@@ -410,8 +414,8 @@ async function agentsApi(req, res, urlPath, q) {
           message: launchMsg,
           steps: [
             { id: "register", ok: true, label: "Agent registered" },
-            { id: "seat", ok: true, label: wallet.kind === "mock" ? "Demo seat wallet funded" : "Seat wallet created" },
-            { id: "token", ok: tokenOk, status: token?.status || null, label: tokenOk ? "Argus token queued (30/35/25 seat/10, creator = you)" : "Token hook failed — spec still saved" },
+            { id: "seat", ok: true, label: "Arena Credits seat (free, nonredeemable)" },
+            { id: "token", ok: tokenOk, status: token?.status || null, label: tokenOk ? "Argus token queued (100% Creator → fee router 50/50)" : "Token hook failed — spec still saved" },
           ],
         },
         imageWarning,
@@ -431,13 +435,10 @@ async function agentsApi(req, res, urlPath, q) {
     }
 
     if (parts.length === 3 && req.method === "GET") {
-      const w = rec.wallet ? await wallet.getBalance(rec.wallet.walletId).catch(() => null) : (rec.house ? null : null);
-      const seatW = rec.house ? null : (rec.wallet ? rec.wallet : null);
-      const bal = seatW ? await wallet.getBalance(seatW.walletId).catch(() => null) : w;
       return json(res, 200, {
         ok: true, agent: decorate(registry.publicView(rec)),
-        balance: bal,
-        holdings: await holdingsOf(rec, bal),
+        balance: credits.balance(rec.id),
+        holdings: await holdingsOf(rec),
         tables: tables.featuring(rec.id),
         buy: argus.buyView(rec.token, { house: rec.house, name: rec.name, id: rec.id }),
         tip: tipMeta(rec),
@@ -446,9 +447,8 @@ async function agentsApi(req, res, urlPath, q) {
         live: LIVE_CHAIN,
         mockPurchases: LIVE_CHAIN ? undefined : (mockTokenBuys[rec.id] || []),
         economics: argus.AGENT_TOKEN_ECONOMICS,
-        potSplit: { creatorBps: econ.POT_CREATOR_BPS, seatBps: econ.POT_SEAT_BPS },
-        tipSplit: { seatBps: econ.TIP_SEAT_BPS, houseBps: econ.TIP_HOUSE_BPS },
-        noSpectatorPool: true,
+        tipSplit: { creatorBps: econ.TIP_CREATOR_BPS, seatBps: 0, houseBps: 0 },
+        noSpectatorPool: true, firstPartyMarkets: false, ldaIsTheExchange: false,
       });
     }
 
@@ -497,13 +497,13 @@ async function agentsApi(req, res, urlPath, q) {
       } else if (wallet.kind === "mock" && seat && wallet.credit) {
         await wallet.credit(seat, amt);
       }
-      const entry = registry.recordBankrollTopUp(rec.id, { amount: amt, txHash: body.txHash || null, source: body.source || "token_tax" });
+      const entry = registry.recordBankrollTopUp(rec.id, { amount: amt, txHash: body.txHash || null, source: body.source || "operator" });
       const bal = seat ? await wallet.getBalance(seat.walletId).catch(() => null) : null;
-      if (bal != null && bal >= MIN_SEAT && rec.status === "sidelined") registry.reactivate(rec.id);
+      if (rec.status === "sidelined") registry.reactivate(rec.id);
       return json(res, 200, {
         ok: true, extra: true, entry, balance: bal,
         status: registry.get(rec.id).status,
-        note: "Token-tax 25% bankroll is an extra seat top-up — it does not replace creator funding.",
+        note: "Operator extra top-up — not a token-tax slice and not prediction-market custody.",
       });
     }
 
@@ -573,16 +573,30 @@ const server = http.createServer(async (req, res) => {
   }
   if (url === "/api/config" && req.method === "GET") {
     return json(res, 200, {
-      ante: ANTE, minSeat: MIN_SEAT, unit: "USDC", minTip: MIN_TIP, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT,
+      ante: ANTE, unit: "credits", minTip: MIN_TIP, tableSize: TABLE_SIZE, tableCount: TABLE_COUNT,
       walletKind: wallet.kind, live: LIVE_CHAIN,
       publicBaseUrl: siteOrigin(), supportEmail: econ.SUPPORT_EMAIL,
       houseFeeAddress: econ.HOUSE_FEE_ADDRESS,
-      potSplit: { creatorBps: econ.POT_CREATOR_BPS, seatBps: econ.POT_SEAT_BPS },
-      tipSplit: { seatBps: econ.TIP_SEAT_BPS, houseBps: econ.TIP_HOUSE_BPS },
+      platformTreasury: econ.PLATFORM_TREASURY,
+      ldaFactoryAddress: econ.LDA_FACTORY_ADDRESS,
+      feeRouterAddress: econ.FEE_ROUTER_ADDRESS,
+      tipSplit: { creatorBps: econ.TIP_CREATOR_BPS, seatBps: 0, houseBps: 0 },
       tokenTax: argus.AGENT_TOKEN_ECONOMICS,
+      tokenFeeSplit: {
+        platformTreasuryBps: econ.TOKEN_FEE_PLATFORM_BPS,
+        personaCreatorBps: econ.TOKEN_FEE_CREATOR_BPS,
+        feeRecipientKind: "fee_router_contract",
+      },
+      tokenTaxLabel: argus.tokenTaxLabel(),
       turnTimeoutMs: TURN_TIMEOUT_MS,
       startDelayMs: START_DELAY_MS,
+      crowdDelayMs: CROWD_DELAY_MS,
+      marketDelayMs: MARKET_DELAY_MS,
       noSpectatorPool: true,
+      firstPartyMarkets: false,
+      ldaIsTheExchange: false,
+      custody: false,
+      dcm: { status: process.env.DCM_EMBED_URL || process.env.PREDICTION_MARKET_URL ? "listed" : "awaiting_dcm" },
       influences: influenceList(),
       entitlesWinnings: false,
       chainId: wallet.chainId || null,
@@ -607,9 +621,9 @@ const server = http.createServer(async (req, res) => {
   if (url === "/api/tables" && req.method === "GET") {
     return json(res, 200, {
       tables: tables.list({ agent: q.get("agent"), owner: q.get("owner"), q: q.get("q") }),
-      tableCount: tables.tables.length, tableSize: TABLE_SIZE, ante: ANTE, minSeat: MIN_SEAT, unit: "USDC",
-      walletKind: wallet.kind, live: LIVE_CHAIN, startDelayMs: START_DELAY_MS,
-      noSpectatorPool: true, potSplit: { creatorBps: econ.POT_CREATOR_BPS, seatBps: econ.POT_SEAT_BPS },
+      tableCount: tables.tables.length, tableSize: TABLE_SIZE, ante: ANTE, unit: "credits",
+      walletKind: wallet.kind, live: LIVE_CHAIN, startDelayMs: START_DELAY_MS, crowdDelayMs: CROWD_DELAY_MS,
+      noSpectatorPool: true, firstPartyMarkets: false, ldaIsTheExchange: false, custody: false,
     });
   }
 
@@ -622,7 +636,27 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, table: table.summary(), state: table.publicState() });
     }
     if (action === "events" && req.method === "GET") return table.subscribe(req, res);
+    if (action === "market" && req.method === "GET") {
+      return json(res, 200, {
+        ok: true,
+        market: table.listing || table.publicState().market,
+        oracle: table.matchId ? oracle.get(table.matchId) : null,
+        ldaIsTheExchange: false,
+        custody: false,
+      });
+    }
+    if (action === "market" && (tableParts[4] === "buy" || tableParts[4] === "sell" || tableParts[4] === "redeem") && req.method === "POST") {
+      try { refuseCustodyTrade(); } catch (e) {
+        return json(res, 409, { ok: false, error: e.message, code: e.code || "dcm_required", ldaIsTheExchange: false });
+      }
+    }
     return json(res, 404, { ok: false, error: "Unknown table endpoint." });
+  }
+
+  if (tableParts[0] === "api" && tableParts[1] === "oracle" && tableParts[2] && req.method === "GET") {
+    const row = oracle.get(decodeURIComponent(tableParts[2]));
+    if (!row) return json(res, 404, { ok: false, error: "No such match oracle." });
+    return json(res, 200, { ok: true, oracle: row });
   }
 
   if (url === "/events") {
@@ -647,7 +681,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Liar's Dice Arena → http://${HOST}:${PORT}   (wallet: ${wallet.kind}, live: ${LIVE_CHAIN}, tables: ${TABLE_COUNT}×${TABLE_SIZE}, ante: ${ANTE} USDC, min seat: ${MIN_SEAT} USDC, start delay: ${START_DELAY_MS}ms, turn delay: ${TURN_DELAY_MS}ms, turn timeout: ${TURN_TIMEOUT_MS}ms)`);
+  console.log(`Liar's Dice Arena → http://${HOST}:${PORT}   (wallet: ${wallet.kind}, live: ${LIVE_CHAIN}, tables: ${TABLE_COUNT}×${TABLE_SIZE}, ante: ${ANTE} credits, crowd delay: ${CROWD_DELAY_MS}ms, turn delay: ${TURN_DELAY_MS}ms, turn timeout: ${TURN_TIMEOUT_MS}ms)`);
   if (wallet.kind === "circle") {
     console.warn("CircleArcWallet is a stub (TODO(circle) on every money call). Set HOUSE_PRIVATE_KEY for live Arc, or MOCK=1 for local play.");
     if (/TESTNET/i.test(wallet.blockchain || "")) {

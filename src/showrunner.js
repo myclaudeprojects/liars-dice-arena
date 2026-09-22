@@ -11,6 +11,7 @@ const { safeFallback } = require("./agents");
 const { CAST, character, makePlayer, pairSchedule } = require("./characters");
 const { SimMarket, pricesFromRecords, pricesFromDice, DEFAULT_STAKE } = require("./simmarket");
 const { classifyPace, bidAside, revealHeadline, matchStory, shareCard } = require("./narrative");
+const { ShowStore } = require("./showstore");
 
 function resultHash({ matchId, winnerId, seed, log }) {
   const events = (log || []).map((e) => ({
@@ -94,6 +95,15 @@ class Records {
     if (r.bids >= 8 && r.bigBids / r.bids >= 0.34) return "big claims";
     if (r.challenges >= 6 && r.correctCalls / r.challenges >= 0.55) return "calling thin bids";
     return null;
+  }
+  static load(raw, ids) {
+    const records = new Records(ids);
+    if (!raw) return records;
+    for (const id of ids) {
+      if (!raw[id]) continue;
+      records.agents[id] = { ...emptyRecord(id), ...raw[id], id };
+    }
+    return records;
   }
 }
 
@@ -195,7 +205,9 @@ async function playExhibit({ agents, seed, onEvent = async () => {}, sleep = asy
 
 class Show {
   constructor(opts = {}) {
-    this.market = opts.market || new SimMarket();
+    this.store = opts.dataPath ? new ShowStore(opts.dataPath) : null;
+    this._hydrating = false;
+    this.market = opts.market || new SimMarket({ onChange: () => this.persist() });
     this.records = new Records(CAST.map((c) => c.id));
     this.sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.pickWindowMs = opts.pickWindowMs ?? 14000;
@@ -210,12 +222,103 @@ class Show {
     this.seq = 0;
     this.phase = "starting";
     this.current = null;
+    this.upcoming = [];
     this.history = [];
+    this._interrupted = null;
     this.clients = new Set();
     this.running = false;
     this.ready = false;
     this.bootstrapDone = false;
     this._playing = null;
+    if (this.store) this.hydrate(this.store.load());
+  }
+
+  persist() {
+    if (!this.store || this._hydrating) return;
+    const keep = new Set();
+    if (this.current) keep.add(this.current.matchId);
+    for (const u of this.upcoming) keep.add(u.matchId);
+    const book = this.market.exportState();
+    book.markets = book.markets.filter((m) => m.status !== "settled" || keep.has(m.matchId));
+    this.store.save({
+      v: 1,
+      seq: this.seq,
+      pairIdx: this.pairIdx,
+      bootstrapDone: this.bootstrapDone,
+      records: this.records.agents,
+      history: this.history,
+      market: book,
+      current: this.slimCard(this.current),
+      upcoming: this.upcoming.map((m) => this.slimCard(m)),
+      interrupted: this._interrupted || null,
+      cashValue: 0,
+      custody: false,
+      realMoney: false,
+    });
+  }
+
+  slimCard(m) {
+    if (!m) return null;
+    return {
+      matchId: m.matchId,
+      phase: m.phase,
+      round: m.round || 0,
+      seed: m.seed,
+      seats: (m.seats || []).map((s) => ({ id: s.id, name: s.name })),
+      prior: m.prior || null,
+    };
+  }
+
+  cardFromSaved(raw, phase) {
+    if (!raw || !raw.matchId) return null;
+    const market = this.market.markets.get(raw.matchId);
+    if (!market) return null;
+    const seats = (raw.seats || []).map((s) => {
+      const c = character(s.id);
+      return { id: c.id, name: c.name, dice: 5, alive: true };
+    });
+    if (seats.length < 2) return null;
+    return {
+      matchId: raw.matchId,
+      phase,
+      round: 0,
+      seed: raw.seed,
+      seats,
+      bid: null,
+      narrative: { line: phase === "upcoming" ? "Up next." : "Who's got this?", aside: null, headline: null, pace: "normal" },
+      reveal: null,
+      market,
+      story: null,
+      share: null,
+      oracle: null,
+      prior: raw.prior || { ...market.price },
+    };
+  }
+
+  hydrate(data) {
+    if (!data) return;
+    this._hydrating = true;
+    try {
+      this.seq = data.seq || 0;
+      this.pairIdx = data.pairIdx || 0;
+      this.bootstrapDone = !!data.bootstrapDone;
+      this.history = Array.isArray(data.history) ? data.history : [];
+      this.records = Records.load(data.records, CAST.map((c) => c.id));
+      this.market.importState(data.market || {});
+      this.upcoming = (data.upcoming || []).map((raw) => this.cardFromSaved(raw, "upcoming")).filter(Boolean);
+      this.current = null;
+      this._interrupted = null;
+      if (data.current && data.current.phase === "pick") {
+        this.current = this.cardFromSaved(data.current, "pick");
+        if (this.current) this.phase = "pick";
+      } else if (data.current && data.current.phase === "live") {
+        this._interrupted = data.current;
+      } else if (data.interrupted) {
+        this._interrupted = data.interrupted;
+      }
+    } finally {
+      this._hydrating = false;
+    }
   }
 
   snapshot(predictorId) {
@@ -233,6 +336,8 @@ class Show {
       fresh: CAST.filter((c) => this.records.get(c.id).played === 0).map((c) => ({ id: c.id, name: c.name, archetype: c.archetype })),
       yourReads: this.readsFor(predictorId),
       you: this.youView(predictorId),
+      upcoming: this.upcoming.map((m) => this.upcomingCard(m, predictorId)),
+      watching: this.clients.size,
       partner: {
         status: "not_contracted",
         realMoney: false,
@@ -352,31 +457,50 @@ class Show {
     });
     res.write(`data: ${JSON.stringify({ type: "state", ...this.snapshot() })}\n\n`);
     this.clients.add(res);
-    req.on("close", () => this.clients.delete(res));
+    this.emitState();
+    req.on("close", () => {
+      this.clients.delete(res);
+      this.emitState();
+    });
+  }
+
+  busyIds() {
+    const ids = new Set();
+    const take = (m) => { if (m) for (const s of m.seats || []) ids.add(s.id); };
+    take(this.current);
+    for (const u of this.upcoming) take(u);
+    return ids;
   }
 
   nextPair() {
-    const debut = CAST.find((c) => this.records.get(c.id).played === 0);
+    const busy = this.busyIds();
+    const free = (id) => id && !busy.has(id);
+    const debut = CAST.find((c) => this.records.get(c.id).played === 0 && free(c.id));
     if (debut && this.bootstrapDone) {
-      const foe = CAST.find((c) => c.id !== debut.id);
-      return [debut.id, foe.id];
+      const foe = CAST.find((c) => free(c.id) && c.id !== debut.id);
+      if (foe) return [debut.id, foe.id];
     }
-    const hot = CAST.map((c) => this.records.get(c.id)).filter((r) => r.streak >= 3)
+    const hot = CAST.map((c) => this.records.get(c.id)).filter((r) => r.streak >= 3 && free(r.id))
       .sort((a, b) => b.streak - a.streak)[0];
     if (hot) {
       const rivals = Object.entries(hot.rivals).sort((a, b) => b[1].meetings - a[1].meetings);
-      const foe = rivals.length ? rivals[0][0] : CAST.find((c) => c.id !== hot.id).id;
+      const foe = (rivals.find(([id]) => free(id)) || [])[0]
+        || (CAST.find((c) => free(c.id) && c.id !== hot.id) || {}).id;
       if (foe && foe !== hot.id) return [hot.id, foe];
     }
+    for (let i = 0; i < this.schedule.length; i++) {
+      const pair = this.schedule[this.pairIdx % this.schedule.length];
+      this.pairIdx++;
+      if (pair.every((id) => free(id))) return pair;
+    }
+    const rest = CAST.map((c) => c.id).filter(free);
+    if (rest.length >= 2) return [rest[0], rest[1]];
     const pair = this.schedule[this.pairIdx % this.schedule.length];
     this.pairIdx++;
     return pair;
   }
 
-  openNext() {
-    if (this.current && (this.current.phase === "pick" || this.current.phase === "live")) {
-      return this.current;
-    }
+  makeCard(phase) {
     const [a, b] = this.nextPair();
     const seats = [a, b].map((id) => {
       const c = character(id);
@@ -390,14 +514,14 @@ class Show {
       agents: seats.map((s) => ({ id: s.id, name: s.name })),
       prices,
     });
-    this.current = {
+    return {
       matchId,
-      phase: "pick",
+      phase,
       round: 0,
       seed: (Date.now() ^ (this.seq * 997)) >>> 0,
       seats,
       bid: null,
-      narrative: { line: "Who's got this?", aside: null, headline: null, pace: "normal" },
+      narrative: { line: phase === "upcoming" ? "Up next." : "Who's got this?", aside: null, headline: null, pace: "normal" },
       reveal: null,
       market: this.market.requireMarket(matchId),
       story: null,
@@ -405,9 +529,63 @@ class Show {
       oracle: null,
       prior: book.price,
     };
+  }
+
+  ensureUpcoming(n = 1) {
+    const want = Math.max(0, n | 0);
+    while (this.upcoming.length < want) this.upcoming.push(this.makeCard("upcoming"));
+  }
+
+  upcomingCard(m, predictorId) {
+    const book = this.market.publicMarket(m.market, predictorId);
+    return {
+      matchId: m.matchId,
+      phase: "upcoming",
+      seats: m.seats.map((s) => {
+        const c = character(s.id);
+        return {
+          id: s.id, name: c.name, archetype: c.archetype, hue: c.hue,
+          record: this.records.line(s.id),
+        };
+      }),
+      price: book.price,
+      you: book.you || null,
+      cashValue: 0,
+      custody: false,
+    };
+  }
+
+  openNext(opts = {}) {
+    const queue = opts.queue !== false;
+    if (this.current && (this.current.phase === "pick" || this.current.phase === "live")) {
+      if (queue) this.ensureUpcoming(1);
+      this.persist();
+      return this.current;
+    }
+    this.pruneSettled();
+    let card = this.upcoming.shift() || null;
+    if (card) {
+      card.phase = "pick";
+      card.narrative = { line: "Who's got this?", aside: null, headline: null, pace: "normal" };
+      card.round = 0;
+    } else {
+      card = this.makeCard("pick");
+    }
+    this.current = card;
     this.phase = "pick";
+    if (queue) this.ensureUpcoming(1);
+    this.persist();
     this.emitState();
     return this.current;
+  }
+
+  pruneSettled() {
+    const keep = new Set();
+    if (this.current) keep.add(this.current.matchId);
+    for (const u of this.upcoming) keep.add(u.matchId);
+    for (const [id, m] of this.market.markets) {
+      if (m.status === "settled" && !keep.has(id)) this.market.markets.delete(id);
+    }
   }
 
   _syncDice(counts) {
@@ -444,6 +622,7 @@ class Show {
     this.market.lock(m.matchId);
     m.phase = "live";
     this.phase = "live";
+    this.persist();
     m.narrative = { line: "Dice are down.", aside: null, headline: null, pace: "normal" };
     this.emit({ type: "LOCK", matchId: m.matchId });
     this.emitState();
@@ -533,6 +712,7 @@ class Show {
     };
     this.history.unshift(archived);
     if (this.history.length > 40) this.history.length = 40;
+    this.persist();
     this.emit({ type: "SETTLED", matchId: m.matchId, story, oracle: m.oracle, share: m.share });
     this.emitState();
     return archived;
@@ -549,22 +729,61 @@ class Show {
     this.revealDelayMs = 0;
     const count = Math.max(0, n | 0);
     for (let i = 0; i < count; i++) {
-      this.openNext();
+      this.openNext({ queue: false });
       await this.playOpen();
       this.current = null;
     }
     this.sleep = prev.sleep;
     this.turnDelayMs = prev.turn;
     this.revealDelayMs = prev.reveal;
+    this.current = null;
     this.bootstrapDone = true;
+    this.persist();
+  }
+
+  async finishInterrupted(raw) {
+    if (this.history.some((h) => h.matchId === raw.matchId)) return;
+    const market = this.market.markets.get(raw.matchId);
+    if (!market || market.status === "settled") return;
+    const card = this.cardFromSaved(raw, "pick");
+    if (!card) return;
+    this.current = card;
+    this.phase = "pick";
+    const prev = { sleep: this.sleep, turn: this.turnDelayMs, reveal: this.revealDelayMs };
+    this.sleep = async () => {};
+    this.turnDelayMs = 0;
+    this.revealDelayMs = 0;
+    try { await this.playOpen(); }
+    finally {
+      this.sleep = prev.sleep;
+      this.turnDelayMs = prev.turn;
+      this.revealDelayMs = prev.reveal;
+      this.current = null;
+    }
   }
 
   async start() {
     if (this.running) return;
     this.running = true;
-    await this.bootstrap(this.bootstrapCount);
+    if (this._interrupted) {
+      const raw = this._interrupted;
+      this._interrupted = null;
+      await this.finishInterrupted(raw);
+    }
+    if (!this.bootstrapDone) {
+      const need = Math.max(0, this.bootstrapCount - this.history.length);
+      if (need) await this.bootstrap(need);
+      else this.bootstrapDone = true;
+    }
     this.ready = true;
-    this.openNext();
+    if (!this.current || (this.current.phase !== "pick" && this.current.phase !== "live")) {
+      this.current = null;
+      this.openNext();
+    } else {
+      this.ensureUpcoming(1);
+      this.persist();
+      this.emitState();
+    }
     if (!this.loopEnabled) return;
     this.loop().catch((e) => console.error("show loop:", e));
   }

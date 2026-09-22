@@ -1,6 +1,7 @@
 // Boots the Phase 1 server and walks pick → play → settle.
 const { spawn } = require("child_process");
 const http = require("http");
+const os = require("os");
 const path = require("path");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
@@ -41,6 +42,7 @@ function req(method, url, body) {
       SHOW_LOOP: "0",
       SHOW_TEST_HOOK: "1",
       SHOW_BOOTSTRAP: "1",
+      SHOW_DATA_PATH: path.join(os.tmpdir(), `lda-show-http-${process.pid}.json`),
       PICK_WINDOW_MS: "60000",
       TURN_DELAY_MS: "0",
       REVEAL_DELAY_MS: "0",
@@ -75,6 +77,8 @@ function req(method, url, body) {
       throw new Error("show did not open a pick window: " + out.slice(-800));
     }
     assert(snap.cashValue === 0 && snap.custody === false, "not a real-money book");
+    assert(snap.partner && snap.partner.status === "not_contracted" && snap.partner.realMoney === false, "partner not contracted");
+    assert(snap.upcoming && snap.upcoming.length >= 1 && snap.upcoming[0].matchId !== snap.live.matchId, "upcoming slate");
     assert(snap.live.seats.length === 2, "two characters");
     const health = await req("GET", base + "/health");
     assert(health.json && health.json.ok && health.json.mode === "show", "health");

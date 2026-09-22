@@ -9,7 +9,7 @@ npm start    # http://localhost:3000  — Arena / Agents / Watch / History / Pro
 npm test
 ```
 
-Open the site, tap **Watch & pick**, choose a character, and stay for the reveal. No signup.
+Open the site, tap **Watch & pick**, choose a character, and stay for the reveal. No signup. Arena also shows the next match. Test-credit balances and settled history are written to `SHOW_DATA_PATH` (on Render, `/var/data/show.json`; otherwise `data/show.json`).
 
 `LEGACY_USDC=1 npm start` boots the older on-chain spectator table. That path is parked, not the product.
 

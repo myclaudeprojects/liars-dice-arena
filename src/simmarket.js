@@ -1,4 +1,5 @@
-// simmarket.js — Test-credit prediction book for one match at a time.
+// simmarket.js — Test-credit prediction book. One house contract per match.
+// Several matches can be open (live plus upcoming). Still not an order book.
 //
 // Credits have no cash value. LDA is not a real-money exchange.
 // A future regulated partner would list, clear, and settle real-money
@@ -30,10 +31,27 @@ function fail(code) {
 }
 
 class SimMarket {
-  constructor() {
+  constructor(opts = {}) {
     this.predictors = new Map();
     this.markets = new Map();
     this.buysAt = new Map();
+    this.onChange = opts.onChange || (() => {});
+  }
+
+  touch() {
+    try { this.onChange(); } catch { /* store must not break a pick */ }
+  }
+
+  exportState() {
+    return {
+      predictors: [...this.predictors.values()],
+      markets: [...this.markets.values()],
+    };
+  }
+
+  importState(data) {
+    this.predictors = new Map((data?.predictors || []).map((p) => [p.id, p]));
+    this.markets = new Map((data?.markets || []).map((m) => [m.matchId, m]));
   }
 
   openPredictor(id) {
@@ -51,6 +69,7 @@ class SimMarket {
         theories: {},
         createdAt: Date.now(),
       });
+      this.touch();
     }
     return this.publicPredictor(this.predictors.get(pid));
   }
@@ -92,6 +111,7 @@ class SimMarket {
     const p = this.requirePredictor(id);
     const clean = [...new Set((tags || []).filter((t) => THEORY_TAGS.includes(t)))].slice(0, 4);
     p.theories[String(agentId)] = clean;
+    this.touch();
     return this.publicPredictor(p);
   }
 
@@ -166,7 +186,9 @@ class SimMarket {
       contracts,
       at: Date.now(),
     };
+    pos.trail = [n];
     m.positions.push(pos);
+    this.touch();
     return { ok: true, position: this.markOne(m, pos), credits: pred.credits, market: this.publicMarket(m) };
   }
 
@@ -192,6 +214,13 @@ class SimMarket {
     const sum = Object.values(price).reduce((s, n) => s + n, 0);
     if (Math.abs(sum - 1) > 0.021) fail("prices_must_sum_to_1");
     m.price = price;
+    for (const pos of m.positions) {
+      const marked = this.markOne(m, pos);
+      pos.trail = pos.trail || [];
+      const last = pos.trail[pos.trail.length - 1];
+      if (last !== marked.value) pos.trail.push(marked.value);
+      if (pos.trail.length > 32) pos.trail.shift();
+    }
     return this.publicMarket(m);
   }
 

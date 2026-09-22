@@ -17,6 +17,7 @@ const { BettingPool, impliedMultipliers } = require("./src/betting");
 const llm = require("./src/llm");
 const { Stats } = require("./src/stats");
 const { Show } = require("./src/showrunner");
+const { defaultShowPath } = require("./src/showstore");
 const { handleShow } = require("./src/showhttp");
 const stats = new Stats();
 const TABLE_SIZE = Math.max(2, Math.min(4, Math.round(Number(process.env.TABLE_SIZE) || 3)));
@@ -114,6 +115,7 @@ const show = new Show({
   bootstrapCount: envNum("SHOW_BOOTSTRAP", 12),
   loopEnabled: process.env.SHOW_LOOP !== "0",
   testHook: process.env.SHOW_TEST_HOOK === "1",
+  dataPath: defaultShowPath(),
   sleep,
 });
 

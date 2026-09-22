@@ -81,6 +81,21 @@ function renderCredits() {
   creditsEl.textContent = me ? `${Math.round(me.credits)} test` : "—";
 }
 
+function spark(values) {
+  if (!values || values.length < 2) return "";
+  const w = 168;
+  const h = 36;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * w;
+    const y = h - 2 - ((v - min) / span) * (h - 6);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline points="${pts}" /></svg>`;
+}
+
 function arena() {
   const m = live();
   if (!m) return `<p class="fine">The arena is warming up.</p>`;
@@ -90,8 +105,10 @@ function arena() {
   const rival = (snap.rivalries || [])[0];
   const fresh = (snap.fresh || [])[0];
   const reads = snap.yourReads || [];
+  const watching = Number(snap.watching) || 0;
+  const eye = watching > 0 ? ` · ${watching} watching` : "";
   return `
-    <div class="kicker"><span class="dot"></span> ${open ? "Live now" : m.phase === "settled" ? "Final" : "Live now"}</div>
+    <div class="kicker"><span class="dot"></span> ${open ? "Live now" : m.phase === "settled" ? "Final" : "Live now"}${eye}</div>
     <article class="live-card">
       <div class="vs">
         <div class="who">${mark(a.name, a.hue)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
@@ -101,11 +118,50 @@ function arena() {
       <div class="status">${m.phase === "live" ? `Round ${m.round || 1}` : m.phase === "settled" ? esc(m.story && m.story.title || "Settled") : "Picks are open"}</div>
       <button class="cta" type="button" data-go="watch">${open ? "Watch & pick" : m.phase === "settled" ? "See the result" : "Watch"}</button>
     </article>
+    ${upcomingBlock()}
+    ${err ? `<p class="err">${esc(err)}</p>` : ""}
     ${hot ? `<section class="section"><h2>Hot</h2><div class="rowbtn"><b>${esc(hot.text)}</b><div class="fine">Can anyone stop ${esc(hot.name)}?</div></div></section>` : ""}
     ${rival ? `<section class="section"><h2>Rivalries</h2><button class="rowbtn" type="button" data-agent="${esc(rival.a.id)}"><b>${esc(rival.text)}</b><div class="fine">Series ${esc(rival.series)} · ${rival.meetings} meetings</div></button></section>` : ""}
     ${fresh ? `<section class="section"><h2>New</h2><button class="rowbtn" type="button" data-agent="${esc(fresh.id)}"><b>Meet ${esc(fresh.name)}</b><div class="fine">${esc(fresh.archetype)}. First match is this one.</div></button></section>` : ""}
     ${reads.length ? `<section class="section"><h2>Your reads</h2>${reads.map((r) => `<button class="rowbtn" type="button" data-agent="${esc(r.id)}"><b>${esc(r.name)}</b><div class="fine">${r.correct} / ${r.picks} picks right</div></button>`).join("")}</section>` : ""}
     <p class="fine" style="margin-top:18px">Test credits have no cash value. No wallet. The agents play. You pick.</p>`;
+}
+
+function pct(price, id) {
+  const n = price && price[id];
+  if (n == null) return "";
+  return `${Math.round(n * 100)}`;
+}
+
+function upcomingBlock() {
+  const rows = (snap && snap.upcoming) || [];
+  if (!rows.length) return "";
+  return rows.map((u) => {
+    const [a, b] = u.seats;
+    const you = u.you;
+    const picked = you ? `You picked ${esc(seatNameFrom(u, you.agentId))}.` : "Pick ahead. This one is not live yet.";
+    const buttons = you ? "" : `
+      <div class="ahead">
+        <button type="button" data-ahead="${esc(u.matchId)}" data-ahead-agent="${esc(a.id)}">${esc(a.name)} · ${pct(u.price, a.id)}</button>
+        <button type="button" data-ahead="${esc(u.matchId)}" data-ahead-agent="${esc(b.id)}">${esc(b.name)} · ${pct(u.price, b.id)}</button>
+      </div>`;
+    return `
+      <section class="section">
+        <h2>Up next</h2>
+        <div class="upcard">
+          <div class="who">${mark(a.name, a.hue)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
+          <div class="x">VS</div>
+          <div class="who">${mark(b.name, b.hue)}<b>${esc(b.name)}</b><span>${esc(b.record)}</span></div>
+        </div>
+        <p class="fine">${picked}</p>
+        ${buttons}
+      </section>`;
+  }).join("");
+}
+
+function seatNameFrom(card, id) {
+  const s = card && card.seats && card.seats.find((x) => x.id === id);
+  return s ? s.name : id;
 }
 
 function picker() {
@@ -154,6 +210,7 @@ function watchTable() {
       ${n.aside ? `<div class="aside">${esc(n.aside)}</div>` : ""}
       ${m.bid && m.phase === "live" && !n.headline ? `<div class="fine">${esc(m.bid.name || "")} · ${m.bid.count} ${esc(faceWord(m.bid.face))}</div>` : ""}
       ${you}
+      ${spark(pos && pos.trail)}
     </div>`;
 }
 
@@ -295,6 +352,8 @@ view.addEventListener("click", async (e) => {
     } catch (ex) { err = ex.message; render(); }
     return;
   }
+  const ahead = e.target.closest("[data-ahead]");
+  if (ahead) return doAhead(ahead.dataset.ahead, ahead.dataset.aheadAgent);
   const pick = e.target.closest("[data-pick]");
   if (pick) return doPick(pick.dataset.pick);
   const tag = e.target.closest("[data-tag]");
@@ -302,6 +361,22 @@ view.addEventListener("click", async (e) => {
   const share = e.target.closest("[data-share]");
   if (share) return doShare();
 });
+
+async function doAhead(matchId, agentId) {
+  err = "";
+  if (!matchId || !agentId || !me) return;
+  try {
+    await api("/api/show/markets/" + encodeURIComponent(matchId) + "/buy", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ predictorId: me.id, agentId, side: "yes", stake: snap.defaultStake || 50 }),
+    });
+    await poll();
+  } catch (ex) {
+    err = ex.message;
+    render();
+  }
+}
 
 async function doPick(agentId) {
   err = "";

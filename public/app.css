@@ -102,6 +102,18 @@ button { cursor: pointer; }
 }
 .headline.critical { font-size: 42px; }
 .you { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+.spark { display: block; margin: 10px auto 0; }
+.spark polyline { fill: none; stroke: var(--gold); stroke-width: 2; }
+.upcard {
+  display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+}
+.upcard .mark { width: 40px; height: 40px; font-size: 18px; }
+.upcard .who b { font-size: 18px; }
+.ahead { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ahead button {
+  min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg-2);
+}
 .you b { color: var(--ink); }
 .good { color: var(--good); }
 .bad { color: var(--bad); }

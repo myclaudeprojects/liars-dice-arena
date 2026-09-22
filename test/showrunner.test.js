@@ -70,7 +70,9 @@ function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stri
   const book = show.market.requireMarket(marketId);
   eq(book.status, "settled", "book settled");
   eq(book.winnerId, archived.winnerId, "book winner is the match winner");
-  assert(show.snapshot("showfan01").live.market.you, "snapshot carries the position");
+  const settledView = show.snapshot("showfan01");
+  assert(settledView.live.market.you, "snapshot carries the position");
+  assert(settledView.you && settledView.you.credits === pred.credits, "snapshot balance matches the settled book");
   assert(show.snapshot().custody === false && show.snapshot().cashValue === 0, "snapshot is not a real market");
 
   console.log("showrunner ok");

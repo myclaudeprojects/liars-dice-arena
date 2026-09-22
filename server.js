@@ -181,7 +181,9 @@ const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "
 function sendFile(res, file) {
   const full = path.join(PUBLIC, file);
   if (!full.startsWith(PUBLIC) || !fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }
-  res.writeHead(200, { "content-type": MIME[path.extname(full)] || "application/octet-stream", "cache-control": file.endsWith(".html") ? "no-cache" : "public, max-age=3600" });
+  const ext = path.extname(full);
+  const fresh = ext === ".html" || ext === ".js" || ext === ".css";
+  res.writeHead(200, { "content-type": MIME[ext] || "application/octet-stream", "cache-control": fresh ? "no-cache" : "public, max-age=3600" });
   fs.createReadStream(full).pipe(res);
 }
 

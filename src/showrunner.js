@@ -232,12 +232,22 @@ class Show {
       rivalries: this.topRivalries(),
       fresh: CAST.filter((c) => this.records.get(c.id).played === 0).map((c) => ({ id: c.id, name: c.name, archetype: c.archetype })),
       yourReads: this.readsFor(predictorId),
+      you: this.youView(predictorId),
       partner: {
         status: "not_contracted",
         realMoney: false,
         handoff: ["matchId", "participants", "rules", "engineLog", "seed", "resultHash", "winnerId"],
       },
     };
+  }
+
+  youView(predictorId) {
+    if (!predictorId) return null;
+    try {
+      return this.market.publicPredictor(this.market.requirePredictor(predictorId));
+    } catch {
+      return null;
+    }
   }
 
   readsFor(predictorId) {

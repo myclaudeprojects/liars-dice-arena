@@ -20,6 +20,7 @@ let history = [];
 let leaders = [];
 let err = "";
 let flash = null;
+let pollGen = 0;
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -70,6 +71,11 @@ document.querySelector(".tabs").addEventListener("click", (e) => {
 });
 
 function live() { return snap && snap.live; }
+
+function bankroll() {
+  if (snap && snap.you && snap.you.credits != null) return snap.you.credits;
+  return me ? me.credits : 0;
+}
 
 function renderCredits() {
   creditsEl.textContent = me ? `${Math.round(me.credits)} test` : "—";
@@ -164,7 +170,7 @@ function payoff() {
       <p>${esc(story.dek || "")}</p>
       ${pos ? `<p>${won ? `<b class="good">You called it.</b>` : `<b>You missed this one.</b>`} Your pick: <b>${esc(picked)}</b>.</p>` : `<p class="fine">You watched this one without a pick.</p>`}
       ${lesson ? `<p class="fine">${esc(lesson)}</p>` : ""}
-      ${pos ? `<p>Test credits ${money(pos.pnl)} · balance ${Math.round(me.credits)}</p>` : ""}
+      ${pos ? `<p>Test credits ${money(pos.pnl)} · balance ${Math.round(bankroll())}</p>` : ""}
       ${m.share ? `<div class="share">${esc(m.share.text)}</div><button class="ghost" type="button" data-share>Share the call</button>` : ""}
     </div>`;
 }
@@ -301,6 +307,7 @@ async function doPick(agentId) {
   err = "";
   const m = live();
   if (!m) return;
+  pollGen++;
   try {
     const j = await api("/api/show/markets/" + encodeURIComponent(m.matchId) + "/buy", {
       method: "POST",
@@ -308,11 +315,12 @@ async function doPick(agentId) {
       body: JSON.stringify({ predictorId: me.id, agentId, side: "yes", stake: snap.defaultStake || 50 }),
     });
     position = j.position;
-    me.credits = j.credits;
+    me = { ...me, credits: j.credits };
     const seat = m.seats.find((s) => s.id === agentId);
     flash = seat ? seat.name : agentId;
     render();
     setTimeout(() => { flash = null; if (tab === "watch") render(); }, 1800);
+    poll();
   } catch (ex) {
     err = ex.message;
     render();
@@ -356,18 +364,18 @@ async function refreshLists() {
 }
 
 async function poll() {
+  const gen = ++pollGen;
   try {
     const j = await api("/api/show?predictor=" + encodeURIComponent(me.id));
-    if (j.starting) return;
+    if (gen !== pollGen || j.starting) return;
     const prevPhase = snap && snap.live && snap.live.phase;
     const prevId = snap && snap.live && snap.live.matchId;
     snap = j;
-    const p = await api("/api/show/predictors/" + encodeURIComponent(me.id));
-    me = p.predictor;
-    if (p.position && snap.live && p.matchId === snap.live.matchId) position = p.position;
-    else if (j.live && j.live.market && j.live.market.you) position = j.live.market.you;
-    else if (!j.live || j.live.phase === "pick" && (prevPhase !== "pick" || prevId !== j.live.matchId)) position = null;
+    if (j.you) me = j.you;
+    if (j.live && j.live.market && j.live.market.you) position = j.live.market.you;
+    else if (!j.live || (j.live.phase === "pick" && (prevPhase !== "pick" || prevId !== j.live.matchId))) position = null;
     if (tab === "agents" || tab === "history" || tab === "profile") await refreshLists();
+    if (gen !== pollGen) return;
     if (!focusAgent && !focusMatch) render();
     else renderCredits();
   } catch { /* keep last frame */ }

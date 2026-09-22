@@ -1,0 +1,77 @@
+const { Show, playExhibit, resultHash } = require("../src/showrunner");
+const { makePlayer } = require("../src/characters");
+const { matchStory } = require("../src/narrative");
+
+function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
+function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); }
+
+(async () => {
+  const exhibit = await playExhibit({
+    agents: [makePlayer("dracula"), makePlayer("caesar")],
+    seed: 42,
+    sleep: async () => {},
+  });
+  assert(exhibit.winnerId === "dracula" || exhibit.winnerId === "caesar", "someone wins");
+  assert(exhibit.log.some((e) => e.type === "challenge" || e.type === "bid" || e.type === "hand_start"), "engine log");
+  const hash = resultHash({ matchId: "mx", winnerId: exhibit.winnerId, seed: 42, log: exhibit.log });
+  eq(hash, resultHash({ matchId: "mx", winnerId: exhibit.winnerId, seed: 42, log: exhibit.log }), "hash stable");
+  assert(hash !== resultHash({ matchId: "mx", winnerId: exhibit.winnerId, seed: 43, log: exhibit.log }), "seed changes hash");
+
+  const story = matchStory({
+    seats: [{ id: "caesar", name: "Caesar" }, { id: "dracula", name: "Dracula" }],
+    winnerId: "caesar",
+    log: [
+      { type: "hand_start", counts: [{ id: "caesar", dice: 1 }, { id: "dracula", dice: 2 }] },
+      { type: "challenge", challengerId: "caesar", bidderId: "dracula", bidWasTrue: false, bid: { count: 4, face: 6 }, hand: 3 },
+      { type: "match_over", winnerId: "caesar" },
+    ],
+  });
+  assert(/did it|called the bluff|came back/i.test(story.title), "story from the log");
+  assert(story.calledBluff && story.comeback, "comeback call");
+  assert(/bluff/i.test(story.lesson), "lesson from the actual bid");
+
+  const show = new Show({
+    sleep: async () => {},
+    pickWindowMs: 0,
+    turnDelayMs: 0,
+    revealDelayMs: 0,
+    settleHoldMs: 0,
+    bootstrapCount: 2,
+    loopEnabled: false,
+  });
+  await show.bootstrap(2);
+  assert(show.history.length === 2, "bootstrap matches are real");
+  assert(show.history.every((h) => h.oracle && h.oracle.resultHash && h.oracle.resultHash.length === 64), "oracle hash");
+  assert(show.history.every((h) => h.oracle.realMoney === false), "not real money");
+  const played = new Set(show.history.flatMap((h) => h.seats.map((s) => s.id)));
+  assert(!played.has("athena"), "debut held out of the warm-up");
+
+  show.bootstrapDone = true;
+  show.openNext();
+  assert(show.phase === "pick", "picks open");
+  assert(show.current.seats.some((s) => s.id === "athena"), "athena's first match is live");
+  const marketId = show.current.matchId;
+  show.market.openPredictor("showfan01");
+  const before = show.market.requirePredictor("showfan01").credits;
+  const seat = show.current.seats[0];
+  show.market.buy({
+    matchId: marketId, predictorId: "showfan01", agentId: seat.id, side: "yes", stake: 50,
+  });
+  const archived = await show.playOpen();
+  assert(archived.winnerId, "played");
+  assert(archived.oracle.resultHash === resultHash({
+    matchId: archived.matchId, winnerId: archived.winnerId, seed: archived.seed, log: archived.engineLog,
+  }), "settled hash matches the engine log");
+  const pred = show.market.requirePredictor("showfan01");
+  const won = archived.winnerId === seat.id;
+  if (won) assert(pred.credits > before - 50, "winner paid from the result");
+  else assert(pred.credits === before - 50, "loser keeps the loss");
+  assert(pred.picks === 1, "pick counted");
+  const book = show.market.requireMarket(marketId);
+  eq(book.status, "settled", "book settled");
+  eq(book.winnerId, archived.winnerId, "book winner is the match winner");
+  assert(show.snapshot("showfan01").live.market.you, "snapshot carries the position");
+  assert(show.snapshot().custody === false && show.snapshot().cashValue === 0, "snapshot is not a real market");
+
+  console.log("showrunner ok");
+})().catch((e) => { console.error(e); process.exit(1); });

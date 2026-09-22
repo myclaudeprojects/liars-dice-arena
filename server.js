@@ -16,6 +16,8 @@ const { runMatch } = require("./src/arena");
 const { BettingPool, impliedMultipliers } = require("./src/betting");
 const llm = require("./src/llm");
 const { Stats } = require("./src/stats");
+const { Show } = require("./src/showrunner");
+const { handleShow } = require("./src/showhttp");
 const stats = new Stats();
 const TABLE_SIZE = Math.max(2, Math.min(4, Math.round(Number(process.env.TABLE_SIZE) || 3)));
 const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "1" || !process.env.RENDER });
@@ -23,6 +25,8 @@ const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "
 // Env numbers: tolerate "1600ms", " 30000 ", "0.1 USDC" etc.; fall back to the default on garbage.
 function envNum(name, dflt) { const m = String(process.env[name] ?? "").match(/-?\d+(\.\d+)?/); const v = m ? Number(m[0]) : NaN; return Number.isFinite(v) ? v : dflt; }
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || "0.0.0.0";
+const LEGACY_USDC = process.env.LEGACY_USDC === "1";
 const TURN_DELAY_MS = envNum("TURN_DELAY_MS", 1000);
 const REVEAL_DELAY_MS = envNum("REVEAL_DELAY_MS", 3000); // time for the flip sequence to play out
 const DEAL_DELAY_MS = envNum("DEAL_DELAY_MS", 1000);
@@ -100,6 +104,19 @@ async function buildAgents() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Phase 1 spectator sport. Test credits only. The legacy USDC table stays
+// behind LEGACY_USDC=1 and is not the product.
+const show = new Show({
+  pickWindowMs: envNum("PICK_WINDOW_MS", 14000),
+  turnDelayMs: envNum("TURN_DELAY_MS", 900),
+  revealDelayMs: envNum("REVEAL_DELAY_MS", 1400),
+  settleHoldMs: envNum("SETTLE_HOLD_MS", 12000),
+  bootstrapCount: envNum("SHOW_BOOTSTRAP", 12),
+  loopEnabled: process.env.SHOW_LOOP !== "0",
+  testHook: process.env.SHOW_TEST_HOOK === "1",
+  sleep,
+});
+
 let lastError = null;
 async function cycle() {
   if (!houseWallet) houseWallet = await wallet.createSeatWallet("house");
@@ -159,7 +176,7 @@ function publicState() {
 
 // ---- http ---------------------------------------------------------------
 const PUBLIC = path.join(__dirname, "public");
-const PAGES = { "/": "landing.html", "/arena": "index.html", "/leaderboard": "leaderboard.html", "/how-it-works": "how.html", "/agents": "agents.html" };
+const PAGES = { "/": "app.html", "/legacy": "landing.html", "/arena": "index.html", "/leaderboard": "leaderboard.html", "/how-it-works": "how.html", "/agents": "agents.html" };
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".txt": "text/plain" };
 function sendFile(res, file) {
   const full = path.join(PUBLIC, file);
@@ -216,9 +233,25 @@ async function agentsApi(req, res, url) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = req.url.split("?")[0];
+  const u = new URL(req.url, "http://local");
+  const url = u.pathname;
+  if (!LEGACY_USDC && (url === "/api/show" || url.startsWith("/api/show/"))) {
+    return handleShow(req, res, url, u.searchParams, show);
+  }
   if (PAGES[url]) return sendFile(res, PAGES[url]);
-  if (url === "/health") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, phase: state.phase, matchNo: state.matchNo, wallet: wallet.kind, clients: clients.size, house: wallet.houseBalance ? await wallet.houseBalance().catch(() => null) : null, lastError })); }
+  if (url === "/health") {
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({
+      ok: true,
+      mode: LEGACY_USDC ? "legacy-usdc" : "show",
+      phase: LEGACY_USDC ? state.phase : show.phase,
+      matchNo: state.matchNo,
+      showReady: show.ready,
+      wallet: wallet.kind,
+      clients: clients.size,
+      lastError,
+    }));
+  }
   if (url === "/api/leaderboard") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(stats.leaderboard())); }
   if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(publicState())); }
   if (url.startsWith("/static/")) return sendFile(res, url.slice("/static/".length));
@@ -293,9 +326,10 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404, { "content-type": "text/plain" }); res.end("not found");
 });
 
-server.listen(PORT, () => {
-  console.log(`Liar's Dice Arena → http://localhost:${PORT}   (wallet: ${wallet.kind}, ante: ${ANTE}, bet window: ${BET_WINDOW_MS}ms, turn delay: ${TURN_DELAY_MS}ms)`);
-  cycle().catch((e) => { console.error("cycle crashed (unrecoverable):", e); });
+server.listen(PORT, HOST, () => {
+  console.log(`Liar's Dice Arena → http://${HOST}:${PORT}   (${LEGACY_USDC ? "legacy USDC" : "phase 1 show"}, wallet: ${wallet.kind})`);
+  if (LEGACY_USDC) cycle().catch((e) => { console.error("cycle crashed (unrecoverable):", e); });
+  else show.start().catch((e) => { console.error("show crashed:", e); });
   process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
   process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
 });

@@ -1,9 +1,19 @@
 # Liar's Dice Arena
 
-Three AI agents sit at a felt table with hidden dice and bluff each other for a
-pot of real USDC on **Circle's Arc L1**. Spectators watch each agent's reasoning
-stream live and back one of them before the deal; a pari-mutuel pool pays the
-winners' backers on-chain when the match settles.
+AI characters play Liar's Dice. You watch, pick a winner, and see if you were right.
+
+Phase 1 is a mobile spectator sport. It works with **zero wallets, tokens, or real-money markets**. Picks use test credits that have no cash value. LDA records the match and settles those test credits. LDA is not a real-money exchange. A future regulated partner could settle real-money contracts from the match id and result hash. That partner is not wired here.
+
+```bash
+npm start    # http://localhost:3000  — Arena / Agents / Watch / History / Profile
+npm test
+```
+
+Open the site, tap **Watch & pick**, choose a character, and stay for the reveal. No signup.
+
+`LEGACY_USDC=1 npm start` boots the older on-chain spectator table. That path is parked, not the product.
+
+The rest of this file describes that older table.
 
 Why this is new tech rather than another dApp:
 

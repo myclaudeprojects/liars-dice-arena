@@ -1,0 +1,147 @@
+// showhttp.js — JSON + SSE for the Phase 1 spectator app.
+// Test credits only. No wallet routes.
+
+const { ERROR_TEXT, DEFAULT_STAKE, THEORY_TAGS } = require("./simmarket");
+
+function send(res, code, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(code, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-cache",
+    "content-length": Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let n = 0;
+    req.on("data", (c) => {
+      n += c.length;
+      if (n > 20000) { reject(new Error("body_too_large")); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf8");
+      if (!raw) return resolve({});
+      try { resolve(JSON.parse(raw)); }
+      catch { reject(new Error("bad_json")); }
+    });
+    req.on("error", reject);
+  });
+}
+
+function fail(res, e) {
+  const code = e.code || e.message || "error";
+  const status = code === "no_market" || code === "unknown_predictor" ? 404 : 400;
+  send(res, status, { ok: false, error: ERROR_TEXT[code] || code });
+}
+
+async function handleShow(req, res, url, query, show) {
+  if (url !== "/api/show" && !url.startsWith("/api/show/")) return false;
+  const path = url.slice("/api/show".length) || "/";
+  const predictor = query && query.get ? (query.get("predictor") || "") : "";
+  try {
+    if (!show.ready && path !== "/events") {
+      send(res, 200, { ok: true, starting: true, phase: show.phase });
+      return true;
+    }
+    if (req.method === "GET" && path === "/") {
+      send(res, 200, { ok: true, ...show.snapshot(predictor) });
+      return true;
+    }
+    if (req.method === "GET" && path === "/events") {
+      show.subscribe(req, res);
+      return true;
+    }
+    if (req.method === "GET" && path === "/agents") {
+      send(res, 200, { ok: true, agents: show.agentList() });
+      return true;
+    }
+    if (req.method === "GET" && path.startsWith("/agents/")) {
+      const id = decodeURIComponent(path.slice("/agents/".length));
+      send(res, 200, { ok: true, agent: show.agentDetail(id) });
+      return true;
+    }
+    if (req.method === "GET" && path === "/history") {
+      send(res, 200, { ok: true, matches: show.historyList() });
+      return true;
+    }
+    if (req.method === "GET" && path === "/leaderboard") {
+      send(res, 200, { ok: true, leaders: show.market.leaderboard(), unit: "test-credits", cashValue: 0 });
+      return true;
+    }
+    const matchReplay = path.match(/^\/matches\/([^/]+)\/replay$/);
+    if (req.method === "GET" && matchReplay) {
+      const row = show.matchDetail(decodeURIComponent(matchReplay[1]));
+      if (!row) { send(res, 404, { ok: false, error: "No such match." }); return true; }
+      send(res, 200, {
+        ok: true,
+        matchId: row.matchId,
+        oracle: row.oracle || null,
+        events: row.engineLog || [],
+        story: row.story || null,
+        share: row.share || null,
+      });
+      return true;
+    }
+    const matchGet = path.match(/^\/matches\/([^/]+)$/);
+    if (req.method === "GET" && matchGet) {
+      const row = show.matchDetail(decodeURIComponent(matchGet[1]));
+      if (!row) { send(res, 404, { ok: false, error: "No such match." }); return true; }
+      send(res, 200, { ok: true, match: row.engineLog ? row : show.publicMatch(row, predictor) });
+      return true;
+    }
+    if (req.method === "POST" && path === "/predictors") {
+      const body = await readBody(req);
+      const view = show.market.openPredictor(body.id);
+      send(res, 200, { ok: true, predictor: view, defaultStake: DEFAULT_STAKE, cashValue: 0 });
+      return true;
+    }
+    const predGet = path.match(/^\/predictors\/([^/]+)$/);
+    if (req.method === "GET" && predGet) {
+      const view = show.market.publicPredictor(show.market.requirePredictor(decodeURIComponent(predGet[1])));
+      const liveId = show.current && show.current.matchId;
+      send(res, 200, {
+        ok: true,
+        predictor: view,
+        position: liveId ? show.market.positionFor(liveId, view.id) : null,
+        matchId: liveId,
+      });
+      return true;
+    }
+    const theory = path.match(/^\/predictors\/([^/]+)\/theory$/);
+    if (req.method === "POST" && theory) {
+      const body = await readBody(req);
+      const view = show.market.setTheory(decodeURIComponent(theory[1]), body.agentId, body.tags);
+      send(res, 200, { ok: true, predictor: view, tags: THEORY_TAGS });
+      return true;
+    }
+    const buy = path.match(/^\/markets\/([^/]+)\/buy$/);
+    if (req.method === "POST" && buy) {
+      const body = await readBody(req);
+      const result = show.market.buy({
+        matchId: decodeURIComponent(buy[1]),
+        predictorId: body.predictorId,
+        agentId: body.agentId,
+        side: body.side || "yes",
+        stake: body.stake == null ? DEFAULT_STAKE : body.stake,
+        expectedPrice: body.expectedPrice,
+      });
+      send(res, 200, { ...result, cashValue: 0 });
+      return true;
+    }
+    if (show.testHook && req.method === "POST" && path === "/test/play") {
+      const archived = await show.playOpen();
+      send(res, 200, { ok: true, match: archived, snapshot: show.snapshot(predictor) });
+      return true;
+    }
+    send(res, 404, { ok: false, error: "Unknown show route." });
+  } catch (e) {
+    if (!res.headersSent) fail(res, e);
+  }
+  return true;
+}
+
+module.exports = { handleShow };

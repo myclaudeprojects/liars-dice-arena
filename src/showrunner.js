@@ -217,10 +217,11 @@ class Show {
     this.bootstrapCount = opts.bootstrapCount ?? 16;
     this.loopEnabled = opts.loopEnabled !== false;
     this.testHook = !!opts.testHook;
-    // Live now plus two coming-up books uses the whole cast of six once.
-    // A longer board would seat someone twice.
-    this.slateAhead = Math.max(1, opts.slateAhead ?? 2);
-    this.schedule = pairSchedule("athena");
+    // Live now plus four coming-up books. Twelve characters leave two off
+    // the board. A longer request stops when the next pair would sit twice.
+    this.slateAhead = Math.max(1, opts.slateAhead ?? 4);
+    this.debutId = "athena";
+    this.schedule = pairSchedule(this.debutId);
     this.pairIdx = 0;
     this.seq = 0;
     this.phase = "starting";
@@ -479,7 +480,8 @@ class Show {
   nextPair() {
     const busy = this.busyIds();
     const free = (id) => id && !busy.has(id);
-    const debut = CAST.find((c) => this.records.get(c.id).played === 0 && free(c.id));
+    const unplayed = CAST.filter((c) => this.records.get(c.id).played === 0 && free(c.id));
+    const debut = unplayed.find((c) => c.id === this.debutId) || unplayed[0];
     if (debut && this.bootstrapDone) {
       const foe = CAST.find((c) => free(c.id) && c.id !== debut.id);
       if (foe) return [debut.id, foe.id];

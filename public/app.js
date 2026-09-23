@@ -259,7 +259,7 @@ function upcomingBlock() {
       </div>`;
     return `
       <article class="upcard">
-        <div class="fine">${i === 0 ? "Next" : "Later"}</div>
+        <div class="fine">${["Next", "Soon", "Later", "Last"][i] || "After"}</div>
         <div class="vs">
           <div class="who">${mark(a.name, a.hue)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
           <div class="x">VS</div>

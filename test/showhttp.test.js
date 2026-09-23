@@ -78,7 +78,7 @@ function req(method, url, body) {
     }
     assert(snap.cashValue === 0 && snap.custody === false && snap.realMoney === false, "not a real-money book");
     assert(snap.partner && snap.partner.status === "not_contracted" && snap.partner.realMoney === false, "partner not contracted");
-    assert(snap.upcoming && snap.upcoming.length === 2 && snap.upcoming[0].matchId !== snap.live.matchId, "upcoming slate");
+    assert(snap.upcoming && snap.upcoming.length === 4 && snap.upcoming[0].matchId !== snap.live.matchId, "upcoming slate");
     const booked = [...snap.live.seats.map((s) => s.id), ...snap.upcoming.flatMap((u) => u.seats.map((s) => s.id))];
     assert(new Set(booked).size === booked.length, "slate does not double-book");
     assert(snap.live.seats.length === 2, "two characters");

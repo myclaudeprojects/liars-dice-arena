@@ -1,11 +1,23 @@
 const { Show, playExhibit, resultHash } = require("../src/showrunner");
-const { makePlayer } = require("../src/characters");
+const { CAST, makePlayer, pairSchedule } = require("../src/characters");
 const { matchStory } = require("../src/narrative");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); }
 
 (async () => {
+  eq(CAST.length, 12, "twelve characters");
+  const strategies = new Set(CAST.map((c) => `${c.aggression}:${c.chaos}`));
+  eq(strategies.size, CAST.length, "each strategy is distinct");
+  eq(new Set(CAST.map((c) => c.hue)).size, CAST.length, "each hue is distinct");
+  for (const c of CAST) {
+    assert(c.aggression >= 0 && c.aggression <= 1 && c.chaos >= 0 && c.chaos <= 1, "strategy in range " + c.id);
+    assert(c.archetype && c.line && c.strength && c.weakness, "sheet " + c.id);
+  }
+  const warm = new Set(pairSchedule("athena").flat());
+  assert(!warm.has("athena"), "warm-up schedule holds Athena out");
+  assert(CAST.filter((c) => c.id !== "athena").every((c) => warm.has(c.id)), "warm-up schedule covers the rest of the cast");
+
   const exhibit = await playExhibit({
     agents: [makePlayer("dracula"), makePlayer("caesar")],
     seed: 42,
@@ -50,6 +62,13 @@ function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stri
   show.openNext();
   assert(show.phase === "pick", "picks open");
   assert(show.current.seats.some((s) => s.id === "athena"), "athena's first match is live");
+  eq(show.upcoming.length, 4, "four books coming up");
+  const board = [
+    ...show.current.seats.map((s) => s.id),
+    ...show.upcoming.flatMap((u) => u.seats.map((s) => s.id)),
+  ];
+  eq(new Set(board).size, board.length, "live plus four does not double-book");
+  assert(show.upcoming.every((u) => u.seats.every((s) => s.id !== "athena")), "the debut is not also coming up");
   const marketId = show.current.matchId;
   show.market.openPredictor("showfan01");
   const before = show.market.requirePredictor("showfan01").credits;

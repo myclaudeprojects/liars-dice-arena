@@ -85,7 +85,7 @@ function opts(file, extra = {}) {
   await show.start();
   const first = show.snapshot("persist01");
   assert(first.live && first.live.phase === "pick", "boots into live now");
-  assert(first.upcoming && first.upcoming.length === 2, "two matches coming up");
+  assert(first.upcoming && first.upcoming.length === 4, "four matches coming up");
   assert(first.upcoming[0].matchId !== first.live.matchId, "upcoming is a second book");
   const seated = [
     ...first.live.seats.map((s) => s.id),
@@ -155,9 +155,9 @@ function opts(file, extra = {}) {
   assert(!book || book.status === "settled", "resumed book is settled");
 
   const wideFile = path.join(dir, "wide.json");
-  const wide = new Show(opts(wideFile, { slateAhead: 5 }));
+  const wide = new Show(opts(wideFile, { slateAhead: 9 }));
   await wide.start();
-  eq(wide.upcoming.length, 2, "a longer request still stops at two ahead");
+  eq(wide.upcoming.length, 5, "a longer request stops when the cast runs out of free seats");
   const wideIds = [
     ...wide.current.seats.map((s) => s.id),
     ...wide.upcoming.flatMap((u) => u.seats.map((s) => s.id)),
@@ -172,7 +172,7 @@ function opts(file, extra = {}) {
   wide.openNext();
   eq(wide.current.matchId, firstUpcoming, "the queue rotates the first coming-up book into live");
   eq(wide.upcoming[0].matchId, secondId, "the later book keeps its place");
-  eq(wide.upcoming.length, 2, "rotation refills the board");
+  eq(wide.upcoming.length, 5, "rotation refills the board");
   const rotated = [
     ...wide.current.seats.map((s) => s.id),
     ...wide.upcoming.flatMap((u) => u.seats.map((s) => s.id)),
@@ -181,7 +181,7 @@ function opts(file, extra = {}) {
   const kept = wide.market.positionFor(secondId, "slatefan01");
   assert(kept && kept.stake === 30 && !kept.settled, "pick on a later book stays open");
   wide.persist();
-  const wide2 = new Show(opts(wideFile, { slateAhead: 5, bootstrapCount: 30 }));
+  const wide2 = new Show(opts(wideFile, { slateAhead: 9, bootstrapCount: 30 }));
   await wide2.start();
   const kept2 = wide2.market.positionFor(secondId, "slatefan01");
   assert(kept2 && kept2.stake === 30 && !kept2.settled, "later-book pick survived restart");

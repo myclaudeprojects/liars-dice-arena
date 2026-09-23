@@ -469,7 +469,8 @@ function youBlock(m, beats) {
 
 function seatBlock(seat, m, beats) {
   const diceLabel = seat.alive === false ? "out" : `${seat.dice} dice`;
-  return `<div class="${seatClass(seat, m, beats)}">${mark(seat.name, seat.hue)}<b>${esc(seat.name)}</b><span>${diceLabel}</span><div class="dice-row">${diceFor(seat, m, beats)}</div></div>`;
+  const rolling = beats.some((b) => b.type === "roll" || b.type === "start" || b.type === "call");
+  return `<div class="${seatClass(seat, m, beats)}">${mark(seat.name, seat.hue)}<b>${esc(seat.name)}</b><span>${diceLabel}</span><div class="dice-row${rolling ? " shake" : ""}">${diceFor(seat, m, beats)}</div></div>`;
 }
 
 function tableView(m, beats, opts) {

@@ -280,7 +280,9 @@ function applyMotion(prev, live) {
   const ms = beatHold(beats);
   motionState = { sig: motionApi().frameKey(live), until: performance.now() + ms, beats };
   motionTimer = setTimeout(() => {
-    if (focusMatch || focusAgent) return;
+    // A live beat must not rebuild the create wizard. Replacing that HTML
+    // drops the focused field, so the next keystrokes never land.
+    if (focusMatch || focusAgent || creatorSession()) return;
     render();
   }, ms + 40);
 }
@@ -505,7 +507,7 @@ function setTab(next) {
   pinScroll = true;
   if (next === "agents" || next === "history" || next === "profile") {
     refreshLists().then(() => {
-      if (tab !== next || focusAgent || focusMatch) return;
+      if (tab !== next || focusAgent || focusMatch || creatorSession()) return;
       render();
     });
   }
@@ -1363,6 +1365,18 @@ const CREATOR_BEATS = [
   "Checking roster uniqueness...",
 ];
 
+function creatorSession() {
+  return !!(creator && tab === "agents");
+}
+
+function sameArchetypeList(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || (a[i].label || "") !== (b[i].label || "")) return false;
+  }
+  return true;
+}
+
 function stopCreatorBeat() {
   if (creatorBeat) clearInterval(creatorBeat);
   creatorBeat = null;
@@ -1550,9 +1564,10 @@ async function openCreator() {
   try {
     const j = await api("/api/show/agents/brand/options");
     if (!creator) return;
-    if (Array.isArray(j.archetypes) && j.archetypes.length) creator.archetypes = j.archetypes;
-    painted = "";
-    render();
+    if (Array.isArray(j.archetypes) && j.archetypes.length && !sameArchetypeList(creator.archetypes, j.archetypes)) {
+      creator.archetypes = j.archetypes;
+      render();
+    }
   } catch { /* the fallback list still submits */ }
 }
 
@@ -1894,6 +1909,60 @@ function releaseFocus(root) {
   return key;
 }
 
+function syncCreatorFromDom() {
+  if (!creatorSession()) return;
+  const root = matchEl.querySelector(".creator");
+  if (!root) return;
+  root.querySelectorAll("input[name], textarea[name], select[name]").forEach((el) => {
+    if (!Object.prototype.hasOwnProperty.call(creator.form, el.name)) return;
+    if (el.type === "range") creator.form[el.name] = Number(el.value) / 100;
+    else creator.form[el.name] = el.value;
+  });
+}
+
+function holdCreatorDom() {
+  const root = matchEl.querySelector(".creator");
+  if (!root) return null;
+  const details = root.querySelector("details.advanced-config");
+  const active = document.activeElement;
+  const fieldEl = active && root.contains(active) && active.name && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT")
+    ? active
+    : null;
+  let field = null;
+  if (fieldEl) {
+    const text = fieldEl.tagName !== "SELECT" && fieldEl.type !== "range" && typeof fieldEl.selectionStart === "number";
+    field = {
+      name: fieldEl.name,
+      start: text ? fieldEl.selectionStart : null,
+      end: text ? fieldEl.selectionEnd : null,
+      direction: text ? (fieldEl.selectionDirection || "none") : "none",
+      scrollTop: fieldEl.scrollTop || 0,
+    };
+  }
+  return { detailsOpen: !!(details && details.open), field };
+}
+
+function restoreCreatorDom(held) {
+  if (!held) return;
+  const root = matchEl.querySelector(".creator");
+  if (!root) return;
+  if (held.detailsOpen) {
+    const details = root.querySelector("details.advanced-config");
+    if (details) details.open = true;
+  }
+  if (!held.field) return;
+  const el = Array.from(root.querySelectorAll("input[name], textarea[name], select[name]")).find((node) => node.name === held.field.name);
+  if (!el || !el.focus) return;
+  el.focus({ preventScroll: true });
+  if (held.field.scrollTop) el.scrollTop = held.field.scrollTop;
+  if (held.field.start != null && el.setSelectionRange) {
+    const max = String(el.value || "").length;
+    const start = Math.min(held.field.start, max);
+    const end = Math.min(held.field.end == null ? start : held.field.end, max);
+    try { el.setSelectionRange(start, end, held.field.direction || "none"); } catch { /* range inputs have no caret */ }
+  }
+}
+
 function restoreFocus(key) {
   const sel = focusSelector(key);
   if (!sel) return;
@@ -1939,6 +2008,7 @@ function paintSlot(el, html, prev) {
 }
 
 function render() {
+  syncCreatorFromDom();
   frameBeats = activeMotion(live());
   const watching = live();
   if (watching) noteFeed(watching);
@@ -1968,6 +2038,8 @@ function render() {
   }
   const saved = pinScroll ? captureScroll() : null;
   const sheetOpened = !paintedSheet && !!sheetHtml;
+  const repaintMatch = matchHtml !== paintedMatch || !!arriving;
+  const heldCreator = repaintMatch ? holdCreatorDom() : null;
   const focus = [
     matchHtml === paintedMatch ? "" : releaseFocus(matchEl),
     marketHtml === paintedMarket ? "" : releaseFocus(marketEl),
@@ -1977,11 +2049,12 @@ function render() {
   paintedMatch = paintSlot(matchEl, matchHtml, arriving ? "" : paintedMatch);
   paintedMarket = paintSlot(marketEl, marketHtml, arriving ? "" : paintedMarket);
   paintedSheet = paintSlot(sheetEl, sheetHtml, arriving ? "" : paintedSheet);
+  restoreCreatorDom(heldCreator);
   if (saved) restoreScroll(saved);
   if (sheetOpened) {
     const dialog = sheetEl.querySelector("[data-trade-dialog]");
     if (dialog && dialog.focus) dialog.focus({ preventScroll: true });
-  } else restoreFocus(focus);
+  } else if (!heldCreator || !heldCreator.field) restoreFocus(focus);
   announceLine(watching && watching.narrative && watching.narrative.line);
   kickTally();
   paintShareCards();
@@ -2608,7 +2681,7 @@ async function poll() {
   const folded = presence().foldShow(showState, incoming, Date.now());
   const linkChanged = notePresence(folded);
   if (!folded.apply) {
-    if (linkChanged && !focusAgent && !focusMatch) render();
+    if (linkChanged && !focusAgent && !focusMatch && !creatorSession()) render();
     else if (linkChanged) renderCredits();
     return;
   }
@@ -2621,9 +2694,9 @@ async function poll() {
   const prevLive = heardLive;
   hear(j.live);
   applyMotion(prevLive, j.live);
-  if (!(creator && tab === "agents") && (tab === "agents" || tab === "history" || tab === "profile")) await refreshLists();
+  if (!creatorSession() && (tab === "agents" || tab === "history" || tab === "profile")) await refreshLists();
   if (gen !== pollGen) return;
-  if (creator && tab === "agents") {
+  if (creatorSession()) {
     renderCredits();
     return;
   }

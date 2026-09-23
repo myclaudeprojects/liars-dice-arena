@@ -56,6 +56,23 @@ function paceDelay(pace, timings = {}) {
   return turn;
 }
 
+// Move part of an existing bid pause to before the bid is shown.
+// Calls, reveals, and results keep their full hold — the LIAR sequence
+// needs that window. The two slices always add back up to `totalMs`.
+// The floor is long enough for a spectator snapshot to arrive. It is
+// still taken out of the pace clock, not added on top of it.
+function splitHold(totalMs, intensity, kind) {
+  const total = Math.max(0, Math.round(Number(totalMs) || 0));
+  if (kind !== "bid" || total === 0) return { think: 0, rest: total };
+  const level = Math.max(1, Math.min(5, Number(intensity) || 1));
+  const frac = level >= 3 ? 0.45 : level >= 2 ? 0.38 : 0.34;
+  const cap = level >= 3 ? 900 : level >= 2 ? 720 : 560;
+  const floor = Math.min(total, level >= 2 ? 420 : 320);
+  let think = Math.min(total, cap, Math.max(floor, Math.round(total * frac)));
+  if (think >= total) think = total === 1 ? 0 : total - 1;
+  return { think, rest: total - think };
+}
+
 function publicEvent(ev) {
   if (!ev || typeof ev !== "object") return ev;
   const out = { ...ev };
@@ -72,4 +89,4 @@ function publicEvent(ev) {
   return out;
 }
 
-module.exports = { KINDS, kindOf, intensityFor, paceDelay, publicEvent };
+module.exports = { KINDS, kindOf, intensityFor, paceDelay, splitHold, publicEvent };

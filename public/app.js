@@ -27,6 +27,15 @@ let audioCtx = null;
 let motionState = { sig: "", until: 0, beats: [] };
 let motionTimer = 0;
 let frameBeats = [];
+let stageFrame = null;
+let stageState = "LOADING";
+let director = null;
+let directorKey = "";
+let directorMatch = "";
+let directorSig = "";
+let directorRaf = 0;
+let feedMatch = "";
+let feedLines = [];
 let enterView = true;
 let seenSnap = false;
 let painted = "";
@@ -151,6 +160,79 @@ function motionApi() {
     frameKey: () => "",
     replayFrames: () => [],
   };
+}
+
+function presentApi() {
+  return window.ldaPresentation || null;
+}
+
+function noteFeed(m) {
+  if (!m || !m.matchId) return;
+  if (m.matchId !== feedMatch) {
+    feedMatch = m.matchId;
+    feedLines = [];
+  }
+  const line = (m.narrative && m.narrative.line) || "";
+  if (!line || feedLines[0] === line) return;
+  feedLines = [line, ...feedLines].slice(0, 4);
+}
+
+function directorSignature(frame) {
+  if (!frame) return "";
+  return [
+    frame.label,
+    frame.done ? 1 : 0,
+    frame.showLiar ? 1 : 0,
+    frame.showCount ? 1 : 0,
+    frame.showVerdict ? 1 : 0,
+    frame.showResult ? 1 : 0,
+    frame.tumble ? 1 : 0,
+    frame.showThink ? 1 : 0,
+    frame.camera || "",
+  ].join(":");
+}
+
+function startDirectorLoop() {
+  if (directorRaf) cancelAnimationFrame(directorRaf);
+  if (!director) return;
+  const gen = director.generation;
+  const step = () => {
+    if (!director || director.generation !== gen) return;
+    const frame = director.frame();
+    if (!frame) return;
+    const sig = directorSignature(frame);
+    if (sig !== directorSig) {
+      directorSig = sig;
+      if (tab === "watch") render();
+    }
+    if (!frame.done) directorRaf = requestAnimationFrame(step);
+  };
+  directorRaf = requestAnimationFrame(step);
+}
+
+function syncDirector(m, beats) {
+  const api = presentApi();
+  if (!api || !m) return null;
+  if (!director) director = new api.AnimationDirector({ now: () => performance.now(), reduced: reducedMotion() });
+  director.reduced = reducedMotion();
+  if ((m.matchId || "") !== directorMatch) {
+    directorMatch = m.matchId || "";
+    stageState = "LOADING";
+  }
+  const pres = api.presentationOf(m);
+  const cmd = api.commandFor(m, pres);
+  const key = (m.matchId || "") + ":" + api.commandKey(cmd);
+  const move = api.transition(stageState, pres.state, { fastForward: true });
+  const animate = !reducedMotion() && !!(beats && beats.length) && move.ok;
+  if (key !== directorKey) {
+    directorKey = key;
+    director.play(cmd);
+    if (!animate || move.skipped) director.fastForward();
+    directorSig = directorSignature(director.frame());
+    startDirectorLoop();
+  }
+  stageState = pres.state;
+  return director.frame();
 }
 
 function reducedMotion() {
@@ -474,12 +556,15 @@ function seatClass(seat, m, beats) {
   const bid = m.bid;
   const bidder = bidderOf(bid);
   const calling = m.narrative && m.narrative.headline === "LIAR.";
+  const thinkingId = m.thinking && m.thinking.agentId;
   const bidBeat = beats.find((b) => b.type === "bid");
   const loss = beats.find((b) => b.type === "lose-die" && b.id === seat.id);
   let hot = false;
   let marked = false;
   let cool = false;
-  if (calling) {
+  if (thinkingId && !(m.reveal && m.reveal.length)) {
+    hot = seat.id === thinkingId;
+  } else if (calling) {
     hot = seat.id === challengerOf(m);
     marked = seat.id === bidder;
   } else if (bid && seat.id === bidder) hot = true;
@@ -491,11 +576,13 @@ function seatClass(seat, m, beats) {
   return ["who", "seat", hot && "hot", marked && "marked", cool && "cool", out && "out", loss && "hit"].filter(Boolean).join(" ");
 }
 
-function diceFor(seat, m, beats) {
+function diceFor(seat, m, beats, frame) {
   const loss = beats.find((b) => b.type === "lose-die" && b.id === seat.id);
   const reveal = m.reveal && m.reveal.find((r) => r.id === seat.id);
-  const rolling = beats.some((b) => b.type === "roll" || b.type === "start" || b.type === "call");
-  const revealing = beats.some((b) => b.type === "reveal");
+  // The felt owns the faces once the cups are open. Seats keep the count.
+  if (reveal && reveal.dice && reveal.dice.length) return "";
+  const rolling = frame ? !!frame.roll : beats.some((b) => b.type === "roll" || b.type === "start" || b.type === "call");
+  const revealing = frame ? !!frame.tumble : beats.some((b) => b.type === "reveal");
   const face = m.bid && m.bid.face;
   if (reveal && reveal.dice && reveal.dice.length && (seat.alive !== false || loss)) {
     return reveal.dice.map((n, i) => {
@@ -571,39 +658,143 @@ function youBlock(m, beats) {
   return you + spark(pos && pos.trail);
 }
 
-function seatBlock(seat, m, beats) {
+function seatBlock(seat, m, beats, frame) {
   const diceLabel = seat.alive === false ? "out" : `${seat.dice} dice`;
-  const rolling = beats.some((b) => b.type === "roll" || b.type === "start" || b.type === "call");
-  return `<div class="${seatClass(seat, m, beats)}">${mark(seat.name, seat.hue)}<b>${esc(seat.name)}</b><span>${diceLabel}</span><div class="dice-row${rolling ? " shake" : ""}">${diceFor(seat, m, beats)}</div></div>`;
+  const api = presentApi();
+  let react = api ? (api.reactionsOf(m)[seat.id] || "neutral") : "neutral";
+  const earlyReveal = frame && !frame.done && m.reveal && m.reveal.length && !frame.showReaction;
+  if (earlyReveal && m.bid) {
+    const caller = m.bid.callerId;
+    const bidder = m.bid.byId || m.bid.agentId;
+    react = seat.id === caller || seat.id === bidder ? "confident" : "neutral";
+  }
+  const label = api ? (api.REACTION_LABEL[react] || "") : "";
+  const rolling = frame ? !!frame.roll : beats.some((b) => b.type === "roll" || b.type === "start");
+  return `<div class="${seatClass(seat, m, beats)} arena-seat" data-react="${esc(react)}">${mark(seat.name, seat.hue)}<div class="seat-copy"><b>${esc(seat.name)}</b><span>${diceLabel}</span>${label ? `<i class="react">${esc(label)}</i>` : ""}</div><div class="dice-row${rolling ? " shake" : ""}">${diceFor(seat, m, beats, frame)}</div></div>`;
+}
+
+function stageModel(m, beats, frame) {
+  const api = presentApi();
+  const pres = api ? api.presentationOf(m) : { state: m && m.reveal && m.reveal.length ? "ROUND_RESULT" : "BIDDING", intensity: (m && m.narrative && m.narrative.intensity) || 1, actorId: null, focus: "bid" };
+  const cinematic = !!(frame && !frame.done && !reducedMotion());
+  const showLiar = pres.state === "CALL" && (!cinematic || !!frame.showLiar);
+  const showCount = !!(m && m.reveal && m.reveal.length) && (!cinematic || !!frame.showCount);
+  const showVerdict = showCount && (!cinematic || !!frame.showVerdict);
+  const showResult = showVerdict && (!cinematic || !!frame.showResult);
+  const shownState = showResult ? "ROUND_RESULT" : (m && m.reveal && m.reveal.length && cinematic ? "REVEAL" : pres.state);
+  return { api, pres, cinematic, showLiar, showCount, showVerdict, showResult, shownState };
+}
+
+function centerDice(m, beats, frame) {
+  if (!m.reveal || !m.reveal.length) {
+    const rolling = frame ? !!frame.roll : beats.some((b) => b.type === "roll" || b.type === "start");
+    if (!rolling && !(m.phase === "live" && !m.bid)) return "";
+    const total = Math.min(10, (m.seats || []).reduce((sum, seat) => sum + (seat.alive === false ? 0 : (seat.dice || 0)), 0));
+    let html = "";
+    for (let i = 0; i < total; i++) html += `<span class="die back lg${rolling ? " shake" : ""}" style="--d:${i * 40}ms"></span>`;
+    return html ? `<div class="cups" aria-hidden="true">${html}</div>` : "";
+  }
+  const face = m.bid && m.bid.face;
+  const tumbling = frame ? !!frame.tumble : beats.some((b) => b.type === "reveal");
+  const hands = m.reveal.map((hand) => {
+    const dice = (hand.dice || []).map((n, i) => {
+      const wild = !!(face && n === 1 && face !== 1);
+      const match = !!(face && (n === face || wild));
+      const classes = ["lg"];
+      if (tumbling) classes.push("tumble");
+      if (match) classes.push("hit");
+      if (wild) classes.push("wild");
+      return die(n, { cls: classes.join(" "), style: `--d:${i * 70}ms` });
+    }).join("");
+    const seat = (m.seats || []).find((s) => s.id === hand.id);
+    const name = seat ? seat.name : (hand.name || "");
+    return `<div class="hand"><span class="hand-name">${esc(name)}</span>${dice}</div>`;
+  }).join("");
+  return `<div class="cups">${hands}</div>`;
 }
 
 function tableView(m, beats, opts) {
   if (!m || !m.seats || m.seats.length < 2) return `<p class="fine">No match yet.</p>`;
+  const frame = opts && Object.prototype.hasOwnProperty.call(opts, "frame") ? opts.frame : stageFrame;
   const [a, b] = m.seats;
   const n = m.narrative || {};
   const showYou = !opts || opts.you !== false;
-  const sting = beats.some((b) => b.type === "reveal" || b.type === "call" || b.type === "settle");
-  const emph = n.pace === "critical" || n.pace === "call" || n.pace === "reveal" || n.pace === "result";
-  const headCls = ["headline", emph ? "critical" : "", sting && n.headline ? "stinger" : ""].filter(Boolean).join(" ");
-  const head = n.headline ? `<div class="${headCls}">${esc(n.headline)}</div>` : "";
-  const flash = beats.some((b) => b.type === "call") ? `<div class="slam-flash" aria-hidden="true"></div>` : "";
+  const view = stageModel(m, beats, frame);
+  const { api, pres, cinematic, showLiar, showCount, showVerdict, showResult, shownState } = view;
+  const callFacts = api ? api.roundCall(m) : null;
+  const intensity = pres.intensity || 1;
+  const pressure = api ? api.pressureLabel(intensity, shownState) : "";
+  const hint = api ? api.nextHint(shownState) : "";
+  const camera = frame && frame.camera && !reducedMotion() ? frame.camera : "wide";
+  const dim = !!(frame && frame.dim) || (pres.state === "CALL" && showLiar);
+  const words = m.bid ? (api ? api.bidWords(m.bid.count, m.bid.face) : `${m.bid.count} ${faceWord(m.bid.face)}`.toUpperCase()) : "";
+  const bidBeat = beats.find((b) => b.type === "bid");
+  let sub = "";
+  if (pres.state === "THINKING" && m.bid && m.bid.name) sub = `${m.bid.name}'s bid`;
+  else if (pres.state === "CALL") sub = `${(m.bid && (m.bid.callerName || m.bid.name)) || "Caller"} calls`;
+  else if (m.reveal && m.reveal.length && m.bid && m.bid.name) sub = `${m.bid.name}'s bid`;
+  else if (m.bid && m.bid.name) sub = `${m.bid.name} ${bidBeat && bidBeat.prevBid ? "raises" : "bids"}`;
+  const quietBid = pres.state === "THINKING" || showLiar;
+  const punch = frame ? !!frame.punch : !!bidBeat;
+  const pips = [1, 2, 3, 4, 5].map((level) => `<i class="${level <= intensity ? "on" : ""}${level <= intensity && intensity >= 4 ? " hot" : ""}"></i>`).join("");
+  const score = `${a.alive === false ? 0 : a.dice}–${b.alive === false ? 0 : b.dice}`;
+  const whoNow = pres.state === "THINKING" && m.thinking
+    ? `<b>${esc(m.thinking.name)}</b> to act`
+    : pres.state === "CALL" && m.bid && m.bid.callerName
+      ? `<b>${esc(m.bid.callerName)}</b> calls`
+      : pres.state === "BIDDING" && m.bid && m.bid.name
+        ? `<b>${esc(m.bid.name)}</b> bid`
+        : shownState === "REVEAL" || shownState === "ROUND_RESULT"
+          ? "Dice are up"
+          : "Cups down";
+  const flash = showLiar && !reducedMotion() ? `<div class="slam-flash" aria-hidden="true"></div>` : "";
   const liveSting = beats.some((b) => b.type === "start") ? `<div class="live-sting">LIVE</div>` : "";
+  const skip = cinematic && intensity >= 4 && (pres.state === "CALL" || (m.reveal && m.reveal.length))
+    ? `<button class="skip" type="button" data-skip>Skip</button>`
+    : "";
+  const countReady = reducedMotion() || !!(frame && frame.done);
+  const countHtml = showCount && callFacts
+    ? `<div class="tally on" data-tally="${callFacts.actual}" data-tally-done="${countReady ? "1" : "0"}" data-tally-key="${esc((m.matchId || "replay") + ":" + callFacts.actual)}" aria-label="${callFacts.actual} ${esc(faceWord(callFacts.face))} showing, ${callFacts.count} bid"><b>${countReady ? callFacts.actual : 0}</b> ${esc(callFacts.words)}</div>`
+    : (m.reveal && m.reveal.length && !showCount ? `<div class="tally">Opening the cups</div>` : "");
+  const verdictHtml = showVerdict && callFacts
+    ? `<div class="verdict-hit ${callFacts.truth ? "good" : "bad"}">${callFacts.verdict}</div><div class="verdict-line">${callFacts.truth ? "The bid stands." : "The bid was short."} Bid was ${esc(callFacts.bidWords)}.</div>`
+    : "";
+  const resultHtml = showResult && callFacts && callFacts.result
+    ? `<div class="round-result">${esc(callFacts.result)}</div>`
+    : "";
+  const visibleFeed = (cinematic && m.reveal && m.reveal.length && !showVerdict)
+    ? feedLines.filter((line) => line !== (n.line || ""))
+    : feedLines;
+  const feed = visibleFeed.map((line) => `<li>${esc(line)}</li>`).join("");
   return `
-    <div class="table">
+    <div class="table stage${dim ? " dim" : ""}" data-state="${esc(shownState)}" data-camera="${esc(camera)}" data-intensity="${intensity}">
       ${flash}
       ${liveSting}
-      <div class="vs">
-        ${seatBlock(a, m, beats)}
-        <div class="x">${m.phase === "settled" ? "FINAL" : "R" + (m.round || 1)}</div>
-        ${seatBlock(b, m, beats)}
+      <div class="stage-bar">
+        <span class="kicker"><i class="dot"></i> ${m.phase === "settled" ? "Final" : "Live"}</span>
+        <span>R${m.round || 1}</span>
+        <span class="score">${score}</span>
+        <span class="pressure" aria-label="Intensity ${intensity} of 5${pressure ? ", " + esc(pressure) : ""}"><span class="pips">${pips}</span> ${esc(pressure)}</span>
       </div>
+      <div class="who-now">${whoNow}</div>
+      ${seatBlock(a, m, beats, frame)}
+      <div class="felt" data-primary="${esc((frame && frame.primary) || pres.focus || "bid")}">
+        ${showLiar ? `<div class="liar-type">LIAR</div>` : ""}
+        ${pres.state === "THINKING" && m.thinking ? `<div class="think-line">${esc(m.thinking.name)} is thinking…</div>` : ""}
+        ${words ? `<div class="bid-banner${quietBid ? " quiet" : ""}${punch ? " pop" : ""}"><div class="bid-words">${esc(words)}</div>${sub ? `<div class="bid-by">${esc(sub)}</div>` : ""}</div>` : `<div class="bid-banner quiet"><div class="bid-words">CUPS DOWN</div></div>`}
+        ${centerDice(m, beats, frame)}
+        ${countHtml}
+        ${verdictHtml}
+        ${resultHtml}
+        ${n.aside ? `<div class="aside">${esc(n.aside)}</div>` : ""}
+      </div>
+      ${seatBlock(b, m, beats, frame)}
+      ${hint ? `<div class="next-hint">${esc(hint)}</div>` : ""}
+      <div class="line sr" aria-live="polite">${esc(n.line || "")}</div>
+      ${feed ? `<ol class="feed">${feed}</ol>` : ""}
       ${bookBar(m, beats)}
-      ${bidChip(m, beats)}
-      ${head}
-      <div class="line" aria-live="polite">${esc(n.line || "")}</div>
-      ${n.aside ? `<div class="aside">${esc(n.aside)}</div>` : ""}
-      ${tallyBlock(m, beats)}
       ${showYou ? youBlock(m, beats) : ""}
+      ${skip}
     </div>`;
 }
 
@@ -621,10 +812,18 @@ function payoff() {
   const settle = frameBeats.some((b) => b.type === "settle");
   const verdict = !pos ? "FINAL" : won ? "YES" : "NO";
   const tone = !pos ? "final" : won ? "yes" : "no";
+  const api = presentApi();
+  const reactions = api ? api.reactionsOf(m) : {};
+  const faces = (m.seats || []).map((seat) => {
+    const react = reactions[seat.id] || "neutral";
+    const label = api ? (api.REACTION_LABEL[react] || "") : "";
+    return `<div class="arena-seat" data-react="${esc(react)}">${mark(seat.name, seat.hue)}<div class="seat-copy"><b>${esc(seat.name)}</b>${label ? `<i class="react">${esc(label)}</i>` : ""}</div></div>`;
+  }).join("");
   return `
     <div class="payoff${settle ? " sting" : ""}">
       ${won && settle ? `<div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>` : ""}
       <div class="verdict ${tone}">${verdict}</div>
+      <div class="result-seats">${faces}</div>
       <div class="headline">${esc(story.title || m.narrative?.line || "Settled")}</div>
       <p>${esc(story.dek || "")}</p>
       ${pos ? `<p>${won ? `<b class="good">You called it.</b>` : `<b>You missed this one.</b>`} Your test side: <b>${esc(pos.outcome || picked)}</b>.</p>` : `<p class="fine">You watched this one without a test position.</p>`}
@@ -738,15 +937,21 @@ function matchReplay(m) {
   const frames = replay && replay.id === m.matchId ? replay.frames : motionApi().replayFrames(events);
   const index = replay && replay.id === m.matchId ? replay.index : Math.max(0, frames.length - 1);
   const frame = frames[index];
-  const stage = frame ? tableView({
+  const synthetic = frame ? {
     matchId: m.matchId,
-    phase: "live",
+    phase: frame.kind === "settle" ? "settled" : "live",
     round: frame.round,
     seats: frame.seats,
     bid: frame.bid,
     reveal: frame.reveal,
     narrative: frame.narrative,
-  }, reducedMotion() ? [] : (frame.beats || []), { you: false }) : "";
+    winnerId: frame.winnerId || null,
+    oracle: frame.winnerId ? { winnerId: frame.winnerId } : null,
+  } : null;
+  let shot = null;
+  const api = presentApi();
+  if (api && synthetic) shot = api.direct(api.commandFor(synthetic, api.presentationOf(synthetic)), { reduced: true }).frameAt(0);
+  const stage = synthetic ? tableView(synthetic, reducedMotion() ? [] : (frame.beats || []), { you: false, frame: shot }) : "";
   const beats = events.filter((e) => e.type === "bid" || e.type === "challenge" || e.type === "match_over").map((e) => {
     if (e.type === "bid") return `<li>${esc(e.name)} bids ${e.count} ${esc(faceWord(e.face))}.</li>`;
     if (e.type === "challenge") return `<li><b>${esc(e.bidWasTrue ? "Telling the truth." : "Bluffing.")}</b> Call on ${e.bid.count} ${esc(faceWord(e.bid.face))}.</li>`;
@@ -788,7 +993,7 @@ function kickTally() {
   const target = Number(el.dataset.tally);
   const num = el.querySelector("b");
   if (!num || !Number.isFinite(target)) return;
-  if (key === tallySeen || reducedMotion()) {
+  if (key === tallySeen || reducedMotion() || el.dataset.tallyDone === "1") {
     num.textContent = String(target);
     tallySeen = key;
     return;
@@ -809,6 +1014,10 @@ function kickTally() {
 
 function render() {
   frameBeats = activeMotion(live());
+  const watching = live();
+  if (watching) noteFeed(watching);
+  stageFrame = null;
+  if (tab === "watch" && watching && watching.phase === "live") stageFrame = syncDirector(watching, frameBeats);
   const settle = frameBeats.some((b) => b.type === "settle");
   const nextCredits = me ? `AC ${Math.round(me.credits).toLocaleString("en-US")}` : "—";
   const creditChanged = creditsEl.textContent && creditsEl.textContent !== "—" && creditsEl.textContent !== nextCredits;
@@ -835,6 +1044,15 @@ function render() {
 }
 
 view.addEventListener("click", async (e) => {
+  const skip = e.target.closest("[data-skip]");
+  if (skip) {
+    if (director) {
+      director.fastForward();
+      directorSig = directorSignature(director.frame());
+    }
+    render();
+    return;
+  }
   const go = e.target.closest("[data-go]");
   if (go) { setTab(go.dataset.go); return; }
   const back = e.target.closest("[data-back]");
@@ -1296,6 +1514,12 @@ document.querySelector("#sound").addEventListener("click", async () => {
 document.addEventListener("pointerdown", () => {
   if (soundEnabled()) unlockAudio();
 }, { passive: true });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden || !director) return;
+  director.fastForward();
+  directorSig = directorSignature(director.frame());
+  if (tab === "watch") render();
+});
 
 async function boot() {
   paintSound();

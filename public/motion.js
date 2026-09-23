@@ -27,10 +27,16 @@
     return Object.keys(price).sort().map((k) => k + "=" + price[k]).join(",");
   }
 
+  function thinkingKey(m) {
+    const t = m && m.thinking;
+    if (!t || !t.agentId) return "";
+    return t.agentId;
+  }
+
   function frameKey(m) {
     if (!m) return "";
     const seats = (m.seats || []).map((s) => [s.id, s.dice || 0, s.alive === false ? 0 : 1].join(":")).join(",");
-    return [m.matchId, m.phase, m.round || 0, bidKey(m), revealKey(m), head(m), seats, priceKey(m)].join("~");
+    return [m.matchId, m.phase, m.round || 0, bidKey(m), revealKey(m), head(m), seats, priceKey(m), thinkingKey(m)].join("~");
   }
 
   // Ones are wild for every face except ones, matching the show rules.
@@ -94,6 +100,15 @@
       const roundUp = (live.round || 0) > (prev.round || 0);
       if (!rolled && prev.phase === "live" && (revealCleared || roundUp) && !nextReveal) {
         beats.push({ type: "roll" });
+      }
+      const think = thinkingKey(live);
+      if (think && think !== thinkingKey(prev)) {
+        beats.push({
+          type: "thinking",
+          agentId: live.thinking.agentId,
+          name: live.thinking.name || "",
+          intensity: (live.narrative && live.narrative.intensity) || 1,
+        });
       }
       const nextBid = bidKey(live);
       if (nextBid && nextBid !== bidKey(prev) && head(live) !== "LIAR.") {

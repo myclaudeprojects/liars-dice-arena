@@ -277,7 +277,7 @@ function bankroll() {
 }
 
 function renderCredits() {
-  creditsEl.textContent = me ? `${Math.round(me.credits)} test` : "—";
+  creditsEl.textContent = me ? `AC ${Math.round(me.credits).toLocaleString("en-US")}` : "—";
 }
 
 function spark(values, tone) {
@@ -361,7 +361,7 @@ function arena() {
       </div>
       <div class="status">${m.phase === "live" ? `Round ${m.round || 1}` : m.phase === "settled" ? esc(m.story && m.story.title || "Settled") : "Picks are open"}</div>
       <button class="cta" type="button" data-go="watch">${open ? "Watch & pick" : m.phase === "settled" ? "See the result" : "Watch"}</button>
-      ${noPicksYet() ? `<p class="first-run">No picks yet. One tap. 50 test credits, and they are not cash.</p>` : ""}
+      ${noPicksYet() ? `<p class="first-run">No test position yet. YES or NO, in Arena Credits. They are not cash.</p>` : ""}
     </article>
     ${upcomingBlock()}
     ${hot ? `<section class="section"><h2>Hot</h2><div class="rowbtn"><b>${esc(hot.text)}</b><div class="fine">Can anyone stop ${esc(hot.name)}?</div></div></section>` : ""}
@@ -377,17 +377,33 @@ function pct(price, id) {
   return `${Math.round(n * 100)}`;
 }
 
+function centsLabel(n) {
+  const v = Math.round(Number(n) * 100);
+  if (!Number.isFinite(v)) return "—";
+  return `${v}¢`;
+}
+
+const TEST_BADGE = "TEST MARKET — Arena Credits have no monetary value.";
+
+function testBadge() {
+  return `<p class="test-badge">${esc(TEST_BADGE)}</p>`;
+}
+
 function upcomingBlock() {
   const rows = (snap && snap.upcoming) || [];
   if (!rows.length) return "";
   const cards = rows.map((u, i) => {
     const [a, b] = u.seats;
     const you = u.you;
-    const picked = you ? `You picked ${esc(seatNameFrom(u, you.agentId))}.` : "Pick ahead.";
-    const buttons = you ? "" : `
+    const target = (u.seats || []).find((s) => s.id === u.targetAgentId) || a;
+    const yes = u.yesCents != null ? `${u.yesCents}¢` : centsLabel(u.yesPrice != null ? u.yesPrice : (u.price && u.price[target.id]));
+    const no = u.noCents != null ? `${u.noCents}¢` : centsLabel(u.noPrice != null ? u.noPrice : (u.yesPrice != null ? 1 - u.yesPrice : null));
+    const picked = you ? `You hold ${esc(you.outcome || (you.side === "no" ? "NO" : "YES"))}. Test position, not cash.` : (u.question || "Pick ahead.");
+    const buttons = you || snap.testMarkets === false ? "" : `
+      ${testBadge()}
       <div class="ahead">
-        <button type="button" data-ahead="${esc(u.matchId)}" data-ahead-agent="${esc(a.id)}">${esc(a.name)} · ${pct(u.price, a.id)}</button>
-        <button type="button" data-ahead="${esc(u.matchId)}" data-ahead-agent="${esc(b.id)}">${esc(b.name)} · ${pct(u.price, b.id)}</button>
+        <button type="button" data-pick-side="yes" data-match="${esc(u.matchId)}">YES ${esc(yes)}</button>
+        <button type="button" data-pick-side="no" data-match="${esc(u.matchId)}">NO ${esc(no)}</button>
       </div>`;
     return `
       <article class="upcard">
@@ -411,15 +427,30 @@ function seatNameFrom(card, id) {
 
 function picker() {
   const m = live();
-  const [a, b] = m.seats;
-  const intro = frameBeats.some((b) => b.type === "intro") ? " intro" : "";
+  const book = m.market || {};
+  const target = (m.seats || []).find((s) => s.id === book.targetAgentId) || m.seats[0];
+  const intro = frameBeats.some((beat) => beat.type === "intro") ? " intro" : "";
+  const bal = me ? Math.round(me.credits).toLocaleString("en-US") : "—";
+  if (snap && snap.testMarkets === false) {
+    return `
+      <div class="picker${intro}">
+        <div class="kicker">Who wins?</div>
+        <h1>${esc(target.name)} vs ${esc(m.seats[1].name)}</h1>
+        <p class="fine">Test markets are off. The match still runs.</p>
+      </div>`;
+  }
+  const yes = book.yesCents != null ? `${book.yesCents}¢` : centsLabel(book.yesPrice);
+  const no = book.noCents != null ? `${book.noCents}¢` : centsLabel(book.noPrice);
+  const stake = snap.defaultStake || 50;
   return `
     <div class="picker${intro}">
-      <div class="kicker">One tap</div>
-      <h1>Who's got this?</h1>
-      <button class="giant" type="button" data-pick="${esc(a.id)}">${mark(a.name, a.hue)}<span><b>${esc(a.name)}</b><span>${esc(a.record)} · ${esc(a.archetype)}</span></span></button>
-      <button class="giant" type="button" data-pick="${esc(b.id)}">${mark(b.name, b.hue)}<span><b>${esc(b.name)}</b><span>${esc(b.record)} · ${esc(b.archetype)}</span></span></button>
-      <p class="fine">50 test credits. No cash value. You can be wrong. That's the point.</p>
+      <div class="kicker">Who wins?</div>
+      ${testBadge()}
+      <h1>${esc(book.question || `Will ${target.name} win?`)}</h1>
+      <p class="fine">Balance AC ${esc(String(bal))}. Arena Credits are play money.</p>
+      <button class="giant" type="button" data-pick-side="yes"><span><b>YES ${esc(yes)}</b><span>${esc(target.name)} wins this match</span></span></button>
+      <button class="giant" type="button" data-pick-side="no"><span><b>NO ${esc(no)}</b><span>${esc(target.name)} does not win</span></span></button>
+      <p class="fine">A tap buys about ${stake} Arena Credits of shares. They are not cash.</p>
       <div class="err">${esc(err)}</div>
     </div>`;
 }
@@ -491,11 +522,12 @@ function diceFor(seat, m, beats) {
 }
 
 function bookBar(m, beats) {
-  const price = m.market && m.market.price;
-  if (!price || !m.seats) return "";
+  const book = m.market;
+  if (!book || !m.seats) return "";
   const pulse = beats.some((b) => b.type === "price") ? " pulse" : "";
-  const bits = m.seats.map((s) => `<span><b>${esc(s.name)}</b> ${Math.round((price[s.id] || 0) * 100)}</span>`).join("");
-  return `<div class="book${pulse}" aria-label="Test-credit book">${bits}</div>`;
+  const yes = book.yesCents != null ? `${book.yesCents}¢` : centsLabel(book.yesPrice);
+  const no = book.noCents != null ? `${book.noCents}¢` : centsLabel(book.noPrice);
+  return `<div class="book${pulse}" aria-label="Test market">${testBadge()}<span><b>YES</b> ${esc(yes)}</span><span><b>NO</b> ${esc(no)}</span></div>`;
 }
 
 function bidChip(m, beats) {
@@ -529,12 +561,13 @@ function tallyBlock(m, beats) {
 function youBlock(m, beats) {
   const pos = position;
   const pulse = beats.some((b) => b.type === "price") ? " pulse" : "";
-  const delta = pos && Math.abs(pos.unrealized) >= 0.5
-    ? ` <span class="${pos.unrealized >= 0 ? "good" : "bad"}">${money(pos.unrealized)}</span>`
+  const openPnl = pos ? (pos.testPnl != null ? pos.testPnl : pos.unrealized) : 0;
+  const sell = m.phase === "pick" && pos && pos.shares > 0
+    ? `<button class="ghost" type="button" data-sell>Sell shares</button>`
     : "";
   const you = pos
-    ? `<div class="you${pulse}">You picked <b>${esc(seatName(pos.agentId))}</b> · worth <b>${Math.round(pos.value)}</b> test credits${delta}</div>`
-    : `<div class="you">Watching. Picks are closed for this one.</div>`;
+    ? `<div class="you${pulse}">${esc(pos.outcome || (pos.side === "no" ? "NO" : "YES"))} · <b>${Math.round(pos.shares || pos.contracts || 0)}</b> shares · worth <b>AC ${Math.round(pos.value)}</b> <span class="${openPnl >= 0 ? "good" : "bad"}">Test P&L ${money(openPnl)}</span>${sell}<p class="fine">${esc(TEST_BADGE)}</p></div>`
+    : `<div class="you">Watching. This test market is not open for a new trade.</div>`;
   return you + spark(pos && pos.trail);
 }
 
@@ -594,9 +627,9 @@ function payoff() {
       <div class="verdict ${tone}">${verdict}</div>
       <div class="headline">${esc(story.title || m.narrative?.line || "Settled")}</div>
       <p>${esc(story.dek || "")}</p>
-      ${pos ? `<p>${won ? `<b class="good">You called it.</b>` : `<b>You missed this one.</b>`} Your pick: <b>${esc(picked)}</b>.</p>` : `<p class="fine">You watched this one without a pick.</p>`}
+      ${pos ? `<p>${won ? `<b class="good">You called it.</b>` : `<b>You missed this one.</b>`} Your test side: <b>${esc(pos.outcome || picked)}</b>.</p>` : `<p class="fine">You watched this one without a test position.</p>`}
       ${lesson ? `<p class="fine">${esc(lesson)}</p>` : ""}
-      ${pos ? `<p class="delta ${won ? "good" : "bad"}">${money(pos.pnl)} test</p><p class="fine">Balance ${Math.round(bankroll())}</p>` : ""}
+      ${pos ? `<p class="delta ${won ? "good" : "bad"}">Test P&L ${money(pos.testPnl != null ? pos.testPnl : pos.pnl)} AC</p><p class="fine">Not real earnings. Balance AC ${Math.round(bankroll()).toLocaleString("en-US")}. ${esc(TEST_BADGE)}</p>` : ""}
       ${careerBlock(me, { quiet: true, compact: true })}
       ${m.share ? shareBlock({ ...m.share, matchId: m.matchId }) : ""}
     </div>`;
@@ -741,7 +774,7 @@ function profile() {
       <div><b>${money(me.pnl || 0)}</b><span>Test PnL</span></div>
       <div><b>${me.streak || 0}</b><span>Streak</span></div>
     </div>
-    <p class="fine" style="margin-top:12px">${Math.round(me.credits)} test credits. They are not dollars, tokens, or a claim on anything.</p>
+    <p class="fine" style="margin-top:12px">AC ${Math.round(me.credits).toLocaleString("en-US")}. Arena Credits have no monetary value. Test P&L is not earnings.</p>
     ${me.bestRead ? `<section class="section"><h2>Best read</h2><div class="rowbtn"><b>${esc((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId)}</b><div class="fine">${me.bestRead.accuracy}% over ${me.bestRead.picks} picks</div></div></section>` : ""}
     <section class="section"><h2>Leaderboard</h2>
       ${(leaders.length ? leaders : [{ id: me.id, accuracy: me.accuracy, pnl: me.pnl, picks: me.picks }]).slice(0, 8).map((p, i) => `<div class="rowbtn"><b>${i + 1}. ${esc(p.id === me.id ? "You" : p.id)}</b><div class="fine">${p.accuracy || 0}% · ${money(p.pnl || 0)} test</div></div>`).join("")}
@@ -777,7 +810,7 @@ function kickTally() {
 function render() {
   frameBeats = activeMotion(live());
   const settle = frameBeats.some((b) => b.type === "settle");
-  const nextCredits = me ? `${Math.round(me.credits)} test` : "—";
+  const nextCredits = me ? `AC ${Math.round(me.credits).toLocaleString("en-US")}` : "—";
   const creditChanged = creditsEl.textContent && creditsEl.textContent !== "—" && creditsEl.textContent !== nextCredits;
   creditsEl.textContent = nextCredits;
   creditsEl.classList.toggle("bump", !!(settle && creditChanged) || (settle && creditsEl.classList.contains("bump")));
@@ -791,7 +824,7 @@ function render() {
     : tab === "history" ? historyView()
     : profile();
   const m = live();
-  const errInPicker = tab === "watch" && m && m.phase === "pick" && !position && !flash;
+  const errInPicker = tab === "watch" && m && m.phase === "pick" && !position && !flash && snap.testMarkets !== false;
   const html = linkBanner() + body + (!errInPicker && err ? `<div class="err">${esc(err)}</div>` : "");
   if (html === painted && !arriving) return;
   painted = html;
@@ -825,6 +858,10 @@ view.addEventListener("click", async (e) => {
   }
   const ahead = e.target.closest("[data-ahead]");
   if (ahead) return doAhead(ahead.dataset.ahead, ahead.dataset.aheadAgent);
+  const sideBtn = e.target.closest("[data-pick-side]");
+  if (sideBtn) return doPickSide(sideBtn.dataset.pickSide, sideBtn.dataset.match);
+  const sellBtn = e.target.closest("[data-sell]");
+  if (sellBtn) return doSell();
   const pick = e.target.closest("[data-pick]");
   if (pick) return doPick(pick.dataset.pick);
   const tag = e.target.closest("[data-tag]");
@@ -850,6 +887,88 @@ async function doAhead(matchId, agentId) {
   } catch (ex) {
     err = ex.message;
     render();
+  }
+}
+
+let tradeBusy = false;
+
+function targetFor(matchId) {
+  if (matchId) {
+    const row = (snap.upcoming || []).find((u) => u.matchId === matchId);
+    if (row && row.targetAgentId) return row.targetAgentId;
+    if (row && row.seats && row.seats[0]) return row.seats[0].id;
+  }
+  const m = live();
+  if (!m) return "";
+  if (m.market && m.market.targetAgentId) return m.market.targetAgentId;
+  return m.seats && m.seats[0] ? m.seats[0].id : "";
+}
+
+async function doPickSide(side, matchId) {
+  err = "";
+  if (tradeBusy || !me || (side !== "yes" && side !== "no")) return;
+  const id = matchId || (live() && live().matchId);
+  const agentId = targetFor(id);
+  if (!id || !agentId) return;
+  tradeBusy = true;
+  const clientRequestId = `${me.id}-${side}-${Date.now().toString(36)}`;
+  try {
+    const j = await api("/api/show/markets/" + encodeURIComponent(id) + "/buy", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        predictorId: me.id,
+        agentId,
+        side,
+        stake: snap.defaultStake || 50,
+        clientRequestId,
+      }),
+    });
+    if (!matchId) {
+      position = j.position;
+      me = { ...me, credits: j.credits };
+      const m = live();
+      const seat = m && m.seats.find((s) => s.id === (j.position && j.position.agentId));
+      flash = (j.position && j.position.outcome) || (seat ? seat.name : side.toUpperCase());
+      render();
+      setTimeout(() => { flash = null; if (tab === "watch") render(); }, 1800);
+    }
+    await poll();
+  } catch (ex) {
+    err = ex.message;
+    render();
+  } finally {
+    tradeBusy = false;
+  }
+}
+
+async function doSell() {
+  err = "";
+  const m = live();
+  if (tradeBusy || !m || !position || !me || !(position.shares > 0)) return;
+  tradeBusy = true;
+  const clientRequestId = `${me.id}-sell-${Date.now().toString(36)}`;
+  try {
+    const j = await api("/api/show/markets/" + encodeURIComponent(m.matchId) + "/sell", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        predictorId: me.id,
+        outcomeId: position.outcome,
+        agentId: position.agentId,
+        side: position.side,
+        shares: position.shares,
+        clientRequestId,
+      }),
+    });
+    position = j.position;
+    me = { ...me, credits: j.credits };
+    await poll();
+  } catch (ex) {
+    err = ex.message;
+    render();
+  } finally {
+    tradeBusy = false;
   }
 }
 

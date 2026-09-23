@@ -9,7 +9,8 @@ const crypto = require("crypto");
 const { Match } = require("./engine");
 const { safeFallback, bidFacts, decisionRng } = require("./agents");
 const { CAST, character, makePlayer, pairSchedule } = require("./characters");
-const { SimMarket, pricesFromRecords, pricesFromDice, DEFAULT_STAKE } = require("./simmarket");
+const { SimMarket, pricesFromRecords, DEFAULT_STAKE } = require("./simmarket");
+const { EVENT_MAP } = require("./marketservice");
 const { classifyPace, bidAside, revealHeadline, matchStory, shareCard } = require("./narrative");
 const { intensityFor, paceDelay, publicEvent } = require("./contract");
 const { ShowStore } = require("./showstore");
@@ -310,6 +311,12 @@ class Show {
     this.store = opts.dataPath ? new ShowStore(opts.dataPath) : null;
     this._hydrating = false;
     this.market = opts.market || new SimMarket({ onChange: () => this.persist() });
+    // TEST_MARKETS=0 runs the same matches with the book closed.
+    // Default is on. The dice loop does not read this flag.
+    this.marketsEnabled = opts.marketsEnabled != null
+      ? !!opts.marketsEnabled
+      : process.env.TEST_MARKETS !== "0";
+    this.eventMap = EVENT_MAP;
     this.records = new Records(CAST.map((c) => c.id));
     this.sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.pickWindowMs = opts.pickWindowMs ?? 14000;
@@ -437,6 +444,8 @@ class Show {
       custody: false,
       realMoney: false,
       defaultStake: DEFAULT_STAKE,
+      testMarkets: this.marketsEnabled,
+      badge: "TEST MARKET — Arena Credits have no monetary value.",
       live: cur ? this.publicMatch(cur, predictorId) : null,
       hot: this.hotLine(),
       rivalries: this.topRivalries(),
@@ -537,7 +546,7 @@ class Show {
       bid: m.bid,
       narrative: m.narrative,
       reveal: m.reveal,
-      market: this.market.publicMarket(m.market, predictorId),
+      market: m.market ? this.market.publicMarket(m.market, predictorId) : null,
       story: m.story,
       share: m.share,
       oracle: m.oracle,
@@ -622,11 +631,19 @@ class Show {
     this.seq++;
     const matchId = `m${this.seq.toString(36)}`;
     const prices = pricesFromRecords(seats.map((s) => s.id), (id) => this.records.get(id));
-    const book = this.market.createMarket({
-      matchId,
-      agents: seats.map((s) => ({ id: s.id, name: s.name })),
-      prices,
-    });
+    const played = seats.some((s) => (this.records.get(s.id).played || 0) > 0);
+    let book = null;
+    if (this.marketsEnabled) {
+      this.market.onGameEvent({
+        type: "MATCH_CREATED",
+        eventId: `MATCH_CREATED:${matchId}`,
+        matchId,
+        agents: seats.map((s) => ({ id: s.id, name: s.name })),
+        prices,
+        initialProbabilitySource: played ? "historical_model" : "equal_prior",
+      });
+      book = this.market.requireMarket(matchId);
+    }
     return {
       matchId,
       phase,
@@ -636,11 +653,11 @@ class Show {
       bid: null,
       narrative: { line: phase === "upcoming" ? "Up next." : "Who's got this?", aside: null, headline: null, pace: "normal" },
       reveal: null,
-      market: this.market.requireMarket(matchId),
+      market: book,
       story: null,
       share: null,
       oracle: null,
-      prior: book.price,
+      prior: book ? book.price : prices,
     };
   }
 
@@ -654,7 +671,7 @@ class Show {
   }
 
   upcomingCard(m, predictorId) {
-    const book = this.market.publicMarket(m.market, predictorId);
+    const book = m.market ? this.market.publicMarket(m.market, predictorId) : null;
     return {
       matchId: m.matchId,
       phase: "upcoming",
@@ -665,8 +682,16 @@ class Show {
           record: this.records.line(s.id),
         };
       }),
-      price: book.price,
-      you: book.you || null,
+      price: book ? book.price : null,
+      yesPrice: book ? book.yesPrice : null,
+      noPrice: book ? book.noPrice : null,
+      yesCents: book ? book.yesCents : null,
+      noCents: book ? book.noCents : null,
+      targetAgentId: book ? book.targetAgentId : null,
+      question: book ? book.question : null,
+      badge: book ? book.badge : null,
+      testMarket: !!book,
+      you: book ? book.you || null : null,
       cashValue: 0,
       custody: false,
       realMoney: false,
@@ -716,14 +741,28 @@ class Show {
   }
 
   _markFromDice() {
+    // V1: LMSR moves only when someone trades. Dice never reprice the book.
     const m = this.current;
-    if (!m) return;
-    const ids = m.seats.map((s) => s.id);
-    const prices = pricesFromDice(ids, (id) => {
-      const s = m.seats.find((x) => x.id === id);
-      return s && s.alive ? s.dice : 0;
-    }, m.prior);
-    this.market.mark(m.matchId, prices);
+    if (!this.marketsEnabled || !m || !m.market) return;
+    this.market.mark(m.matchId);
+  }
+
+  _matchAgents(m) {
+    return m.seats.map((s) => {
+      const c = character(s.id);
+      return {
+        id: c.id,
+        version: "cast-v1",
+        aggression: c.aggression,
+        chaos: c.chaos,
+        archetype: c.archetype,
+      };
+    });
+  }
+
+  _livePrice(m) {
+    if (!this.marketsEnabled || !m || !m.market) return null;
+    return this.market.requireMarket(m.matchId).price;
   }
 
   async playOpen() {
@@ -738,12 +777,52 @@ class Show {
     const m = this.current;
     if (!m || m.phase === "settled") throw new Error("nothing_to_play");
     if (m.phase === "live") throw new Error("already_playing");
-    this.market.lock(m.matchId);
+    let settled = false;
+    try {
+      return await this._playLocked(m, (done) => { settled = done; });
+    } catch (e) {
+      if (!settled) this._abortMatch(m, e);
+      throw e;
+    }
+  }
+
+  _abortMatch(m, err) {
+    if (!this.marketsEnabled || !m || !m.market) return;
+    try {
+      this.market.onGameEvent({
+        type: "MATCH_ABORTED",
+        eventId: `MATCH_ABORTED:${m.matchId}`,
+        matchId: m.matchId,
+        reason: String(err && err.message || err || "match_aborted"),
+      });
+    } catch (abortErr) {
+      console.error("void market failed:", abortErr);
+    }
+  }
+
+  async _playLocked(m, markSettled) {
+    const startedAt = Date.now();
+    m.startedAt = m.startedAt || startedAt;
+    if (this.marketsEnabled && m.market) {
+      this.market.onGameEvent({
+        type: "MATCH_STARTED",
+        eventId: `MATCH_STARTED:${m.matchId}`,
+        matchId: m.matchId,
+        startedAt: m.startedAt,
+        agents: this._matchAgents(m),
+      });
+    }
     m.phase = "live";
     this.phase = "live";
     this.persist();
     m.narrative = { line: "Dice are down.", aside: null, headline: null, pace: "normal" };
     this.emit({ type: "LOCK", matchId: m.matchId });
+    this.emit({
+      type: "MATCH_STARTED",
+      matchId: m.matchId,
+      eventId: `MATCH_STARTED:${m.matchId}`,
+      legacyType: "LOCK",
+    });
     this.emitState();
     const agents = m.seats.map((s) => makePlayer(s.id));
     this._handEdges = {};
@@ -811,38 +890,68 @@ class Show {
             if (row.dice > opp) { bucket.ahead++; this.records.noteHand(row.id, "ahead"); }
             else if (row.dice < opp) { bucket.behind++; this.records.noteHand(row.id, "behind"); }
           }
-          const ids = m.seats.map((s) => s.id);
-          const prices = pricesFromDice(ids, (id) => {
-            const c = (ev.counts || []).find((x) => x.id === id);
-            return c && c.alive ? c.dice : 0;
-          }, m.prior);
-          this.market.mark(m.matchId, prices);
+          // LMSR prices move only on trades. Dice do not reprice the book.
+          this._markFromDice();
           this._syncDice(ev.counts);
         }
-        this.emit({ type: ev.type, matchId: m.matchId, ...ev, narrative: m.narrative, price: this.market.requireMarket(m.matchId).price });
+        this.emit({ type: ev.type, matchId: m.matchId, ...ev, narrative: m.narrative, price: this._livePrice(m) });
         this.emitState();
       },
     });
     if (!exhibit.winnerId) throw new Error("no_winner");
     const story = matchStory({ seats: m.seats, winnerId: exhibit.winnerId, log: exhibit.log });
     const hash = resultHash({ matchId: m.matchId, winnerId: exhibit.winnerId, seed: m.seed, log: exhibit.log });
-    this.market.settle(m.matchId, { winnerId: exhibit.winnerId, resultHash: hash });
+    const endedAt = Date.now();
+    const resultEventId = `MATCH_RESOLVED:${m.matchId}:${hash}`;
+    // One result object. Settlement uses winnerId + resultHash only.
+    // Story and share text stay on the spectator card and are not copied here.
+    // integrityStatus is left unset until the integrity service attaches it.
+    // MarketService settles when that field is absent or "VALID".
+    const authoritativeResult = {
+      type: "MATCH_RESOLVED",
+      eventId: resultEventId,
+      matchId: m.matchId,
+      winnerId: exhibit.winnerId,
+      resultHash: hash,
+      endedAt,
+      startedAt: m.startedAt || null,
+      rounds: exhibit.hands,
+      participants: m.seats.map((s) => s.id),
+    };
+    if (this.marketsEnabled && m.market) this.market.onGameEvent(authoritativeResult);
+    if (markSettled) markSettled(true);
     const winner = character(exhibit.winnerId);
     const loser = m.seats.find((s) => s.id !== exhibit.winnerId);
     this.records.applyMatch({ seats: m.seats, winnerId: exhibit.winnerId, story, edges: this._handEdges });
     const streak = this.records.get(exhibit.winnerId).streak;
     m.story = story;
     m.share = shareCard({ story, winnerName: winner.name, streak, loserName: loser && loser.name, matchId: m.matchId });
+    const freeze = m.market && m.market.freeze;
+    const agentVersions = {};
+    for (const seat of m.seats) {
+      const frozen = freeze && (freeze.agents || []).find((a) => a.id === seat.id);
+      agentVersions[seat.id] = frozen ? frozen.version : "cast-v1";
+    }
     m.oracle = {
+      version: "1.0",
       matchId: m.matchId,
+      status: "RESOLVED",
+      participants: m.seats.map((s) => s.id),
       winnerId: exhibit.winnerId,
       winnerName: winner.name,
+      rounds: exhibit.hands,
+      startTimestamp: m.startedAt || null,
+      endTimestamp: endedAt,
+      durationMs: m.startedAt ? endedAt - m.startedAt : null,
+      resultEventId,
+      eventLogHash: `sha256:${hash}`,
+      agentVersions,
       seed: m.seed,
       resultHash: hash,
       eventCount: exhibit.log.length,
       rules: "liars-dice-common-hand-ones-wild-v1",
       realMoney: false,
-      note: "LDA result only. Test credits settle here. A regulated partner would settle real-money contracts from this oracle.",
+      note: "LDA result only. Arena Credits settle here. They have no monetary value. A regulated partner would settle real-money contracts from this oracle.",
     };
     m.engineLog = exhibit.log;
     m.phase = "settled";
@@ -867,6 +976,14 @@ class Show {
     this.rememberHistory(archived);
     this.persist();
     this.emit({ type: "SETTLED", matchId: m.matchId, story, oracle: m.oracle, share: m.share });
+    this.emit({
+      type: "MATCH_RESOLVED",
+      matchId: m.matchId,
+      eventId: resultEventId,
+      legacyType: "SETTLED",
+      winnerId: exhibit.winnerId,
+      resultHash: hash,
+    });
     this.emitState();
     return archived;
   }
@@ -965,6 +1082,7 @@ class Show {
         this.openNext();
       } catch (e) {
         console.error("show match failed:", e);
+        if (this.current) this._abortMatch(this.current, e);
         this.phase = "paused";
         this.emitState();
         this.current = null;

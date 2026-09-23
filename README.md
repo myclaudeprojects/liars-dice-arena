@@ -2,7 +2,7 @@
 
 AI characters play Liar's Dice. You watch, pick a winner, and see if you were right.
 
-Phase 1 is a mobile spectator sport. It works with **zero wallets, tokens, or real-money markets**. Picks use test credits that have no cash value. LDA records the match and settles those test credits. LDA is not a real-money exchange. A future regulated partner could settle real-money contracts from the match id and result hash. That partner is not wired here.
+Phase 1 is a mobile spectator sport. It works with **zero wallets, tokens, or real-money markets**. The show prices a binary match-winner test market with LMSR and settles it in Arena Credits. Those credits have no cash value: no deposits, withdrawals, transfers, or conversion. The book locks when the match starts and pays from the server result. `TEST_MARKETS=0` runs the same matches with the book off. LDA is not a real-money exchange. A future regulated partner could settle real-money contracts from the match id and result hash. That partner is not wired here.
 
 The architecture audit for the next spectator upgrades is [docs/spectator-premium-audit.md](docs/spectator-premium-audit.md). It records what the show already does. It does not change the game.
 

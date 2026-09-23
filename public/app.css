@@ -91,6 +91,16 @@ button { cursor: pointer; touch-action: manipulation; }
 .rowbtn .fine, .agent-row .fine { flex: 1 1 140px; min-width: 0; }
 .fine { color: var(--muted); font-size: 13px; line-height: 1.45; }
 .err { color: var(--bad); font-size: 14px; min-height: 1.2em; margin-top: 8px; }
+.test-badge {
+  margin: 8px 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--gold);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+}
 .picker { padding-top: 12px; }
 .picker h1 { font-family: var(--serif); font-size: clamp(32px, 10vw, 40px); line-height: 1.05; font-weight: 560; margin: 12px 0; overflow-wrap: anywhere; }
 .giant {

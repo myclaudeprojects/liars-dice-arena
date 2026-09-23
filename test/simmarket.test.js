@@ -1,5 +1,5 @@
 const {
-  SimMarket, pricesFromRecords, pricesFromDice, STARTING_CREDITS, CAREER_CAP, ERROR_TEXT,
+  SimMarket, pricesFromRecords, pricesFromDice, STARTING_CREDITS, CAREER_CAP, ERROR_TEXT, round4, TEST_BADGE,
 } = require("../src/simmarket");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
@@ -17,14 +17,17 @@ assert(threw, "short id rejected");
 
 const agents = [{ id: "dracula", name: "Dracula" }, { id: "caesar", name: "Caesar" }];
 book.createMarket({ matchId: "m1", agents, prices: { dracula: 0.4, caesar: 0.6 } });
+const beforeYes = book.requireMarket("m1").yesPrice;
 const buy = book.buy({ matchId: "m1", predictorId: "predictor1", agentId: "dracula", side: "yes", stake: 100 });
-eq(buy.position.contracts, 250, "100 / 0.40");
+assert(buy.position.contracts > 100, "stake buys more than 100 shares when price is under 1");
+eq(buy.position.stake, 100, "budget is the debit");
 eq(buy.credits, STARTING_CREDITS - 100, "debited");
+assert(book.requireMarket("m1").yesPrice > beforeYes, "buying YES lifts YES");
+assert(book.publicMarket(book.requireMarket("m1")).b == null, "b stays off the public book");
+eq(book.publicMarket(book.requireMarket("m1")).badge, TEST_BADGE, "test badge");
 
-threw = false;
-try { book.buy({ matchId: "m1", predictorId: "predictor1", agentId: "caesar", side: "yes", stake: 50 }); }
-catch (e) { threw = e.code === "already_picked"; }
-assert(threw, "one pick");
+const added = book.buy({ matchId: "m1", predictorId: "predictor1", agentId: "dracula", side: "yes", stake: 10 });
+assert(added.position.shares > buy.position.shares, "a second buy adds shares");
 
 book.lock("m1");
 threw = false;
@@ -32,19 +35,22 @@ try { book.buy({ matchId: "m1", predictorId: "predictor1", agentId: "caesar", si
 catch (e) { threw = e.code === "market_locked"; }
 assert(threw, "locked");
 
+const marked = book.positionFor("m1", "predictor1");
 book.mark("m1", { dracula: 0.7, caesar: 0.3 });
 const mtm = book.positionFor("m1", "predictor1");
-eq(mtm.value, 175, "250 * 0.70");
-eq(mtm.unrealized, 75, "up 75");
+eq(mtm.value, marked.value, "dice do not reprice a locked book");
+eq(mtm.stake, 110, "both buys are the cost basis");
 
 const hash = "a".repeat(64);
 const settled = book.settle("m1", { winnerId: "dracula", resultHash: hash });
 eq(settled.status, "settled", "settled");
-eq(book.requirePredictor("predictor1").credits, STARTING_CREDITS - 100 + 250, "paid 1 per contract");
+const settledPos = book.positionFor("m1", "predictor1");
+const paid = round4(STARTING_CREDITS - 110 + settledPos.payout);
+eq(book.requirePredictor("predictor1").credits, paid, "paid 1 per winning share");
 eq(book.requirePredictor("predictor1").streak, 1, "streak");
 const again = book.settle("m1", { winnerId: "dracula", resultHash: hash });
 eq(again.status, "settled", "idempotent");
-eq(book.requirePredictor("predictor1").credits, STARTING_CREDITS - 100 + 250, "no double pay");
+eq(book.requirePredictor("predictor1").credits, paid, "no double pay");
 
 threw = false;
 try { book.settle("m1", { winnerId: "caesar", resultHash: "b".repeat(64) }); }
@@ -56,7 +62,8 @@ book2.openPredictor("predictor2");
 book2.createMarket({ matchId: "m2", agents, prices: { dracula: 0.25, caesar: 0.75 } });
 book2.buy({ matchId: "m2", predictorId: "predictor2", agentId: "dracula", side: "no", stake: 75 });
 const noPx = book2.positionFor("m2", "predictor2");
-eq(noPx.contracts, 100, "75 / 0.75");
+eq(noPx.stake, 75, "no stake is the debit");
+eq(noPx.outcome, "NO", "no on the target is the NO contract");
 book2.lock("m2");
 threw = false;
 try { book2.settle("m2", { winnerId: "dracula", resultHash: "short" }); }

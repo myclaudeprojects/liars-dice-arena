@@ -1,22 +1,22 @@
-// simmarket.js — Test-credit prediction book. One house contract per match.
-// Several matches can be open (live plus upcoming). Still not an order book.
+// simmarket.js — Arena Credit book for the spectator show.
 //
-// Credits have no cash value. LDA is not a real-money exchange.
-// A future regulated partner would list, clear, and settle real-money
-// contracts against the same match id + result hash. This module never
-// touches USDC, wallets, or custody.
+// One MATCH_WINNER contract per match, priced by LMSR (src/lmsr.js) and
+// ledgered in Arena Credits (src/credits.js). Credits have no cash value.
+// This module never touches USDC, wallets, or custody. The dice engine does
+// not read it. TEST_MARKETS=0 skips market creation in the show loop.
+
+const { CreditLedger } = require("./credits");
+const { MarketService, TEST_BADGE } = require("./marketservice");
+const { round4 } = require("./lmsr");
 
 const STARTING_CREDITS = 1000;
 const DEFAULT_STAKE = 50;
 const MIN_STAKE = 10;
 const MAX_STAKE = 250;
 const THEORY_TAGS = ["Aggressive", "Conservative", "Bluffer", "Risk-taker", "Pressure player", "Unpredictable"];
-// Latest 100 settled picks on the career chart. Older points drop.
 const CAREER_CAP = 100;
 const BUY_WINDOW_MS = 60_000;
 const BUY_WINDOW_MAX = 12;
-
-function round4(x) { return Math.round(Number(x) * 10000) / 10000; }
 
 function assertPredictorId(id) {
   const s = String(id || "");
@@ -36,14 +36,29 @@ function fail(code) {
 
 class SimMarket {
   constructor(opts = {}) {
-    this.predictors = new Map();
-    this.markets = new Map();
-    this.buysAt = new Map();
     this.onChange = opts.onChange || (() => {});
+    this.careerCap = CAREER_CAP;
+    this.ledger = new CreditLedger();
+    this.service = new MarketService(this, {
+      b: opts.b,
+      maxTradeCost: opts.maxTradeCost == null ? MAX_STAKE : opts.maxTradeCost,
+      maxSharesPerTrade: opts.maxSharesPerTrade,
+      maxMarketExposure: opts.maxMarketExposure,
+      maxDailyVolume: opts.maxDailyVolume,
+      quoteTtlMs: opts.quoteTtlMs,
+      minStake: opts.minStake == null ? MIN_STAKE : opts.minStake,
+      maxStake: opts.maxStake == null ? MAX_STAKE : opts.maxStake,
+    });
+    this.predictors = new Map();
+    this.buysAt = new Map();
+  }
+
+  get markets() {
+    return this.service.markets;
   }
 
   touch() {
-    try { this.onChange(); } catch { /* store must not break a pick */ }
+    try { this.onChange(); } catch { /* store must not break a trade */ }
   }
 
   exportState() {
@@ -53,18 +68,55 @@ class SimMarket {
       const fresh = (arr || []).filter((t) => now - t < BUY_WINDOW_MS);
       if (fresh.length) buysAt[id] = fresh;
     }
+    const book = this.service.exportFragment();
     return {
       predictors: [...this.predictors.values()],
-      markets: [...this.markets.values()],
+      markets: book.markets,
       buysAt,
+      ledger: this.ledger.exportState(),
+      seenEvents: book.seenEvents,
+      requests: book.requests,
+      tradeSeq: book.tradeSeq,
     };
   }
 
   importState(data) {
-    this.predictors = new Map((data?.predictors || []).map((p) => [p.id, p]));
-    this.markets = new Map((data?.markets || []).map((m) => [m.matchId, m]));
-    // Predictors saved before `settled` existed keep pnl and picks. Leave the
-    // series empty. Do not invent chart points for matches this book never recorded.
+    this.ledger.importState(data?.ledger || {});
+    this.predictors = new Map();
+    for (const raw of data?.predictors || []) {
+      if (!raw || !raw.id) continue;
+      const p = {
+        credits: 0,
+        granted: 0,
+        picks: 0,
+        correct: 0,
+        streak: 0,
+        bestStreak: 0,
+        pnl: 0,
+        settled: [],
+        theories: {},
+        ...raw,
+      };
+      const known = this.ledger.entries.some((e) => e.userId === p.id);
+      if (!known && round4(p.credits) > 0) {
+        this.ledger.post({
+          userId: p.id,
+          amount: round4(p.credits),
+          type: "OPENING_BALANCE",
+          referenceType: "account",
+          referenceId: p.id,
+          idempotencyKey: `opening:${p.id}`,
+        });
+      }
+      p.credits = this.ledger.balance(p.id);
+      this.predictors.set(p.id, p);
+    }
+    this.service.importFragment({
+      markets: data?.markets || [],
+      seenEvents: data?.seenEvents || [],
+      requests: data?.requests || [],
+      tradeSeq: data?.tradeSeq || 0,
+    });
     this.buysAt = new Map();
     const now = Date.now();
     const raw = data?.buysAt && typeof data.buysAt === "object" ? data.buysAt : {};
@@ -78,9 +130,9 @@ class SimMarket {
   openPredictor(id) {
     const pid = assertPredictorId(id);
     if (!this.predictors.has(pid)) {
-      this.predictors.set(pid, {
+      const pred = {
         id: pid,
-        credits: STARTING_CREDITS,
+        credits: 0,
         granted: STARTING_CREDITS,
         picks: 0,
         correct: 0,
@@ -90,7 +142,17 @@ class SimMarket {
         settled: [],
         theories: {},
         createdAt: Date.now(),
+      };
+      this.predictors.set(pid, pred);
+      this.ledger.post({
+        userId: pid,
+        amount: STARTING_CREDITS,
+        type: "INITIAL_GRANT",
+        referenceType: "account",
+        referenceId: pid,
+        idempotencyKey: `grant:${pid}`,
       });
+      pred.credits = this.ledger.balance(pid);
       this.touch();
     }
     return this.publicPredictor(this.predictors.get(pid));
@@ -101,6 +163,26 @@ class SimMarket {
     const p = this.predictors.get(pid);
     if (!p) fail("unknown_predictor");
     return p;
+  }
+
+  // A test or migration may write predictor.credits directly. The next trade
+  // records the delta as TEST_ADMIN_ADJUSTMENT so the ledger still matches.
+  reconcile(pred) {
+    const book = this.ledger.balance(pred.id);
+    const stated = round4(pred.credits);
+    if (Math.abs(stated - book) <= 0.0001) {
+      pred.credits = book;
+      return;
+    }
+    this.ledger.post({
+      userId: pred.id,
+      amount: round4(stated - book),
+      type: "TEST_ADMIN_ADJUSTMENT",
+      referenceType: "account",
+      referenceId: pred.id,
+      idempotencyKey: `adjust:${pred.id}:${this.ledger.seq}:${stated}`,
+    });
+    pred.credits = this.ledger.balance(pred.id);
   }
 
   publicPredictor(p) {
@@ -122,8 +204,8 @@ class SimMarket {
       streak: p.streak,
       bestStreak: p.bestStreak,
       pnl: p.pnl,
-      // Empty when the saved predictor has pnl/picks and no settled list.
-      // That total stays. Points are not backfilled.
+      testPnl: p.pnl,
+      pnlLabel: "Test P&L",
       series: (p.settled || []).map((s) => ({
         matchId: s.matchId,
         pnl: s.pnl,
@@ -133,6 +215,7 @@ class SimMarket {
       theories: p.theories || {},
       bestRead: best ? { agentId: best.agentId, picks: best.picks, accuracy: Math.round(best.acc * 1000) / 10 } : null,
       unit: "test-credits",
+      currency: "Arena Credits",
       cashValue: 0,
     };
   }
@@ -145,39 +228,18 @@ class SimMarket {
     return this.publicPredictor(p);
   }
 
-  createMarket({ matchId, agents, prices }) {
-    if (!matchId || this.markets.has(matchId)) fail("market_exists");
-    if (!Array.isArray(agents) || agents.length < 2) fail("need_agents");
-    const price = {};
-    for (const a of agents) {
-      const n = Number(prices?.[a.id]);
-      if (!(n > 0 && n < 1)) fail("bad_price");
-      price[a.id] = round4(n);
-    }
-    const sum = Object.values(price).reduce((s, n) => s + n, 0);
-    if (Math.abs(sum - 1) > 0.021) fail("prices_must_sum_to_1");
-    const market = {
-      matchId: String(matchId),
-      status: "open",
-      agents: agents.map((a) => ({ id: a.id, name: a.name })),
-      price,
-      positions: [],
-      winnerId: null,
-      resultHash: null,
-      createdAt: Date.now(),
-      lockedAt: null,
-      settledAt: null,
-      cashValue: 0,
-      custody: false,
-    };
-    this.markets.set(market.matchId, market);
-    return this.publicMarket(market);
+  createMarket(input) {
+    return this.service.createMarket(input);
   }
 
   requireMarket(matchId) {
-    const m = this.markets.get(String(matchId || ""));
-    if (!m) fail("no_market");
-    return m;
+    return this.service.requireMarket(matchId);
+  }
+
+  onGameEvent(ev) {
+    const result = this.service.onGameEvent(ev);
+    this.touch();
+    return result;
   }
 
   _hitRate(id) {
@@ -188,159 +250,81 @@ class SimMarket {
     this.buysAt.set(id, arr);
   }
 
-  buy({ matchId, predictorId, agentId, side = "yes", stake, expectedPrice = null }) {
-    const m = this.requireMarket(matchId);
-    if (m.status === "locked" || m.status === "settled") fail("market_locked");
+  buy(req) {
+    const pred = this.requirePredictor(req.predictorId);
+    this.reconcile(pred);
+    const dup = this.service.peek(pred.id, req.clientRequestId);
+    if (dup) return dup;
+    const m = this.service.requireMarket(req.matchId);
     if (m.status !== "open") fail("market_locked");
-    const pred = this.requirePredictor(predictorId);
     this._hitRate(pred.id);
-    const which = String(side || "yes");
-    if (which !== "yes" && which !== "no") fail("bad_side");
-    if (!m.agents.some((a) => a.id === agentId)) fail("unknown_agent");
-    const n = Number(stake);
-    if (!Number.isInteger(n) || n < MIN_STAKE || n > MAX_STAKE) fail("stake_out_of_range");
-    if (m.positions.some((p) => p.predictorId === pred.id)) fail("already_picked");
-    const yes = m.price[agentId];
-    const px = which === "yes" ? yes : round4(1 - yes);
-    if (!(px > 0)) fail("bad_price");
-    if (expectedPrice != null && Math.abs(Number(expectedPrice) - px) > 0.03) fail("price_moved");
-    if (pred.credits + 1e-9 < n) fail("insufficient_credits");
-    const contracts = round4(n / px);
-    pred.credits = round4(pred.credits - n);
-    const pos = {
-      predictorId: pred.id,
-      agentId,
-      side: which,
-      stake: n,
-      price: px,
-      contracts,
-      at: Date.now(),
-    };
-    pos.trail = [n];
-    m.positions.push(pos);
+    const result = this.service.buy({ ...req, predictorId: pred.id });
     this.touch();
-    return { ok: true, position: this.markOne(m, pos), credits: pred.credits, market: this.publicMarket(m) };
+    return result;
   }
 
-  lock(matchId) {
-    const m = this.requireMarket(matchId);
-    if (m.status === "settled") fail("already_settled");
-    if (m.status === "open") {
-      m.status = "locked";
-      m.lockedAt = Date.now();
-    }
-    return this.publicMarket(m);
+  sell(req) {
+    const pred = this.requirePredictor(req.predictorId);
+    this.reconcile(pred);
+    const dup = this.service.peek(pred.id, req.clientRequestId);
+    if (dup) return dup;
+    const m = this.service.requireMarket(req.matchId);
+    if (m.status !== "open") fail("market_locked");
+    this._hitRate(pred.id);
+    const result = this.service.sell({ ...req, predictorId: pred.id });
+    this.touch();
+    return result;
   }
 
-  mark(matchId, prices) {
-    const m = this.requireMarket(matchId);
-    if (m.status === "settled") return this.publicMarket(m);
-    const price = {};
-    for (const a of m.agents) {
-      const n = Number(prices?.[a.id]);
-      if (!(n >= 0 && n <= 1)) fail("bad_price");
-      price[a.id] = round4(n);
-    }
-    const sum = Object.values(price).reduce((s, n) => s + n, 0);
-    if (Math.abs(sum - 1) > 0.021) fail("prices_must_sum_to_1");
-    m.price = price;
-    for (const pos of m.positions) {
-      const marked = this.markOne(m, pos);
-      pos.trail = pos.trail || [];
-      const last = pos.trail[pos.trail.length - 1];
-      if (last !== marked.value) pos.trail.push(marked.value);
-      if (pos.trail.length > 32) pos.trail.shift();
-    }
-    return this.publicMarket(m);
+  quote(req) {
+    return this.service.quote(req);
   }
 
-  markOne(m, pos) {
-    const yes = m.price[pos.agentId] ?? 0;
-    const px = pos.side === "yes" ? yes : round4(1 - yes);
-    const value = round4(pos.contracts * px);
-    return {
-      ...pos,
-      markPrice: px,
-      value,
-      unrealized: round4(value - pos.stake),
-    };
+  executeQuote(req) {
+    const pred = this.requirePredictor(req.predictorId);
+    this.reconcile(pred);
+    const dup = this.service.peek(pred.id, req.clientRequestId);
+    if (dup) return dup;
+    const m = this.service.requireMarket(req.matchId);
+    if (m.status !== "open") fail("market_locked");
+    this._hitRate(pred.id);
+    const result = this.service.executeQuote({ ...req, predictorId: pred.id });
+    this.touch();
+    return result;
+  }
+
+  lock(matchId, ev) {
+    return this.service.lock(matchId, ev || {});
+  }
+
+  settle(matchId, result) {
+    return this.service.settle(matchId, result || {});
+  }
+
+  voidMarket(matchId, ev) {
+    return this.service.voidMarket(matchId, ev || {});
+  }
+
+  applyInfluence(matchId) {
+    return this.service.applyInfluence(matchId);
+  }
+
+  inspect(matchId) {
+    return this.service.inspect(matchId);
+  }
+
+  // Dice can move the table. They do not reprice a test market.
+  mark(matchId) {
+    return this.service.mark(matchId);
   }
 
   positionFor(matchId, predictorId) {
-    const m = this.markets.get(String(matchId || ""));
-    if (!m) return null;
-    let pid;
-    try { pid = assertPredictorId(predictorId); } catch { return null; }
-    const pos = m.positions.find((p) => p.predictorId === pid);
-    if (!pos) return null;
-    if (m.status === "settled") {
-      return { ...pos, markPrice: pos.won ? 1 : 0, value: pos.payout, unrealized: pos.pnl, settled: true };
-    }
-    return this.markOne(m, pos);
-  }
-
-  settle(matchId, { winnerId, resultHash } = {}) {
-    const m = this.requireMarket(matchId);
-    if (!resultHash || String(resultHash).length < 32) fail("bad_result");
-    if (!m.agents.some((a) => a.id === winnerId)) fail("winner_not_seated");
-    if (m.status === "settled") {
-      if (m.resultHash !== resultHash || m.winnerId !== winnerId) fail("result_conflict");
-      return this.publicMarket(m);
-    }
-    if (m.status !== "locked") fail("not_locked");
-    m.status = "settled";
-    m.winnerId = winnerId;
-    m.resultHash = resultHash;
-    m.settledAt = Date.now();
-    for (const a of m.agents) m.price[a.id] = a.id === winnerId ? 1 : 0;
-    for (const pos of m.positions) {
-      const won = pos.side === "yes" ? pos.agentId === winnerId : pos.agentId !== winnerId;
-      const payout = won ? pos.contracts : 0;
-      pos.payout = round4(payout);
-      pos.pnl = round4(pos.payout - pos.stake);
-      pos.won = won;
-      const pred = this.predictors.get(pos.predictorId);
-      if (!pred) continue;
-      pred.credits = round4(pred.credits + pos.payout);
-      pred.picks++;
-      pred.pnl = round4(pred.pnl + pos.pnl);
-      pred.settled = pred.settled || [];
-      pred.settled.push({
-        matchId: m.matchId,
-        agentId: pos.agentId,
-        pnl: pos.pnl,
-        cum: pred.pnl,
-        won,
-        at: Date.now(),
-      });
-      if (pred.settled.length > CAREER_CAP) pred.settled.splice(0, pred.settled.length - CAREER_CAP);
-      if (won) {
-        pred.correct++;
-        pred.streak++;
-        pred.bestStreak = Math.max(pred.bestStreak, pred.streak);
-      } else pred.streak = 0;
-      pred.byAgent ||= {};
-      const bag = pred.byAgent[pos.agentId] ||= { picks: 0, correct: 0 };
-      bag.picks++;
-      if (won) bag.correct++;
-    }
-    return this.publicMarket(m);
+    return this.service.positionFor(matchId, predictorId);
   }
 
   publicMarket(m, predictorId) {
-    const you = predictorId ? this.positionFor(m.matchId, predictorId) : undefined;
-    return {
-      matchId: m.matchId,
-      status: m.status,
-      agents: m.agents,
-      price: m.price,
-      positionCount: m.positions.length,
-      winnerId: m.winnerId,
-      resultHash: m.resultHash,
-      cashValue: 0,
-      custody: false,
-      you,
-    };
+    if (!m) return null;
+    return this.service.publicMarket(m, predictorId);
   }
 
   leaderboard() {
@@ -384,29 +368,43 @@ function normalize(ids, weights) {
 
 const ERROR_TEXT = {
   bad_predictor: "That profile id is not valid.",
-  unknown_predictor: "Open the arena once so we can hand you test credits.",
-  market_exists: "That match already has a book.",
+  unknown_predictor: "Open the arena once so we can hand you Arena Credits.",
+  market_exists: "That match already has a test market.",
   need_agents: "A match needs two agents.",
   bad_price: "Price is not usable.",
   prices_must_sum_to_1: "Prices must sum to 1.",
-  no_market: "No book for that match.",
-  market_locked: "Picks are closed. Watch this one.",
+  no_market: "No test market for that match.",
+  market_locked: "This test market is locked. Watch the match.",
   slow_down: "Slow down a second.",
   bad_side: "Pick yes or no.",
   unknown_agent: "That agent is not in this match.",
-  stake_out_of_range: "Use between 10 and 250 test credits.",
-  already_picked: "You already picked this match.",
+  stake_out_of_range: "Use between 10 and 250 Arena Credits.",
   price_moved: "The price moved. Look again.",
-  insufficient_credits: "Not enough test credits.",
-  already_settled: "This match is already settled.",
+  insufficient_credits: "Not enough Arena Credits.",
+  already_settled: "This test market is already settled.",
   bad_result: "Missing the match result hash.",
   winner_not_seated: "Winner is not in this match.",
-  result_conflict: "That result does not match the settled match.",
-  not_locked: "Lock the book before settlement.",
+  result_conflict: "That result does not match the settled market.",
+  not_locked: "Lock the test market before settlement.",
+  not_enough_shares: "You cannot sell more shares than you hold.",
+  size_limit: "That trade is over the test position limit.",
+  exposure_limit: "That would put too many Arena Credits on one test market.",
+  daily_limit: "Daily Arena Credit test volume is used up.",
+  quote_expired: "That quote expired. Ask for a new one.",
+  quote_missing: "That quote was not found.",
+  bad_request_id: "That trade request id is not valid.",
+  bad_size: "Share size is not usable.",
+  influence_after_lock: "The match has started. Influence is closed.",
+  voided: "This test market was voided.",
+  ignored_event: "That event does not settle a test market.",
+  bad_liquidity: "Liquidity is out of range.",
+  unstable_cost: "The test price could not be priced.",
+  unstable_price: "The test price could not be priced.",
+  forced_failure: "The test ledger rolled back.",
 };
 
 module.exports = {
   SimMarket, pricesFromRecords, pricesFromDice, normalize,
   STARTING_CREDITS, DEFAULT_STAKE, MIN_STAKE, MAX_STAKE, THEORY_TAGS, CAREER_CAP,
-  BUY_WINDOW_MS, BUY_WINDOW_MAX, ERROR_TEXT, round4,
+  BUY_WINDOW_MS, BUY_WINDOW_MAX, ERROR_TEXT, round4, TEST_BADGE,
 };

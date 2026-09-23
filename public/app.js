@@ -1222,6 +1222,7 @@ function tableView(m, beats, opts) {
         ${ui() ? ui().liveBadge(m.phase === "settled" ? "Final" : "Live", { final: m.phase === "settled" }) : `<span class="live-pill kicker"><i class="dot"></i> ${m.phase === "settled" ? "Final" : "Live"}</span>`}
         <span>Round ${m.round || 1} · ${score}</span>
         <span class="stage-readout">${esc(stageReadout(stage, m))}</span>
+        ${skip}
       </div>
       <div class="arena-surface">
         ${liveSting}
@@ -1249,7 +1250,6 @@ function tableView(m, beats, opts) {
         ${feed ? `<ol class="feed">${feed}</ol>` : ""}
         ${bookBar(m, beats)}
         ${showYou ? youBlock(m, beats) : ""}
-        ${skip}
       </div>
     </section>`;
 }

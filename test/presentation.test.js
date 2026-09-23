@@ -212,6 +212,7 @@ assert(css.includes("prefers-reduced-motion") && css.includes("transform: none")
 const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
 assert(app.includes("data-skip") && app.includes("data-state") && app.includes("syncDirector"), "watch stage is wired to the director");
 assert(app.includes("Escape") && app.includes("fastForward") && app.includes("data-reduced"), "skip and reduced motion stay on the stage");
+assert(/broadcast-strip[\s\S]{0,500}\$\{skip\}/.test(app), "skip sits in the broadcast strip");
 assert(app.includes("Who's got this?") && app.includes("You missed this"), "arena leads with the pick and the last real story");
 
 const card = storySource({

@@ -400,6 +400,109 @@ h1.page { font-family: var(--serif); font-size: clamp(30px, 9vw, 36px); margin: 
   .live-card .mark, .picker .mark { width: 52px; height: 52px; font-size: 24px; }
 }
 
+.stage { position: relative; display: flex; flex-direction: column; gap: 8px; text-align: center; }
+.stage-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  color: var(--muted); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.stage-bar .kicker { margin: 0; }
+.stage-bar .score { color: var(--ink); font-variant-numeric: tabular-nums; }
+.pressure { display: inline-flex; align-items: center; gap: 6px; }
+.pips { display: inline-flex; gap: 3px; }
+.pips i { width: 7px; height: 7px; border-radius: 50%; background: rgba(244, 239, 230, 0.2); display: block; }
+.pips i.on { background: var(--gold); }
+.pips i.on.hot { background: #d4543c; }
+.who-now { text-align: left; font-size: 13px; color: var(--muted); }
+.who-now b { color: var(--ink); font-weight: 560; }
+.stage .arena-seat {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center;
+  text-align: left; padding: 8px 10px; border-radius: 16px;
+  background: var(--bg-2); border: 1px solid var(--line);
+}
+.stage .arena-seat.who b,
+.result-seats .arena-seat b {
+  display: block; font-family: var(--serif); font-size: clamp(18px, 5vw, 22px);
+  font-weight: 560; min-height: 0; line-height: 1.1; letter-spacing: -0.03em;
+}
+.stage .arena-seat .dice-row { margin: 0; justify-content: flex-end; }
+.seat-copy { min-width: 0; }
+.seat-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; }
+.react {
+  display: block; margin-top: 2px; font-style: normal; font-size: 11px;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold);
+}
+.arena-seat[data-react="thinking"] .mark { animation: thinkPulse 1.1s ease-in-out infinite; }
+.arena-seat[data-react="confident"] .mark { box-shadow: 0 0 0 2px var(--gold); }
+.arena-seat[data-react="failed-bluff"] .react,
+.arena-seat[data-react="failed-call"] .react,
+.arena-seat[data-react="defeat"] .react { color: var(--bad); }
+.arena-seat[data-react="successful-call"] .react,
+.arena-seat[data-react="successful-bluff"] .react,
+.arena-seat[data-react="victory"] .react { color: var(--good); }
+.arena-seat[data-react="defeat"] { opacity: 0.62; }
+.arena-seat[data-react="victory"] { box-shadow: inset 0 0 0 1px rgba(228, 194, 122, 0.7); }
+@keyframes thinkPulse { 50% { transform: translateY(-2px); } }
+.felt {
+  position: relative; min-height: 168px; border-radius: 24px; padding: 16px 12px 12px;
+  background:
+    radial-gradient(ellipse at 50% 32%, rgba(228, 194, 122, 0.12), transparent 62%),
+    #1a1612;
+  border: 1px solid rgba(228, 194, 122, 0.28);
+  box-shadow: inset 0 0 0 7px rgba(62, 36, 24, 0.55);
+}
+.stage.dim .felt { background: #0c0b09; }
+.stage.dim .arena-seat:not(.hot) { opacity: 0.5; }
+.stage[data-camera="caller"] .arena-seat.hot { transform: scale(1.035); }
+.stage[data-camera="dice"] .felt,
+.stage[data-camera="push"] .felt { transform: scale(1.02); }
+.stage[data-camera="pullback"] .felt { transform: scale(0.985); }
+.bid-banner { margin-top: 2px; }
+.bid-words {
+  font-family: var(--serif); font-weight: 680; letter-spacing: -0.04em; line-height: 0.95;
+  font-size: clamp(32px, 10vw, 48px);
+}
+.bid-by {
+  margin-top: 4px; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold);
+}
+.bid-banner.quiet .bid-words { font-size: clamp(18px, 5.4vw, 26px); color: var(--muted); }
+.bid-banner.pop { animation: pop 0.38s cubic-bezier(.2, .9, .3, 1.15) both; }
+.think-line {
+  font-family: var(--serif); font-weight: 680; letter-spacing: -0.03em; line-height: 1;
+  font-size: clamp(28px, 8vw, 40px); margin-bottom: 6px;
+}
+.liar-type {
+  font-family: var(--serif); font-weight: 680; letter-spacing: -0.05em; line-height: 0.82;
+  font-size: clamp(72px, 24vw, 104px); color: #f4efe6; margin: 2px 0 4px;
+}
+.cups { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 12px 0 4px; }
+.stage .tally { min-height: 0; margin-top: 8px; position: relative; z-index: 1; }
+.cups .hand { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; align-items: center; }
+.hand-name {
+  flex: 0 0 100%; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+}
+.die.lg { width: 28px; height: 28px; border-radius: 6px; }
+.die.lg .pip { width: 5px; height: 5px; }
+.verdict-hit {
+  font-family: var(--serif); font-weight: 680; letter-spacing: -0.04em; line-height: 0.95;
+  font-size: clamp(36px, 12vw, 56px); margin-top: 8px;
+}
+.round-result { font-family: var(--serif); font-size: clamp(18px, 5vw, 22px); margin-top: 4px; }
+.next-hint { color: var(--muted); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+.feed { list-style: none; padding: 0; margin: 4px 0 0; text-align: left; }
+.feed li { font-size: 13px; color: var(--muted); padding: 5px 0; border-bottom: 1px solid var(--line); }
+.feed li:first-child { color: var(--ink); }
+.skip {
+  min-height: 44px; width: 100%; margin-top: 4px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink);
+}
+.result-seats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 8px 0 4px; }
+.result-seats .arena-seat { display: flex; gap: 8px; align-items: center; text-align: left; padding: 8px; border-radius: 14px; background: var(--bg-2); border: 1px solid var(--line); }
+@media (max-height: 700px) {
+  .felt { min-height: 128px; padding: 12px 10px 10px; }
+  .liar-type { font-size: clamp(56px, 18vw, 80px); }
+  .bid-words { font-size: clamp(28px, 8vw, 40px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -409,4 +512,10 @@ h1.page { font-family: var(--serif); font-size: clamp(30px, 9vw, 36px); margin: 
   }
   .confetti { display: none; }
   .career-line, .career-line * { animation: none !important; transition: none !important; }
+  .stage[data-camera] .felt,
+  .stage[data-camera] .arena-seat,
+  .arena-seat[data-react="thinking"] .mark {
+    animation: none !important;
+    transform: none !important;
+  }
 }

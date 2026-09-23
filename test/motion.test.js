@@ -51,6 +51,15 @@ const locked = {
 eq(types(motionBeats(pick, locked)), ["start", "roll", "bid", "price"], "open, roll, bid, and the book");
 eq(motionBeats(locked, { ...locked }).length, 0, "the same bid does not replay");
 
+const thinking = {
+  ...locked,
+  thinking: { agentId: "caesar", name: "Caesar" },
+  narrative: { headline: null, line: "Caesar is thinking.", intensity: 1 },
+};
+const thinkBeat = motionBeats(locked, thinking).find((b) => b.type === "thinking");
+assert(thinkBeat && thinkBeat.agentId === "caesar", "a real thinking snapshot is a beat");
+eq(types(motionBeats(thinking, thinking)), [], "the same thinking hold does not replay");
+
 const nextBid = {
   ...locked,
   bid: { agentId: "caesar", name: "Caesar", count: 3, face: 6 },

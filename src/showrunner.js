@@ -12,7 +12,7 @@ const { CAST, character, makePlayer, pairSchedule } = require("./characters");
 const { SimMarket, pricesFromRecords, DEFAULT_STAKE } = require("./simmarket");
 const { EVENT_MAP } = require("./marketservice");
 const { classifyPace, bidAside, revealHeadline, matchStory, shareCard } = require("./narrative");
-const { intensityFor, paceDelay, publicEvent } = require("./contract");
+const { intensityFor, paceDelay, splitHold, publicEvent } = require("./contract");
 const { ShowStore } = require("./showstore");
 const { resolvePlaySeeds } = require("./randomness");
 const { MatchIntegrity } = require("./integrity");
@@ -252,6 +252,23 @@ async function playExhibit({ agents, seed, matchId = null, onEvent = async () =>
     if (trial.action.type === "bid" && res.ok) {
       const bidEv = match.log.slice(from).find((e) => e.type === "bid");
       const aside = bidAside(trial.action, view, ch);
+      const bidIntensity = intensityFor(pace);
+      const bidHold = splitHold(paceDelay(pace, timings), bidIntensity, "bid");
+      // The think slice is the existing pace clock, moved ahead of the bid.
+      // It is not an extra delay, and it does not publish the agent's dice or a memory.
+      if (bidHold.think > 0) {
+        await onEvent({
+          type: "THINKING",
+          kind: "AGENT_THINKING_STARTED",
+          name: actor.name,
+          agentId: actor.id,
+          pace: "normal",
+          intensity: 1,
+          hand: bidEv ? bidEv.hand : match.handNumber,
+          matchId,
+        });
+        await sleep(bidHold.think);
+      }
       await onEvent({
         type: "BID",
         kind: "BID_PLACED",
@@ -261,7 +278,7 @@ async function playExhibit({ agents, seed, matchId = null, onEvent = async () =>
         face: trial.action.face,
         aside,
         pace,
-        intensity: intensityFor(pace),
+        intensity: bidIntensity,
         hand: bidEv ? bidEv.hand : match.handNumber,
         seq: bidEv ? bidEv.seq : null,
         counts: match.players.map((p) => ({ id: p.id, dice: p.dice.length, alive: p.alive })),
@@ -271,7 +288,7 @@ async function playExhibit({ agents, seed, matchId = null, onEvent = async () =>
         matchId,
         contract: bidEv ? publicEvent(bidEv) : null,
       });
-      await sleep(paceDelay(pace, timings));
+      await sleep(bidHold.rest);
     }
     if (res.resolved) {
       const roundEv = match.log.slice(from).find((e) => e.type === "challenge");
@@ -573,6 +590,7 @@ class Show {
       seats,
       bid: m.bid,
       narrative: m.narrative,
+      thinking: m.thinking ? { agentId: m.thinking.agentId, name: m.thinking.name } : null,
       reveal: m.reveal,
       market: m.market ? this.market.publicMarket(m.market, predictorId) : null,
       story: m.story,
@@ -875,7 +893,23 @@ class Show {
       revealDelayMs: this.revealDelayMs,
       sleep: this.sleep,
       onEvent: async (ev) => {
-        if (ev.type === "BID") {
+        if (ev.type === "THINKING") {
+          const newHand = ev.hand && ev.hand !== m.round;
+          if (newHand) {
+            m.round = ev.hand;
+            m.bid = null;
+            m.reveal = null;
+          }
+          m.thinking = { agentId: ev.agentId, name: ev.name };
+          m.narrative = {
+            line: `${ev.name} is thinking.`,
+            aside: null,
+            headline: null,
+            pace: "normal",
+            intensity: 1,
+          };
+        } else if (ev.type === "BID") {
+          m.thinking = null;
           m.round = ev.hand;
           m.bid = { count: ev.count, face: ev.face, name: ev.name, agentId: ev.agentId, byId: ev.agentId };
           m.reveal = null;
@@ -897,6 +931,7 @@ class Show {
           });
           this._markFromDice();
         } else if (ev.type === "CALL") {
+          m.thinking = null;
           m.narrative = {
             line: `${ev.name} calls.`, aside: null, headline: "LIAR.",
             pace: "call", intensity: ev.intensity,
@@ -912,6 +947,7 @@ class Show {
             callerName: ev.name,
           };
         } else if (ev.type === "REVEAL") {
+          m.thinking = null;
           m.reveal = ev.reveal;
           m.narrative = {
             line: ev.headline,

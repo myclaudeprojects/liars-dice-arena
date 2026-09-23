@@ -2,7 +2,7 @@ const { Show, Records, playExhibit, SAMPLE_FLOOR } = require("../src/showrunner"
 const { makePlayer } = require("../src/characters");
 const { callSlackLimit } = require("../src/agents");
 const { classifyPace } = require("../src/narrative");
-const { paceDelay, publicEvent, intensityFor } = require("../src/contract");
+const { paceDelay, splitHold, publicEvent, intensityFor } = require("../src/contract");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); }
@@ -134,15 +134,22 @@ function fmt(n) { return n.toFixed(3); }
   });
   assert(slept.includes(1170), "the match actually waits on call");
   assert(slept.includes(1500), "the match actually waits on reveal");
-  assert(slept.some((ms) => ms === 900 || ms === 1125 || ms === 1620), "bids wait on a bid clock");
+  const bidClock = (pace) => splitHold(paceDelay(pace, { turnDelayMs: 900, revealDelayMs: 1500 }), intensityFor(pace), "bid");
+  const bidClocks = ["normal", "interesting", "critical"].map(bidClock);
+  assert(bidClocks.every((split) => split.think + split.rest === paceDelay(
+    split === bidClocks[0] ? "normal" : split === bidClocks[1] ? "interesting" : "critical",
+    { turnDelayMs: 900, revealDelayMs: 1500 },
+  )), "bid slices add up");
+  assert(bidClocks.some((split) => slept.includes(split.think) && slept.includes(split.rest)), "bids wait on a bid clock");
   let sawInteresting = false;
+  const interesting = bidClock("interesting");
   for (let seed = 1; seed <= 12 && !sawInteresting; seed++) {
     const waits = [];
     await playExhibit({
       agents: pair(), seed, turnDelayMs: 900, revealDelayMs: 1500,
       sleep: async (ms) => { waits.push(ms); },
     });
-    if (waits.includes(1125)) sawInteresting = true;
+    if (waits.includes(interesting.think) && waits.includes(interesting.rest)) sawInteresting = true;
   }
   assert(sawInteresting, "interesting is not a dead label");
 
@@ -249,6 +256,47 @@ function fmt(n) { return n.toFixed(3); }
   assert(waits.includes(paceDelay("result", clock)), "the result state waits out the settle hold");
   assert(waits.includes(paceDelay("reveal", clock)), "the loop's match waits on reveal");
   assert(waits.includes(paceDelay("call", clock)), "the loop's match waits on call");
+
+  const seen = [];
+  const paced = new Show({
+    sleep: async (ms) => {
+      const cur = paced.current;
+      const liveCard = paced.snapshot().live;
+      seen.push({
+        ms,
+        line: cur && cur.narrative && cur.narrative.line,
+        thinking: cur && cur.thinking ? cur.thinking.agentId : null,
+        reveal: !!(cur && cur.reveal && cur.reveal.length),
+        publicThinking: liveCard && liveCard.thinking,
+        thought: liveCard && liveCard.thinking && liveCard.thinking.thought,
+      });
+    },
+    pickWindowMs: 0,
+    turnDelayMs: 100,
+    revealDelayMs: 0,
+    settleHoldMs: 0,
+    bootstrapCount: 0,
+    loopEnabled: false,
+  });
+  paced.bootstrapDone = true;
+  paced.openNext();
+  await paced.playOpen();
+  const think = seen.find((row) => row.thinking);
+  assert(think, "a bid pause shows the actor thinking");
+  assert(/is thinking\.$/.test(think.line), "thinking copy names the wait");
+  assert(!/remember/i.test(think.line), "thinking copy does not invent a memory");
+  assert(think.publicThinking && think.publicThinking.agentId === think.thinking, "the public card names the actor");
+  assert(think.thought == null, "the public card does not carry private reasoning");
+  const next = seen[seen.indexOf(think) + 1];
+  assert(next && /bids /.test(next.line), "the bid is shown after the thinking hold");
+  const sums = [100, 125, 180];
+  assert(sums.includes(think.ms + next.ms), "thinking plus the bid hold is the existing pace delay");
+  assert(seen.filter((row) => row.line && row.line.endsWith("calls.")).every((row) => !row.thinking), "a call is not labeled as thinking");
+  const closed = seen.find((row, i) => i > 0 && row.thinking && seen[i - 1].line && /TRUTH|BLUFFING/.test(seen[i - 1].line));
+  assert(closed && closed.reveal === false, "the next decision closes the revealed cups");
+  const parts = splitHold(900, 1, "bid");
+  eq(parts.think + parts.rest, 900, "a routine bid slice adds back up");
+  eq(splitHold(1170, 4, "call").think, 0, "the call hold stays whole for the liar sequence");
 
   console.log("gameplay ok");
 })().catch((e) => { console.error(e); process.exit(1); });

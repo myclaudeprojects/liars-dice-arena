@@ -6,12 +6,15 @@ const FACE = { 1: "ones", 2: "twos", 3: "threes", 4: "fours", 5: "fives", 6: "si
 function faceWord(face) { return FACE[face] || "dice"; }
 
 function classifyPace(view, action) {
+  if (!action) return "normal";
+  if (action.type === "challenge") return "call";
   const alive = (view.table || []).filter((t) => t.alive !== false);
   const minDice = alive.length ? Math.min(...alive.map((t) => t.diceCount)) : 5;
   const bid = action.type === "bid" ? action : view.currentBid;
+  const huge = !!(bid && view.totalDice && bid.count >= Math.ceil(view.totalDice * 0.7));
   const big = !!(bid && view.totalDice && bid.count >= Math.ceil(view.totalDice * 0.55));
-  if (minDice <= 1 || (action.type === "challenge" && minDice <= 2)) return "critical";
-  if (action.type === "challenge" || big) return "interesting";
+  if (minDice <= 1 || huge) return "critical";
+  if (minDice <= 2 || big) return "interesting";
   return "normal";
 }
 

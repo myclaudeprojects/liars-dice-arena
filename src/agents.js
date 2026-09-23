@@ -10,7 +10,23 @@
 // A ready Anthropic and OpenAI adapter live in llm.js. This keeps the engine and
 // game loop free of any vendor specifics.
 
-const { DICE_SIDES, isHigherBid } = require("./engine");
+const { DICE_SIDES, isHigherBid, makeRng } = require("./engine");
+
+// Decision stream. Separate from the dice rng so a personality change does
+// not reshuffle cups that the seed already determined.
+function decisionRng(seed) {
+  return makeRng((Number(seed) ^ 0x9E3779B9) >>> 0);
+}
+
+// Caesar calls on milder negative slack than the gambler's `-1 - aggression`.
+// Dracula's aggression is 0.86, so that formula sits at -1.86. -0.55 is tighter.
+const CAESAR_CALL_SLACK = -0.55;
+
+function callSlackLimit(agent) {
+  if (agent && agent.id === "caesar") return CAESAR_CALL_SLACK;
+  const aggression = agent && Number.isFinite(agent.aggression) ? agent.aggression : 0.5;
+  return -1 - aggression;
+}
 
 // Expected number of dice showing `face` among `unknownDice` dice we can't see,
 // with ones wild. Each unknown die matches a given non-1 face with prob 2/6
@@ -30,76 +46,201 @@ function myMatches(myDice, face, onesWild) {
   return n;
 }
 
+function faceRanks(dice, onesWild) {
+  const rows = [];
+  for (let f = 1; f <= DICE_SIDES; f++) rows.push({ face: f, held: myMatches(dice, f, onesWild) });
+  rows.sort((a, b) => (b.held - a.held) || (a.face - b.face));
+  return rows;
+}
+
+function minimumStep(currentBid, totalDice, face) {
+  if (!currentBid) return { count: Math.max(1, 1), face: face || 2 };
+  if (currentBid.face < DICE_SIDES) return { count: currentBid.count, face: currentBid.face + 1 };
+  if (currentBid.count + 1 <= totalDice) return { count: currentBid.count + 1, face: Math.min(DICE_SIDES, Math.max(2, face || 2)) };
+  return null;
+}
+
+// Facts the show is allowed to store. Bluff means the bid count is above
+// the bidder's own matches plus expected matches from dice they cannot see.
+function bidFacts(view, action) {
+  if (!view || !action || action.type !== "bid") return { bluff: false, step: null, held: 0, expected: 0 };
+  const held = myMatches(view.you.dice, action.face, view.onesWild);
+  const unknown = view.totalDice - view.you.dice.length;
+  const expected = expectedMatches(unknown, action.face, view.onesWild);
+  const step = view.currentBid ? action.count - view.currentBid.count : null;
+  return { bluff: action.count > held + expected, step, held, expected };
+}
+
+function challengeDecision(view, extra) {
+  return {
+    action: { type: "challenge" },
+    thought: extra.thought,
+    decision: {
+      challenged: true,
+      bestFace: extra.bestFace ?? null,
+      secondFace: extra.secondFace ?? null,
+      chosenFace: null,
+      count: null,
+      bestHeld: extra.bestHeld ?? 0,
+      expected: extra.expected ?? 0,
+      bluff: false,
+      step: null,
+      wild: !!extra.wild,
+    },
+  };
+}
+
 // ---- MockAgent: a genuinely competent heuristic player -------------------
 class MockAgent {
   constructor({ id, name, aggression = 0.5, chaos = 0 }) {
     this.id = id;
     this.name = name;
     this.aggression = aggression; // 0..1 — higher = bluffs & pushes more
-    this.chaos = chaos; // 0..1 — chance to bid a face that is not the strongest held
+    this.chaos = chaos; // 0..1 — chance to leave the strongest held face
     this.kind = "mock";
   }
 
-  async act(view) {
+  async act(view, rng) {
+    const rand = typeof rng === "function" ? rng : Math.random;
     const { you, currentBid, totalDice, onesWild } = view;
     const unknown = totalDice - you.dice.length;
+    const foes = (view.table || []).filter((t) => t.alive && t.id !== you.id);
+    const oppDice = foes.reduce((sum, t) => sum + t.diceCount, 0);
+    const ahead = foes.length > 0 && you.dice.length > oppDice;
 
-    // Decide whether to challenge the current bid.
     if (currentBid) {
       const mine = myMatches(you.dice, currentBid.face, onesWild);
-      const need = currentBid.count - mine;              // must come from unknown
+      const need = currentBid.count - mine;
       const exp = expectedMatches(unknown, currentBid.face, onesWild);
-      // Probability the bid is at least true is lower when `need` >> expected.
-      // Simple believability score:
-      const slack = exp - need;                          // >0 means plausible
-      // Challenge more readily when slack is very negative; aggression lowers threshold.
-      const challengeThreshold = -1.0 - this.aggression; // e.g. -1.0 to -2.0
-      if (slack < challengeThreshold) {
-        return {
-          action: { type: "challenge" },
+      const slack = exp - need;
+      if (slack < callSlackLimit(this)) {
+        return challengeDecision(view, {
+          bestHeld: mine,
+          expected: exp,
           thought: `They need ${need} more ${faceName(currentBid.face)}s from ${unknown} unknown dice (I expect ~${exp.toFixed(1)}). That's a stretch — calling.`,
-        };
+        });
       }
     }
 
-    // Otherwise make a bid. Base it on what I actually hold + expectation.
-    // Pick the face I'm strongest in.
-    let bestFace = 2, bestHeld = -1;
-    for (let f = 1; f <= DICE_SIDES; f++) {
-      const held = myMatches(you.dice, f, onesWild);
-      if (held > bestHeld) { bestHeld = held; bestFace = f; }
-    }
-    if (this.chaos > 0 && Math.random() < this.chaos) {
-      bestFace = 1 + Math.floor(Math.random() * DICE_SIDES);
+    const ranks = faceRanks(you.dice, onesWild);
+    const best = ranks[0];
+    const second = ranks[1] || null;
+    let bestFace = best.face;
+    let bestHeld = best.held;
+    let wild = false;
+    let honestBump = 0;
+    let mix = "best";
+
+    if (this.id === "reaper") {
+      // Bounded mix, not a uniform face. Wild-branch rate is `chaos`.
+      if (rand() < this.chaos) {
+        wild = true;
+        if (rand() < 0.5 && second) {
+          mix = "second";
+          bestFace = second.face;
+          bestHeld = second.held;
+        } else {
+          mix = "count";
+          honestBump = rand() < 0.5 ? 0 : 1;
+        }
+      }
+    } else if (this.id !== "caesar" && this.chaos > 0 && rand() < this.chaos) {
+      bestFace = 1 + Math.floor(rand() * DICE_SIDES);
       bestHeld = myMatches(you.dice, bestFace, onesWild);
     }
-    const exp = expectedMatches(unknown, bestFace, onesWild);
-    let targetCount = Math.max(1, Math.round(bestHeld + exp));
 
-    // Must strictly beat the current bid.
-    if (currentBid) {
-      if (targetCount < currentBid.count ||
-          (targetCount === currentBid.count && bestFace <= currentBid.face)) {
-        // bump minimally, sometimes bluff a bit higher based on aggression
-        targetCount = currentBid.count + (Math.random() < this.aggression ? 1 : 0);
+    const exp = expectedMatches(unknown, bestFace, onesWild);
+    let targetCount = Math.max(1, Math.round(bestHeld + exp) + honestBump);
+    let plannedFace = bestFace;
+
+    if (this.id === "caesar") {
+      // Minimum legal step, unless the count he already holds is a legal raise.
+      // He will not publish a count his dice plus the expected unknowns do not support.
+      const heldBid = { count: Math.max(1, best.held), face: best.face };
+      const heldSupported = best.held >= 1;
+      if (!currentBid) {
+        targetCount = heldSupported ? best.held : 1;
+        bestFace = best.face;
+        bestHeld = best.held;
+      } else if (heldSupported && isHigherBid(currentBid, heldBid)) {
+        targetCount = heldBid.count;
+        bestFace = heldBid.face;
+        bestHeld = best.held;
+      } else {
+        const min = minimumStep(currentBid, totalDice, best.face);
+        const minHeld = min ? myMatches(you.dice, min.face, onesWild) : 0;
+        const minExp = min ? expectedMatches(unknown, min.face, onesWild) : 0;
+        if (!min || min.count > totalDice || !isHigherBid(currentBid, min) || min.count > minHeld + minExp) {
+          return challengeDecision(view, {
+            bestFace: best.face,
+            secondFace: second && second.face,
+            bestHeld: best.held,
+            expected: exp,
+            thought: `The next step is thinner than the dice support. Calling.`,
+          });
+        }
+        targetCount = min.count;
+        bestFace = min.face;
+        bestHeld = minHeld;
+      }
+      plannedFace = bestFace;
+    } else if (currentBid) {
+      const legal = isHigherBid(currentBid, { count: targetCount, face: bestFace });
+      if (!legal) {
+        let step = rand() < this.aggression ? 1 : 0;
+        // Ahead: a larger count step than +1, still gated by aggression.
+        // Behind: the same aggressive bump. No separate cautious mode.
+        if (this.id === "dracula" && ahead && rand() < this.aggression) step = 2;
+        targetCount = currentBid.count + step;
         bestFace = currentBid.count === targetCount
           ? Math.min(DICE_SIDES, currentBid.face + 1)
           : bestFace;
         if (targetCount === currentBid.count && bestFace <= currentBid.face) {
           targetCount = currentBid.count + 1;
         }
+      } else if (this.id === "dracula" && ahead && rand() < this.aggression) {
+        const jumped = Math.min(totalDice, targetCount + 1);
+        if (isHigherBid(currentBid, { count: jumped, face: bestFace })) targetCount = jumped;
       }
+    } else if (this.id === "dracula" && ahead && rand() < this.aggression) {
+      targetCount = Math.min(totalDice, targetCount + 1);
     }
-    targetCount = Math.min(targetCount, totalDice);
+
+    targetCount = Math.min(Math.max(1, targetCount), totalDice);
+    const heldNow = myMatches(you.dice, bestFace, onesWild);
+    const expNow = expectedMatches(unknown, bestFace, onesWild);
     if (currentBid && !isHigherBid(currentBid, { count: targetCount, face: bestFace })) {
-      return { action: { type: "challenge" }, thought: `Can't go higher than ${currentBid.count}×${currentBid.face} with ${totalDice} dice on the table. Liar.` };
+      return challengeDecision(view, {
+        bestFace: best.face,
+        secondFace: second && second.face,
+        bestHeld: heldNow,
+        expected: expNow,
+        wild,
+        thought: `Can't go higher than ${currentBid.count}×${currentBid.face} with ${totalDice} dice on the table. Liar.`,
+      });
     }
-    const bluffing = targetCount > bestHeld + exp + 0.5;
+    const bluffing = targetCount > heldNow + expNow;
+    const step = currentBid ? targetCount - currentBid.count : null;
     return {
       action: { type: "bid", count: targetCount, face: bestFace },
       thought: bluffing
-        ? `I only really have ${bestHeld}. Pushing ${targetCount}×${faceName(bestFace)} to pressure them.`
-        : `Holding ${bestHeld} ${faceName(bestFace)}s, expecting ~${exp.toFixed(1)} more. ${targetCount}×${faceName(bestFace)} is honest.`,
+        ? `I only really have ${heldNow}. Pushing ${targetCount}×${faceName(bestFace)} to pressure them.`
+        : `Holding ${heldNow} ${faceName(bestFace)}s, expecting ~${expNow.toFixed(1)} more. ${targetCount}×${faceName(bestFace)} is honest.`,
+      decision: {
+        challenged: false,
+        bestFace: best.face,
+        secondFace: second ? second.face : null,
+        chosenFace: bestFace,
+        count: targetCount,
+        bestHeld: heldNow,
+        expected: expNow,
+        bluff: bluffing,
+        step,
+        wild,
+        mix,
+        plannedFace,
+        ahead,
+      },
     };
   }
 }
@@ -232,4 +373,7 @@ class RemoteAgent {
   }
 }
 
-module.exports = { MockAgent, LLMAgent, RemoteAgent, parseAction, safeFallback, expectedMatches, myMatches };
+module.exports = {
+  MockAgent, LLMAgent, RemoteAgent, parseAction, safeFallback,
+  expectedMatches, myMatches, bidFacts, decisionRng, callSlackLimit,
+};

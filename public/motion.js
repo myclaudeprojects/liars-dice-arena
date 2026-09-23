@@ -109,7 +109,8 @@
       if (head(live) === "LIAR." && head(prev) !== "LIAR.") {
         beats.push({
           type: "call",
-          name: (live.bid && live.bid.name) || "",
+          name: (live.bid && (live.bid.callerName || live.bid.name)) || "",
+          callerId: (live.bid && live.bid.callerId) || "",
           bidderId: (live.bid && (live.bid.byId || live.bid.agentId)) || "",
         });
       }
@@ -246,21 +247,23 @@ function indexNames(events) {
           for (const r of e.reveal) if (r.id && r.name) names[r.id] = r.name;
         }
         for (const s of seats) if (names[s.id]) s.name = names[s.id];
+        const caller = named(e.challengerId, "Someone");
         const bid = {
           count: e.bid.count,
           face: e.bid.face,
           byId: e.bidderId,
           agentId: e.bidderId,
-          name: named(e.challengerId, "Caller"),
+          name: named(e.bidderId, "Bidder"),
+          callerId: e.challengerId,
+          callerName: caller,
         };
-        const caller = named(e.challengerId, "Someone");
         frames.push({
           kind: "call",
           round,
           seats: cloneSeats(seats),
           bid,
           reveal: null,
-          narrative: { line: `${caller} calls.`, headline: "LIAR.", aside: null, pace: "critical" },
+          narrative: { line: `${caller} calls.`, headline: "LIAR.", aside: null, pace: e.pace || "call", intensity: e.intensity || 4 },
           beats: [{ type: "call", name: caller, bidderId: e.bidderId }],
         });
         const headline = e.bidWasTrue ? "HE WAS TELLING THE TRUTH." : "HE WAS BLUFFING.";
@@ -273,7 +276,7 @@ function indexNames(events) {
           bid,
           reveal: lastReveal,
           actual: e.actual,
-          narrative: { line: headline, headline, aside: null, pace: "critical" },
+          narrative: { line: headline, headline, aside: null, pace: "reveal", intensity: e.intensity || (e.elimination ? 5 : 4) },
           beats: [{
             type: "reveal",
             bidWasTrue: !!e.bidWasTrue,
@@ -317,7 +320,8 @@ function indexNames(events) {
             line: `${e.name || named(e.winnerId)} wins.`,
             headline: `${e.name || named(e.winnerId)} wins.`,
             aside: null,
-            pace: "critical",
+            pace: "result",
+            intensity: e.intensity || 5,
           },
           beats: [{ type: "settle", won: false, picked: false, pnl: 0, name: e.name || "" }],
         });

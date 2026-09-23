@@ -7,11 +7,15 @@
 
 const crypto = require("crypto");
 const { Match } = require("./engine");
-const { safeFallback } = require("./agents");
+const { safeFallback, bidFacts, decisionRng } = require("./agents");
 const { CAST, character, makePlayer, pairSchedule } = require("./characters");
 const { SimMarket, pricesFromRecords, pricesFromDice, DEFAULT_STAKE } = require("./simmarket");
 const { classifyPace, bidAside, revealHeadline, matchStory, shareCard } = require("./narrative");
+const { intensityFor, paceDelay, publicEvent } = require("./contract");
 const { ShowStore } = require("./showstore");
+
+// Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
+const SAMPLE_FLOOR = 6;
 
 // Settled stories kept on the show file. Older matches drop off the list.
 const HISTORY_CAP = 100;
@@ -38,7 +42,21 @@ function emptyRecord(id) {
     id, won: 0, lost: 0, played: 0, streak: 0, bestStreak: 0,
     form: [], rivals: {}, bids: 0, bigBids: 0, challenges: 0, correctCalls: 0,
     moments: [],
+    bluffAttempts: 0, bluffCaught: 0, bidStepSum: 0, bidSteps: 0,
+    handsAhead: 0, handsBehind: 0, winsWhileAhead: 0, winsWhileBehind: 0,
   };
+}
+
+function rivalBucket(record, oid) {
+  const riv = record.rivals[oid] ||= { wins: 0, losses: 0, meetings: 0 };
+  if (riv.bluffAttempts == null) riv.bluffAttempts = 0;
+  if (riv.calls == null) riv.calls = 0;
+  return riv;
+}
+
+function storedLine(hits, n, label) {
+  if (!(n >= SAMPLE_FLOOR)) return null;
+  return `${hits} of ${n} ${label}`;
 }
 
 class Records {
@@ -51,19 +69,39 @@ class Records {
     const r = this.get(id);
     return `${r.won}–${r.lost}`;
   }
-  noteBid(id, { count, total }) {
+  noteBid(id, { count, total, step, bluff, opponentId }) {
     const r = this.agents[id];
     if (!r) return;
     r.bids++;
     if (total && count >= total * 0.55) r.bigBids++;
+    if (bluff) {
+      r.bluffAttempts++;
+      if (opponentId) rivalBucket(r, opponentId).bluffAttempts++;
+    }
+    if (Number.isFinite(step)) {
+      r.bidStepSum += step;
+      r.bidSteps++;
+    }
   }
-  noteCall(id, correct) {
+  noteCall(id, correct, opponentId) {
     const r = this.agents[id];
     if (!r) return;
     r.challenges++;
     if (correct) r.correctCalls++;
+    if (opponentId) rivalBucket(r, opponentId).calls++;
   }
-  applyMatch({ seats, winnerId, story }) {
+  noteBluffCaught(id) {
+    const r = this.agents[id];
+    if (!r) return;
+    r.bluffCaught++;
+  }
+  noteHand(id, edge) {
+    const r = this.agents[id];
+    if (!r) return;
+    if (edge === "ahead") r.handsAhead++;
+    else if (edge === "behind") r.handsBehind++;
+  }
+  applyMatch({ seats, winnerId, story, edges }) {
     for (const s of seats) {
       const r = this.agents[s.id];
       if (!r) continue;
@@ -80,9 +118,12 @@ class Records {
         r.form.unshift("L");
       }
       if (r.form.length > 8) r.form.length = 8;
+      const edge = edges && edges[s.id];
+      if (won && edge && edge.ahead > edge.behind) r.winsWhileAhead++;
+      else if (won && edge && edge.behind > edge.ahead) r.winsWhileBehind++;
       for (const o of seats) {
         if (o.id === s.id) continue;
-        const riv = r.rivals[o.id] ||= { wins: 0, losses: 0, meetings: 0 };
+        const riv = rivalBucket(r, o.id);
         riv.meetings++;
         if (won) riv.wins++;
         else riv.losses++;
@@ -110,25 +151,34 @@ class Records {
   }
 }
 
-async function playExhibit({ agents, seed, onEvent = async () => {}, sleep = async () => {}, turnDelayMs = 0, revealDelayMs = 0, maxSteps = 900 }) {
+async function playExhibit({ agents, seed, matchId = null, onEvent = async () => {}, sleep = async () => {}, turnDelayMs = 0, revealDelayMs = 0, maxSteps = 900 }) {
   const match = new Match({
     seats: agents.map((a) => ({ id: a.id, name: a.name })),
     seed,
     diceCount: 5,
   });
+  const timings = { turnDelayMs, revealDelayMs, settleHoldMs: 0 };
+  const rng = decisionRng(seed);
   const byId = Object.fromEntries(agents.map((a) => [a.id, a]));
+  if (matchId) for (const ev of match.log) ev.matchId = matchId;
   let steps = 0;
   while (!match.winnerId && steps++ < maxSteps) {
     const actor = byId[match.currentPlayer.id];
     const view = match.viewFor(actor.id);
+    match.record("thinking", {
+      actorId: actor.id,
+      name: actor.name,
+      matchId,
+      pace: "normal",
+      intensity: intensityFor("normal"),
+    });
     let played;
-    try { played = await actor.act(view); }
+    try { played = await actor.act(view, rng); }
     catch (e) { played = safeFallback(view, e.message); }
     if (!played || !played.action) played = safeFallback(view, "empty");
     let trial = played;
-    // Validate without mutating: apply, and if illegal swap to fallback before the pause.
-    // Match has no peek, so we apply once. Illegal moves are corrected first via a dry pattern:
-    // safeFallback is used when apply would fail. We detect by checking the same rules loosely.
+    // Illegal moves are swapped for a legal fallback before the engine sees them.
+    // The sleep is presentation. It does not choose the action.
     const action = trial.action;
     const illegalBid = action.type === "bid" && view.currentBid && !(
       action.count > view.currentBid.count || (action.count === view.currentBid.count && action.face > view.currentBid.face)
@@ -138,50 +188,94 @@ async function playExhibit({ agents, seed, onEvent = async () => {}, sleep = asy
       trial = safeFallback(view, "illegal");
     }
     const pace = classifyPace(view, trial.action);
-    const ch = character(actor.id);
+    let ch = null;
+    try { ch = character(actor.id); } catch { ch = null; }
     if (trial.action.type === "challenge") {
+      const bidder = (view.table || []).find((t) => t.id === view.currentBid.byId);
       await onEvent({
         type: "CALL",
+        kind: "CALL_MADE",
         name: actor.name,
         agentId: actor.id,
-        pace,
+        callerId: actor.id,
+        pace: "call",
+        intensity: intensityFor("call"),
         bid: view.currentBid,
+        bidderName: bidder ? bidder.name : null,
         hand: match.handNumber,
+        matchId,
       });
-      await sleep(pace === "critical" ? revealDelayMs : Math.round(turnDelayMs * 0.7));
+      await sleep(paceDelay("call", timings));
     }
+    const from = match.log.length;
     let res = match.applyAction(trial.action);
     if (!res.ok) {
       const fb = safeFallback(view, res.error || "illegal");
       if (fb.action.type === "challenge" && trial.action.type !== "challenge") {
-        await onEvent({ type: "CALL", name: actor.name, agentId: actor.id, pace: "interesting", bid: view.currentBid, hand: match.handNumber });
-        await sleep(turnDelayMs);
+        await onEvent({
+          type: "CALL", kind: "CALL_MADE", name: actor.name, agentId: actor.id, callerId: actor.id,
+          pace: "call", intensity: intensityFor("call"), bid: view.currentBid, hand: match.handNumber, matchId,
+        });
+        await sleep(paceDelay("call", timings));
       }
       res = match.applyAction(fb.action);
       trial = fb;
     }
     if (!res.ok) break;
+    const facts = bidFacts(view, trial.action);
+    const decision = trial.decision || null;
+    for (const ev of match.log.slice(from)) {
+      if (matchId) ev.matchId = matchId;
+      if (ev.type === "bid") {
+        ev.pace = pace;
+        ev.intensity = intensityFor(pace);
+        ev.thought = trial.thought || "";
+        ev.bluff = facts.bluff;
+        ev.step = facts.step;
+        ev.bestFace = decision ? decision.bestFace : null;
+        ev.secondFace = decision ? decision.secondFace : null;
+        ev.chosenFace = trial.action.face;
+        ev.plannedFace = decision ? decision.plannedFace ?? null : null;
+        ev.mix = decision ? decision.mix || null : null;
+        ev.wild = !!(decision && decision.wild);
+      }
+    }
     if (trial.action.type === "bid" && res.ok) {
+      const bidEv = match.log.slice(from).find((e) => e.type === "bid");
       const aside = bidAside(trial.action, view, ch);
       await onEvent({
         type: "BID",
+        kind: "BID_PLACED",
         name: actor.name,
         agentId: actor.id,
         count: trial.action.count,
         face: trial.action.face,
         aside,
         pace,
-        hand: match.handNumber,
+        intensity: intensityFor(pace),
+        hand: bidEv ? bidEv.hand : match.handNumber,
+        seq: bidEv ? bidEv.seq : null,
         counts: match.players.map((p) => ({ id: p.id, dice: p.dice.length, alive: p.alive })),
         thought: trial.thought || "",
+        bluff: facts.bluff,
+        step: facts.step,
+        matchId,
+        contract: bidEv ? publicEvent(bidEv) : null,
       });
-      await sleep(pace === "critical" ? Math.round(turnDelayMs * 1.5) : turnDelayMs);
+      await sleep(paceDelay(pace, timings));
     }
     if (res.resolved) {
+      const roundEv = match.log.slice(from).find((e) => e.type === "challenge");
+      const revealEv = match.log.slice(from).find((e) => e.kind === "DICE_REVEALED");
+      const lastBid = [...match.log].reverse().find((e) => e.type === "bid");
+      const elimination = !!res.resolved.elimination;
       await onEvent({
         type: "REVEAL",
-        pace: "critical",
-        hand: match.handNumber,
+        kind: "DICE_REVEALED",
+        pace: "reveal",
+        intensity: intensityFor("reveal", { elimination }),
+        hand: roundEv ? roundEv.hand : match.handNumber,
+        seq: revealEv ? revealEv.seq : null,
         headline: revealHeadline(res.resolved.bidWasTrue),
         bidWasTrue: res.resolved.bidWasTrue,
         actual: res.resolved.actual,
@@ -190,10 +284,15 @@ async function playExhibit({ agents, seed, onEvent = async () => {}, sleep = asy
         loserId: res.resolved.loserId,
         challengerId: res.resolved.challengerId,
         bidderId: res.resolved.bidderId,
-        counts: match.players.map((p) => ({ id: p.id, dice: p.alive ? p.dice.length : 0, alive: p.alive })),
+        counts: res.resolved.countsAfter,
+        beforeCounts: (res.resolved.reveal || []).map((r) => ({ id: r.id, dice: r.dice.length, alive: true })),
+        bluffBid: !!(lastBid && lastBid.bluff && lastBid.byId === res.resolved.bidderId),
+        elimination,
         matchOver: !!res.matchOver,
+        matchId,
+        contract: revealEv ? publicEvent(revealEv) : null,
       });
-      await sleep(revealDelayMs);
+      await sleep(paceDelay("reveal", timings));
     }
   }
   const winner = match.players.find((p) => p.id === match.winnerId) || null;
@@ -647,16 +746,18 @@ class Show {
     this.emit({ type: "LOCK", matchId: m.matchId });
     this.emitState();
     const agents = m.seats.map((s) => makePlayer(s.id));
+    this._handEdges = {};
     const exhibit = await playExhibit({
       agents,
       seed: m.seed,
+      matchId: m.matchId,
       turnDelayMs: this.turnDelayMs,
       revealDelayMs: this.revealDelayMs,
       sleep: this.sleep,
       onEvent: async (ev) => {
         if (ev.type === "BID") {
           m.round = ev.hand;
-          m.bid = { count: ev.count, face: ev.face, name: ev.name, agentId: ev.agentId };
+          m.bid = { count: ev.count, face: ev.face, name: ev.name, agentId: ev.agentId, byId: ev.agentId };
           m.reveal = null;
           this._syncDice(ev.counts);
           m.narrative = {
@@ -664,29 +765,59 @@ class Show {
             aside: ev.aside,
             headline: null,
             pace: ev.pace,
+            intensity: ev.intensity,
           };
-          this.records.noteBid(ev.agentId, { count: ev.count, total: (ev.counts || []).reduce((s, c) => s + (c.alive ? c.dice : 0), 0) });
+          const foe = m.seats.find((s) => s.id !== ev.agentId);
+          this.records.noteBid(ev.agentId, {
+            count: ev.count,
+            total: (ev.counts || []).reduce((s, c) => s + (c.alive ? c.dice : 0), 0),
+            step: ev.step,
+            bluff: ev.bluff,
+            opponentId: foe && foe.id,
+          });
           this._markFromDice();
         } else if (ev.type === "CALL") {
-          m.narrative = { line: `${ev.name} calls.`, aside: null, headline: "LIAR.", pace: ev.pace };
-          m.bid = ev.bid ? { ...ev.bid, name: ev.name } : m.bid;
+          m.narrative = {
+            line: `${ev.name} calls.`, aside: null, headline: "LIAR.",
+            pace: "call", intensity: ev.intensity,
+          };
+          const bidderId = ev.bid && ev.bid.byId;
+          m.bid = {
+            ...(m.bid || {}),
+            ...(ev.bid || {}),
+            byId: bidderId || (m.bid && m.bid.byId) || null,
+            agentId: bidderId || (m.bid && m.bid.agentId) || null,
+            name: (m.bid && m.bid.name) || ev.bidderName || "",
+            callerId: ev.agentId,
+            callerName: ev.name,
+          };
         } else if (ev.type === "REVEAL") {
           m.reveal = ev.reveal;
           m.narrative = {
             line: ev.headline,
             aside: null,
             headline: ev.headline,
-            pace: "critical",
+            pace: "reveal",
+            intensity: ev.intensity,
           };
           const callerRight = ev.bidWasTrue === false;
-          this.records.noteCall(ev.challengerId, callerRight);
+          this.records.noteCall(ev.challengerId, callerRight, ev.bidderId);
+          if (ev.bluffBid && callerRight) this.records.noteBluffCaught(ev.bidderId);
+          for (const row of ev.beforeCounts || []) {
+            const others = (ev.beforeCounts || []).filter((x) => x.id !== row.id);
+            if (!others.length) continue;
+            const opp = Math.max(...others.map((x) => x.dice));
+            const bucket = this._handEdges[row.id] ||= { ahead: 0, behind: 0 };
+            if (row.dice > opp) { bucket.ahead++; this.records.noteHand(row.id, "ahead"); }
+            else if (row.dice < opp) { bucket.behind++; this.records.noteHand(row.id, "behind"); }
+          }
           const ids = m.seats.map((s) => s.id);
           const prices = pricesFromDice(ids, (id) => {
             const c = (ev.counts || []).find((x) => x.id === id);
             return c && c.alive ? c.dice : 0;
           }, m.prior);
           this.market.mark(m.matchId, prices);
-          if (ev.matchOver) this._syncDice(ev.counts);
+          this._syncDice(ev.counts);
         }
         this.emit({ type: ev.type, matchId: m.matchId, ...ev, narrative: m.narrative, price: this.market.requireMarket(m.matchId).price });
         this.emitState();
@@ -698,7 +829,7 @@ class Show {
     this.market.settle(m.matchId, { winnerId: exhibit.winnerId, resultHash: hash });
     const winner = character(exhibit.winnerId);
     const loser = m.seats.find((s) => s.id !== exhibit.winnerId);
-    this.records.applyMatch({ seats: m.seats, winnerId: exhibit.winnerId, story });
+    this.records.applyMatch({ seats: m.seats, winnerId: exhibit.winnerId, story, edges: this._handEdges });
     const streak = this.records.get(exhibit.winnerId).streak;
     m.story = story;
     m.share = shareCard({ story, winnerName: winner.name, streak, loserName: loser && loser.name, matchId: m.matchId });
@@ -716,7 +847,10 @@ class Show {
     m.engineLog = exhibit.log;
     m.phase = "settled";
     this.phase = "settled";
-    m.narrative = { line: story.title, aside: story.dek, headline: story.title, pace: "critical" };
+    m.narrative = {
+      line: story.title, aside: story.dek, headline: story.title,
+      pace: "result", intensity: intensityFor("result"),
+    };
     const archived = {
       matchId: m.matchId,
       at: Date.now(),
@@ -761,6 +895,9 @@ class Show {
   }
 
   async finishInterrupted(raw) {
+    // Re-sim from the seed. Seeded decisions replay the actions that seed defines.
+    // A match killed mid-play after older Math.random calls does not resume the
+    // bids already streamed. The seed is the result, not a partial tape.
     if (this.history.some((h) => h.matchId === raw.matchId)) return;
     const market = this.market.markets.get(raw.matchId);
     if (!market || market.status === "settled") return;
@@ -819,7 +956,11 @@ class Show {
           await this.sleep(this.pickWindowMs);
           if (this.current && this.current.phase === "pick") await this.playOpen();
         }
-        await this.sleep(this.settleHoldMs);
+        await this.sleep(paceDelay("result", {
+          turnDelayMs: this.turnDelayMs,
+          revealDelayMs: this.revealDelayMs,
+          settleHoldMs: this.settleHoldMs,
+        }));
         this.current = null;
         this.openNext();
       } catch (e) {
@@ -856,6 +997,11 @@ class Show {
       form: r.form, played: r.played,
       winRate: r.played ? Math.round((1000 * r.won) / r.played) / 10 : 0,
       knownFor: this.records.knownFor(c.id),
+      bluffLine: storedLine(r.bluffCaught, r.bluffAttempts, "bluff bids were caught"),
+      callLine: storedLine(r.correctCalls, r.challenges, "calls were right"),
+      bidStep: r.bidSteps >= SAMPLE_FLOOR
+        ? { sum: r.bidStepSum, n: r.bidSteps }
+        : null,
       rivals, moments: r.moments,
     };
   }
@@ -892,4 +1038,4 @@ function requireFace(face) {
   return faceWord(face);
 }
 
-module.exports = { Show, Records, playExhibit, resultHash, DEFAULT_STAKE, HISTORY_CAP };
+module.exports = { Show, Records, playExhibit, resultHash, DEFAULT_STAKE, HISTORY_CAP, SAMPLE_FLOOR };

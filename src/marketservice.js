@@ -14,6 +14,16 @@
 // V1 trades a binary MATCH_WINNER only, and only while the match is open.
 // Lock is the start signal. Settlement pays 1 Arena Credit per winning share
 // and 0 for the losing side. A void refunds remaining cost basis once.
+//
+// Settlement reads one authoritative result: winnerId + resultHash.
+// Story, share text, and UI fields are not inputs.
+// integrityStatus is optional until the integrity service lands.
+//   omitted        → settle (this MVP has no verifier yet)
+//   "VALID"        → settle
+//   anything else  → leave the book awaiting_result and do not pay
+// Once a market has stored an integrityStatus, omitting the field later
+// does not bypass the gate. The integrity PR should call settle() with
+// that field; it should not reimplement payouts.
 
 const crypto = require("crypto");
 const {
@@ -35,6 +45,29 @@ function fail(code) {
   const err = new Error(code);
   err.code = code;
   throw err;
+}
+
+// Fields the book is allowed to settle from. Extra keys are ignored.
+function readAuthoritativeResult(result) {
+  if (!result || typeof result !== "object" || Array.isArray(result)) fail("bad_result");
+  const sent = Object.prototype.hasOwnProperty.call(result, "integrityStatus")
+    && result.integrityStatus != null
+    && String(result.integrityStatus) !== "";
+  return {
+    winnerId: result.winnerId == null ? null : String(result.winnerId),
+    resultHash: result.resultHash == null ? "" : String(result.resultHash),
+    integrityStatus: sent ? String(result.integrityStatus) : null,
+    integrityStatusSent: sent,
+    eventId: result.eventId || null,
+    endedAt: result.endedAt || null,
+  };
+}
+
+// Soft gate for a later integrity PR. Null means no verifier is attached.
+function integrityAllowsSettlement(recordedStatus, incoming) {
+  const status = incoming.integrityStatusSent ? incoming.integrityStatus : (recordedStatus || null);
+  if (status == null || status === "VALID") return { settle: true, status };
+  return { settle: false, status };
 }
 
 function clone(value) {
@@ -246,8 +279,14 @@ class MarketService {
       if (this.markets.has(String(ev.matchId || ""))) result = this.publicMarket(this.requireMarket(ev.matchId));
       else result = this.createMarket(ev);
     } else if (ev.type === "MATCH_STARTED") result = this.lock(ev.matchId, ev);
-    else if (ev.type === "MATCH_RESOLVED") result = this.settle(ev.matchId, ev);
-    else if (ev.type === "MATCH_ABORTED") result = this.voidMarket(ev.matchId, ev);
+    else if (ev.type === "MATCH_RESOLVED") {
+      result = this.settle(ev.matchId, ev);
+      // A non-VALID integrity status must stay retryable. Do not consume
+      // the event id or the later VALID payload cannot settle.
+      if (result && result.settlementDeferred) {
+        return { ok: true, duplicate: false, deferred: true, eventId, type: ev.type, market: result };
+      }
+    } else if (ev.type === "MATCH_ABORTED") result = this.voidMarket(ev.matchId, ev);
     else fail("ignored_event");
     this.seenEvents.add(eventId);
     return { ok: true, duplicate: false, eventId, type: ev.type, market: result };
@@ -588,14 +627,29 @@ class MarketService {
 
   settle(matchId, result = {}) {
     const m = this.requireMarket(matchId);
-    const winnerId = result.winnerId;
-    const resultHash = result.resultHash ? String(result.resultHash) : "";
+    const official = readAuthoritativeResult(result);
+    const winnerId = official.winnerId;
+    const resultHash = official.resultHash;
     if (m.status === "voided") fail("voided");
     if (m.status === "settled") {
       if (m.resultHash !== resultHash || m.winnerId !== winnerId) fail("result_conflict");
       return this.publicMarket(m);
     }
     if (m.status !== "locked" && m.status !== "awaiting_result") fail("not_locked");
+    const gate = integrityAllowsSettlement(m.integrityStatus, official);
+    if (!gate.settle) {
+      m.status = "awaiting_result";
+      m.integrityStatus = gate.status;
+      m.pendingResult = {
+        winnerId,
+        resultHash: resultHash || null,
+        integrityStatus: gate.status,
+      };
+      m.updatedAt = Date.now();
+      const deferred = this.publicMarket(m);
+      deferred.settlementDeferred = true;
+      return deferred;
+    }
     if (!resultHash || resultHash.length < 32) fail("bad_result");
     if (!m.agents.some((a) => a.id === winnerId)) fail("winner_not_seated");
     const winning = winnerId === m.targetAgentId ? "YES" : "NO";
@@ -608,6 +662,7 @@ class MarketService {
       if (pred) predSnaps.set(userId, clone(pred));
     }
     try {
+      if (official.integrityStatusSent) m.integrityStatus = official.integrityStatus;
       m.status = "settling";
       const rows = users.map((userId) => {
         const math = this.userPnL(m, userId, winning);
@@ -687,7 +742,7 @@ class MarketService {
       m.winnerId = winnerId;
       m.winningOutcome = winning;
       m.resultHash = resultHash;
-      m.settledAt = result.endedAt || Date.now();
+      m.settledAt = official.endedAt || Date.now();
       m.yesPrice = winning === "YES" ? 1 : 0;
       m.noPrice = winning === "YES" ? 0 : 1;
       const cents = centsPair(m.yesPrice);
@@ -695,7 +750,7 @@ class MarketService {
       m.noCents = cents.no;
       m.price = {};
       for (const a of m.agents) m.price[a.id] = a.id === winnerId ? 1 : 0;
-      const eventId = result.eventId || `MATCH_RESOLVED:${m.matchId}:${resultHash}`;
+      const eventId = official.eventId || `MATCH_RESOLVED:${m.matchId}:${resultHash}`;
       m.evidence = {
         matchId: m.matchId,
         marketType: "MATCH_WINNER",
@@ -704,6 +759,7 @@ class MarketService {
         resolutionEventId: eventId,
         resolvedOutcome: winning,
         resultHash,
+        integrityStatus: m.integrityStatus || null,
       };
       m.resolution = {
         status: "SETTLED",
@@ -862,6 +918,7 @@ class MarketService {
       winnerId: m.winnerId,
       winningOutcome: m.winningOutcome,
       resultHash: m.resultHash,
+      integrityStatus: m.integrityStatus || null,
       evidence: m.evidence,
       cashValue: 0,
       custody: false,
@@ -984,4 +1041,6 @@ class MarketService {
   }
 }
 
-module.exports = { MarketService, TEST_BADGE, EVENT_MAP };
+module.exports = {
+  MarketService, TEST_BADGE, EVENT_MAP, readAuthoritativeResult, integrityAllowsSettlement,
+};

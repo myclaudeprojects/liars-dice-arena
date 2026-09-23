@@ -229,6 +229,53 @@ for (const banned of ["DEPOSIT", "WITHDRAWAL", "TRANSFER", "USDC"]) {
 }
 assert(!CreditLedger.prototype.withdraw && !CreditLedger.prototype.deposit && !CreditLedger.prototype.transfer, "no cash methods");
 
+// Integrity status is a soft gate. Absent still settles. Non-VALID waits.
+const waiting = fresh();
+waiting.createMarket({ matchId: "held", agents });
+waiting.buy({ matchId: "held", predictorId: "predictor1", agentId: "dracula", side: "yes", stake: 40 });
+waiting.lock("held");
+const heldBal = waiting.ledger.balance("predictor1");
+const deferred = waiting.onGameEvent({
+  type: "MATCH_RESOLVED",
+  eventId: "MATCH_RESOLVED:held",
+  matchId: "held",
+  winnerId: "dracula",
+  resultHash: hash,
+  integrityStatus: "PENDING",
+  story: "this UI copy must not settle the book",
+  displayWinner: "caesar",
+});
+assert(deferred.deferred, "non-VALID integrity defers settlement");
+eq(waiting.requireMarket("held").status, "awaiting_result", "book waits for VALID");
+eq(waiting.requireMarket("held").winnerId, null, "deferred book has no winner yet");
+eq(waiting.ledger.balance("predictor1"), heldBal, "deferred settlement does not pay");
+waiting.settle("held", { winnerId: "dracula", resultHash: hash, narrative: "still not an input" });
+eq(waiting.requireMarket("held").status, "awaiting_result", "omitting integrityStatus does not bypass a recorded status");
+eq(waiting.ledger.balance("predictor1"), heldBal, "bypass attempt does not pay");
+const released = waiting.onGameEvent({
+  type: "MATCH_RESOLVED",
+  eventId: "MATCH_RESOLVED:held",
+  matchId: "held",
+  winnerId: "dracula",
+  resultHash: hash,
+  integrityStatus: "VALID",
+});
+assert(!released.deferred && !released.duplicate, "VALID payload is accepted");
+eq(waiting.requireMarket("held").status, "settled", "VALID completes settlement");
+eq(waiting.requireMarket("held").winnerId, "dracula", "winner comes from the result object");
+assert(waiting.ledger.balance("predictor1") > heldBal, "VALID pays the winning shares");
+const paidOnce = waiting.ledger.balance("predictor1");
+waiting.settle("held", { winnerId: "dracula", resultHash: hash, integrityStatus: "VALID" });
+eq(waiting.ledger.balance("predictor1"), paidOnce, "VALID retry does not pay twice");
+
+const direct = fresh();
+direct.createMarket({ matchId: "direct", agents });
+direct.buy({ matchId: "direct", predictorId: "predictor1", agentId: "dracula", side: "yes", stake: 20 });
+direct.lock("direct");
+direct.settle("direct", { winnerId: "dracula", resultHash: hash, integrityStatus: "VALID", headline: "YES" });
+eq(direct.requireMarket("direct").status, "settled", "VALID on the first result settles");
+eq(direct.requireMarket("direct").evidence.integrityStatus, "VALID", "evidence keeps the integrity status");
+
 const engineSrc = fs.readFileSync(path.join(__dirname, "..", "src", "engine.js"), "utf8");
 assert(!/lmsr|credits|marketservice|simmarket/.test(engineSrc), "dice engine does not import the market");
 const appSrc = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");

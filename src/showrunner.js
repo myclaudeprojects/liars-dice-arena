@@ -903,19 +903,22 @@ class Show {
     const hash = resultHash({ matchId: m.matchId, winnerId: exhibit.winnerId, seed: m.seed, log: exhibit.log });
     const endedAt = Date.now();
     const resultEventId = `MATCH_RESOLVED:${m.matchId}:${hash}`;
-    if (this.marketsEnabled && m.market) {
-      this.market.onGameEvent({
-        type: "MATCH_RESOLVED",
-        eventId: resultEventId,
-        matchId: m.matchId,
-        winnerId: exhibit.winnerId,
-        resultHash: hash,
-        endedAt,
-        startedAt: m.startedAt || null,
-        rounds: exhibit.hands,
-        participants: m.seats.map((s) => s.id),
-      });
-    }
+    // One result object. Settlement uses winnerId + resultHash only.
+    // Story and share text stay on the spectator card and are not copied here.
+    // integrityStatus is left unset until the integrity service attaches it.
+    // MarketService settles when that field is absent or "VALID".
+    const authoritativeResult = {
+      type: "MATCH_RESOLVED",
+      eventId: resultEventId,
+      matchId: m.matchId,
+      winnerId: exhibit.winnerId,
+      resultHash: hash,
+      endedAt,
+      startedAt: m.startedAt || null,
+      rounds: exhibit.hands,
+      participants: m.seats.map((s) => s.id),
+    };
+    if (this.marketsEnabled && m.market) this.market.onGameEvent(authoritativeResult);
     if (markSettled) markSettled(true);
     const winner = character(exhibit.winnerId);
     const loser = m.seats.find((s) => s.id !== exhibit.winnerId);

@@ -104,6 +104,10 @@ button { cursor: pointer; }
 .you { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
 .spark { display: block; margin: 10px auto 0; }
 .spark polyline { fill: none; stroke: var(--gold); stroke-width: 2; }
+.spark.good polyline { stroke: var(--good); }
+.spark.bad polyline { stroke: var(--bad); }
+.career .spark { width: 100%; height: 48px; margin: 8px 0 0; }
+.career .fine { margin-top: 6px; }
 .slate { display: flex; flex-direction: column; gap: 8px; }
 .upcard {
   background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; padding: 12px;

@@ -51,6 +51,11 @@ function opts(file, extra = {}) {
   const hist = show.history.map((h) => h.matchId);
   assert(hist.includes(liveId), "settled match is history");
   assert(credits !== 1000, "the live pick changed the balance");
+  const settledView = show.snapshot("persist01").you;
+  assert(settledView.series && settledView.series.length === 1, "settled pick is a career point");
+  eq(settledView.series[0].cum, settledView.pnl, "career cum matches total pnl");
+  eq(settledView.series[0].matchId, liveId, "career point is this match");
+  eq(settledView.cashValue, 0, "career snapshot has no cash value");
   show.persist();
 
   const reloaded = new Show(opts(file, { bootstrapCount: 30 }));
@@ -66,6 +71,10 @@ function opts(file, extra = {}) {
   assert(again.live.matchId === upId, "the upcoming book became the live match");
   assert(again.upcoming.length >= 1 && again.upcoming[0].matchId !== upId, "a new upcoming market is visible");
   assert(again.you.credits === credits, "snapshot balance is the stored book");
+  assert(again.you.series && again.you.series.length === 1, "career series survived restart");
+  eq(again.you.series[0].cum, again.you.pnl, "reloaded career cum matches pnl");
+  eq(again.you.series[0].matchId, liveId, "reloaded career point is the settled match");
+  eq(again.you.cashValue, 0, "reloaded career still has no cash value");
 
   const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), "lda-show-"));
   const file2 = path.join(dir2, "show.json");

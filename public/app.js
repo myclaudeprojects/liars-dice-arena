@@ -81,7 +81,7 @@ function renderCredits() {
   creditsEl.textContent = me ? `${Math.round(me.credits)} test` : "—";
 }
 
-function spark(values) {
+function spark(values, tone) {
   if (!values || values.length < 2) return "";
   const w = 168;
   const h = 36;
@@ -93,7 +93,17 @@ function spark(values) {
     const y = h - 2 - ((v - min) / span) * (h - 6);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline points="${pts}" /></svg>`;
+  const toneClass = tone === "good" || tone === "bad" ? " " + tone : "";
+  return `<svg class="spark${toneClass}" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline points="${pts}" /></svg>`;
+}
+
+function careerBlock(person, opts = {}) {
+  const series = (person && person.series) || [];
+  if (!series.length) return opts.quiet ? "" : `<p class="fine">Settled picks will draw your line.</p>`;
+  const last = series[series.length - 1];
+  const tone = Number(last.cum) >= 0 ? "good" : "bad";
+  const values = [0, ...series.map((s) => Number(s.cum) || 0)];
+  return `<div class="career">${spark(values, tone)}<p class="fine">${series.length} settled · ${money(last.cum)} test</p></div>`;
 }
 
 function arena() {
@@ -228,6 +238,7 @@ function payoff() {
       ${pos ? `<p>${won ? `<b class="good">You called it.</b>` : `<b>You missed this one.</b>`} Your pick: <b>${esc(picked)}</b>.</p>` : `<p class="fine">You watched this one without a pick.</p>`}
       ${lesson ? `<p class="fine">${esc(lesson)}</p>` : ""}
       ${pos ? `<p>Test credits ${money(pos.pnl)} · balance ${Math.round(bankroll())}</p>` : ""}
+      ${careerBlock(me, { quiet: true })}
       ${m.share ? `<div class="share">${esc(m.share.text)}</div><button class="ghost" type="button" data-share>Share the call</button>` : ""}
     </div>`;
 }
@@ -311,6 +322,7 @@ function profile() {
       <div><b>${me.streak || 0}</b><span>Streak</span></div>
     </div>
     <p class="fine" style="margin-top:12px">${Math.round(me.credits)} test credits. They are not dollars, tokens, or a claim on anything.</p>
+    <section class="section"><h2>Career</h2>${careerBlock(me)}</section>
     ${me.bestRead ? `<section class="section"><h2>Best read</h2><div class="rowbtn"><b>${esc((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId)}</b><div class="fine">${me.bestRead.accuracy}% over ${me.bestRead.picks} picks</div></div></section>` : ""}
     <section class="section"><h2>Leaderboard</h2>
       ${(leaders.length ? leaders : [{ id: "you", accuracy: me.accuracy, pnl: me.pnl, picks: me.picks }]).slice(0, 8).map((p, i) => `<div class="rowbtn"><b>${i + 1}. ${esc(p.id === me.id ? "You" : p.id)}</b><div class="fine">${p.accuracy || 0}% · ${money(p.pnl || 0)} test</div></div>`).join("")}

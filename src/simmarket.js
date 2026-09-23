@@ -11,6 +11,7 @@ const DEFAULT_STAKE = 50;
 const MIN_STAKE = 10;
 const MAX_STAKE = 250;
 const THEORY_TAGS = ["Aggressive", "Conservative", "Bluffer", "Risk-taker", "Pressure player", "Unpredictable"];
+const CAREER_CAP = 40;
 
 function round4(x) { return Math.round(Number(x) * 10000) / 10000; }
 
@@ -66,6 +67,7 @@ class SimMarket {
         streak: 0,
         bestStreak: 0,
         pnl: 0,
+        settled: [],
         theories: {},
         createdAt: Date.now(),
       });
@@ -100,6 +102,12 @@ class SimMarket {
       streak: p.streak,
       bestStreak: p.bestStreak,
       pnl: p.pnl,
+      series: (p.settled || []).map((s) => ({
+        matchId: s.matchId,
+        pnl: s.pnl,
+        cum: s.cum,
+        won: !!s.won,
+      })),
       theories: p.theories || {},
       bestRead: best ? { agentId: best.agentId, picks: best.picks, accuracy: Math.round(best.acc * 1000) / 10 } : null,
       unit: "test-credits",
@@ -274,6 +282,16 @@ class SimMarket {
       pred.credits = round4(pred.credits + pos.payout);
       pred.picks++;
       pred.pnl = round4(pred.pnl + pos.pnl);
+      pred.settled = pred.settled || [];
+      pred.settled.push({
+        matchId: m.matchId,
+        agentId: pos.agentId,
+        pnl: pos.pnl,
+        cum: pred.pnl,
+        won,
+        at: Date.now(),
+      });
+      if (pred.settled.length > CAREER_CAP) pred.settled.splice(0, pred.settled.length - CAREER_CAP);
       if (won) {
         pred.correct++;
         pred.streak++;
@@ -367,5 +385,5 @@ const ERROR_TEXT = {
 
 module.exports = {
   SimMarket, pricesFromRecords, pricesFromDice, normalize,
-  STARTING_CREDITS, DEFAULT_STAKE, MIN_STAKE, MAX_STAKE, THEORY_TAGS, ERROR_TEXT, round4,
+  STARTING_CREDITS, DEFAULT_STAKE, MIN_STAKE, MAX_STAKE, THEORY_TAGS, CAREER_CAP, ERROR_TEXT, round4,
 };

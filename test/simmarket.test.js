@@ -83,4 +83,60 @@ try {
 assert(threw, "stake cap");
 assert(ERROR_TEXT.market_locked, "human copy");
 
+const firstPub = book.openPredictor("predictor1");
+eq(firstPub.series.length, 1, "win is one career point");
+eq(firstPub.series[0].matchId, "m1", "career point names the match");
+eq(firstPub.series[0].won, true, "win marked");
+eq(firstPub.series[0].cum, firstPub.pnl, "first cum is total pnl");
+eq(firstPub.cashValue, 0, "career view still has no cash value");
+book.settle("m1", { winnerId: "dracula", resultHash: hash });
+eq(book.openPredictor("predictor1").series.length, 1, "idempotent settle does not append");
+
+book.createMarket({ matchId: "m4", agents, prices: { dracula: 0.5, caesar: 0.5 } });
+book.buy({ matchId: "m4", predictorId: "predictor1", agentId: "caesar", side: "yes", stake: 50 });
+book.lock("m4");
+book.settle("m4", { winnerId: "dracula", resultHash: "d".repeat(64) });
+const two = book.openPredictor("predictor1");
+eq(two.series.length, 2, "loss adds a second point");
+eq(two.series[1].won, false, "loss marked");
+let run = 0;
+for (const point of two.series) {
+  run = Math.round((run + point.pnl) * 10000) / 10000;
+  eq(point.cum, run, "cum is the running pnl");
+}
+eq(two.series[1].cum, two.pnl, "last cum is total pnl");
+eq(book.requirePredictor("predictor1").settled.length, 2, "raw book keeps both points");
+
+const restored = new SimMarket();
+restored.importState(book.exportState());
+const back = restored.openPredictor("predictor1");
+eq(back.series.length, 2, "series survives export");
+eq(back.series[1].cum, two.pnl, "imported cum matches");
+eq(back.cashValue, 0, "imported book still worthless");
+eq(back.pnl, restored.requirePredictor("predictor1").pnl, "public pnl matches the stored book");
+
+const old = new SimMarket();
+old.importState({
+  predictors: [{ id: "predictor8", credits: 900, granted: 1000, picks: 1, correct: 1, streak: 1, bestStreak: 1, pnl: 12, theories: {} }],
+  markets: [],
+});
+const legacy = old.openPredictor("predictor8");
+eq(legacy.series.length, 0, "picks settled before the series stay a total, not invented points");
+eq(legacy.pnl, 12, "old total pnl remains");
+eq(legacy.cashValue, 0, "old book still worthless");
+
+const capBook = new SimMarket();
+capBook.openPredictor("predictor9");
+for (let i = 0; i < 42; i++) {
+  const id = "cap" + i;
+  if (i % 10 === 0) capBook.buysAt.delete("predictor9");
+  capBook.createMarket({ matchId: id, agents, prices: { dracula: 0.5, caesar: 0.5 } });
+  capBook.buy({ matchId: id, predictorId: "predictor9", agentId: "caesar", side: "yes", stake: 10 });
+  capBook.lock(id);
+  capBook.settle(id, { winnerId: "dracula", resultHash: "e".repeat(64) });
+}
+eq(capBook.requirePredictor("predictor9").settled.length, 40, "career series caps at 40");
+eq(capBook.openPredictor("predictor9").series[0].matchId, "cap2", "oldest points drop first");
+eq(capBook.openPredictor("predictor9").cashValue, 0, "capped book still worthless");
+
 console.log("simmarket ok");

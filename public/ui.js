@@ -30,6 +30,15 @@
     }).filter(Boolean).join(" ");
   }
 
+  function emblem() {
+    return `<span class="lda-emblem" aria-hidden="true"></span>`;
+  }
+
+  function palette(id) {
+    if (!id) return "";
+    return `<span class="lda-palette" data-cast="${esc(id)}" aria-hidden="true"><i class="is-primary"></i><i class="is-secondary"></i><i class="is-accent"></i></span>`;
+  }
+
   function avatar(name, hue, id) {
     const raw = String(name || "?").replace(/^The /, "");
     const letter = raw[0] || "?";
@@ -109,10 +118,12 @@
     return "lda-card";
   }
 
-  return {
+    return {
     CAST_IDS,
     esc,
     avatar,
+    emblem,
+    palette,
     liveBadge,
     marketBadge,
     button,

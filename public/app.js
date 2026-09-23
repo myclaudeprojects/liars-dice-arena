@@ -315,11 +315,45 @@ async function api(path, opts) {
   return j;
 }
 function faceWord(face) { return FACE[face] || "dice"; }
-function mark(name, hue, id) {
-  if (ui()) return ui().avatar(name, hue, id);
-  const letter = esc((name || "?").replace(/^The /, "")[0] || "?");
-  const tone = hue == null ? 40 : hue;
-  return `<div class="mark lda-avatar" style="--agent-accent:hsl(${tone} 42% 58%)">${letter}</div>`;
+function brandFor(person) {
+  if (!person) return null;
+  if (person.brand && person.brand.title) return person.brand;
+  const id = person.id || person.agentId;
+  if (focusMatch && focusMatch.brands && id && focusMatch.brands[id]) return focusMatch.brands[id];
+  if (snap && snap.brands && id && snap.brands[id]) return snap.brands[id];
+  const known = agents.find((a) => a.id === id);
+  return (known && known.brand) || null;
+}
+function personTitle(person) {
+  const brand = brandFor(person);
+  return (brand && brand.title) || (person && person.archetype) || "";
+}
+function mark(name, hue, id, brand) {
+  const resolved = brand || brandFor({ id });
+  const cast = id ? ` data-cast="${esc(id)}"` : "";
+  const avatar = ui()
+    ? ui().avatar(name, hue, id)
+    : (() => {
+      const letter = esc((name || "?").replace(/^The /, "")[0] || "?");
+      const tone = hue == null ? 40 : hue;
+      return `<div class="mark lda-avatar"${cast} style="--agent-accent:hsl(${tone} 42% 58%)">${letter}</div>`;
+    })();
+  if (!resolved || !resolved.emblemUrl || !ui()) return avatar;
+  return `<span class="brand-lockup"${cast}>${ui().emblem()}${avatar}</span>`;
+}
+function titleLine(person) {
+  const title = personTitle(person);
+  return title ? `<span class="brand-title">${esc(title)}</span>` : "";
+}
+function paletteLine(person) {
+  const brand = brandFor(person);
+  if (!brand || !ui()) return "";
+  return ui().palette(brand.agentId || person.id);
+}
+function marketIdentity(person) {
+  if (!person) return "";
+  const brand = brandFor(person);
+  return `<div class="market-identity" data-cast="${esc(person.id)}">${mark(person.name, person.hue, person.id, brand)}<div class="nameplate"><b>${esc(person.name)}</b>${titleLine(person)}</div></div>`;
 }
 function die(n, extra) {
   const pips = (PIPS[n] || []).map(([x, y]) => `<i class="pip" style="left:calc(${x}% - 2px);top:calc(${y}% - 2px)"></i>`).join("");
@@ -463,19 +497,19 @@ function arena() {
     ${badge}
     <article class="live-card ${card}${intro}">
       <div class="vs">
-        <div class="who">${mark(a.name, a.hue, a.id)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
+        <div class="who" data-cast="${esc(a.id)}">${mark(a.name, a.hue, a.id, brandFor(a))}<b>${esc(a.name)}</b>${titleLine(a)}<span>${esc(a.record)}</span></div>
         <div class="x">VS</div>
-        <div class="who">${mark(b.name, b.hue, b.id)}<b>${esc(b.name)}</b><span>${esc(b.record)}</span></div>
+        <div class="who" data-cast="${esc(b.id)}">${mark(b.name, b.hue, b.id, brandFor(b))}<b>${esc(b.name)}</b>${titleLine(b)}<span>${esc(b.record)}</span></div>
       </div>
       <div class="status">${m.phase === "live" ? `Round ${m.round || 1}` : final ? esc(m.story && m.story.title || "Settled") : "Picks are open"}</div>
       ${cta}
       ${noPicksYet() ? `<p class="first-run">No test position yet. YES or NO, in Arena Credits. They are not cash.</p>` : ""}
     </article>
     ${upcomingBlock()}
-    ${hot ? `<section class="section"><h2>Hot</h2><div class="rowbtn"><b>${esc(hot.text)}</b><div class="fine">Can anyone stop ${esc(hot.name)}?</div></div></section>` : ""}
-    ${rival ? `<section class="section"><h2>Rivalries</h2><button class="rowbtn" type="button" data-agent="${esc(rival.a.id)}"><b>${esc(rival.text)}</b><div class="fine">Series ${esc(rival.series)} · ${rival.meetings} meetings</div></button></section>` : ""}
-    ${fresh ? `<section class="section"><h2>New</h2><button class="rowbtn" type="button" data-agent="${esc(fresh.id)}"><b>Meet ${esc(fresh.name)}</b><div class="fine">${esc(fresh.archetype)}. First match is this one.</div></button></section>` : ""}
-    ${reads.length ? `<section class="section"><h2>Your reads</h2>${reads.map((r) => `<button class="rowbtn" type="button" data-agent="${esc(r.id)}"><b>${esc(r.name)}</b><div class="fine">${r.correct} / ${r.picks} picks right</div></button>`).join("")}</section>` : ""}
+    ${hot ? `<section class="section"><h2>Hot</h2><div class="rowbtn" data-cast="${esc(hot.agentId)}">${mark(hot.name, null, hot.agentId, hot.brand)}<span><b>${esc(hot.name)}</b>${titleLine(hot)}</span><div class="fine">${esc(hot.text)}</div></div></section>` : ""}
+    ${rival ? `<section class="section"><h2>Rivalries</h2><button class="rowbtn" type="button" data-agent="${esc(rival.a.id)}"><span class="rival-row">${[rival.a, rival.b].map((p) => `<span class="rival-side" data-cast="${esc(p.id)}">${mark(p.name, null, p.id, p.brand)}<span><b>${esc(p.name)}</b>${titleLine(p)}</span></span>`).join(`<span class="x">VS</span>`)}</span><div class="fine">Series ${esc(rival.series)} · ${rival.meetings} meetings</div></button></section>` : ""}
+    ${fresh ? `<section class="section"><h2>New</h2><button class="rowbtn" type="button" data-agent="${esc(fresh.id)}" data-cast="${esc(fresh.id)}">${mark(fresh.name, null, fresh.id, fresh.brand)}<span><b>Meet ${esc(fresh.name)}</b>${titleLine(fresh)}</span><div class="fine">${esc(personTitle(fresh) || fresh.archetype)}. First match is this one.</div></button></section>` : ""}
+    ${reads.length ? `<section class="section"><h2>Your reads</h2>${reads.map((r) => `<button class="rowbtn" type="button" data-agent="${esc(r.id)}" data-cast="${esc(r.id)}">${mark(r.name, null, r.id, r.brand)}<span><b>${esc(r.name)}</b>${titleLine(r)}</span><div class="fine">${r.correct} / ${r.picks} picks right</div></button>`).join("")}</section>` : ""}
     <p class="fine" style="margin-top:18px">Test credits have no cash value. No wallet. The agents play. You pick.</p>`;
 }
 
@@ -567,9 +601,9 @@ function upcomingBlock() {
       <article class="upcard ${card}">
         <div class="fine">${["Next", "Soon", "Later", "Last"][i] || "After"}</div>
         <div class="vs">
-          <div class="who">${mark(a.name, a.hue, a.id)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
+          <div class="who" data-cast="${esc(a.id)}">${mark(a.name, a.hue, a.id, brandFor(a))}<b>${esc(a.name)}</b>${titleLine(a)}<span>${esc(a.record)}</span></div>
           <div class="x">VS</div>
-          <div class="who">${mark(b.name, b.hue, b.id)}<b>${esc(b.name)}</b><span>${esc(b.record)}</span></div>
+          <div class="who" data-cast="${esc(b.id)}">${mark(b.name, b.hue, b.id, brandFor(b))}<b>${esc(b.name)}</b>${titleLine(b)}<span>${esc(b.record)}</span></div>
         </div>
         <p class="fine">${picked}</p>
         ${buttons}
@@ -661,8 +695,10 @@ function marketPanel(m, opts = {}) {
       yesPicked: !!prop.you && prop.you.side === "yes",
       noPicked: !!prop.you && prop.you.side === "no",
     });
-    return `<article class="prop-card ${shell}${settled ? " settled" : ""}">
+    const propAgent = (m.seats || []).find((s) => s.id === prop.targetAgentId) || null;
+    return `<article class="prop-card ${shell}${settled ? " settled" : ""}"${propAgent ? ` data-cast="${esc(propAgent.id)}"` : ""}>
       <div class="prop-head"><span>${esc(prop.eyebrow || "Match prop")}</span>${result}</div>
+      ${marketIdentity(propAgent)}
       <h3>${esc(prop.title)}</h3>
       <div class="outcomes">${buttons}</div>
       ${marketPositionLine(prop.you)}
@@ -685,8 +721,9 @@ function marketPanel(m, opts = {}) {
       <div class="market-balance"><span>Balance</span><b>${Math.round(bankroll())} AC</b></div>
     </div>
     <p class="market-disclosure">Arena Credits only · no cash value · ${esc(stateCopy)}</p>
-    <article class="winner-market ${shell}">
+    <article class="winner-market ${shell}" data-cast="${esc(target.id)}">
       <div class="prop-head"><span>Match winner</span>${winnerResult}</div>
+      ${marketIdentity(target)}
       <h3>${esc(question)}</h3>
       <div class="outcomes winner-outcomes">${winnerButtons}</div>
       ${marketPositionLine(winnerYou)}
@@ -894,7 +931,9 @@ function seatBlock(seat, m, beats, frame) {
   }
   const label = api ? (api.REACTION_LABEL[react] || "") : "";
   const rolling = frame ? !!frame.roll : beats.some((b) => b.type === "roll" || b.type === "start");
-  return `<div class="${seatClass(seat, m, beats)} arena-seat" data-react="${esc(react)}">${mark(seat.name, seat.hue, seat.id)}<div class="seat-copy"><b>${esc(seat.name)}</b><span>${diceLabel}</span>${label ? `<i class="react">${esc(label)}</i>` : ""}</div><div class="dice-row${rolling ? " shake" : ""}">${diceFor(seat, m, beats, frame)}</div></div>`;
+  const brand = brandFor(seat);
+  const motion = brand && brand.motionLanguage ? ` data-motion="${esc(brand.motionLanguage)}"` : "";
+  return `<div class="${seatClass(seat, m, beats)} arena-seat" data-react="${esc(react)}" data-cast="${esc(seat.id)}"${motion}>${mark(seat.name, seat.hue, seat.id, brand)}<div class="seat-copy"><b>${esc(seat.name)}</b>${titleLine(seat)}<span>${diceLabel}</span>${label ? `<i class="react">${esc(label)}</i>` : ""}</div><div class="dice-row${rolling ? " shake" : ""}">${diceFor(seat, m, beats, frame)}</div></div>`;
 }
 
 function stageModel(m, beats, frame) {
@@ -1041,7 +1080,8 @@ function payoff() {
   const faces = (m.seats || []).map((seat) => {
     const react = reactions[seat.id] || "neutral";
     const label = api ? (api.REACTION_LABEL[react] || "") : "";
-    return `<div class="arena-seat" data-react="${esc(react)}">${mark(seat.name, seat.hue, seat.id)}<div class="seat-copy"><b>${esc(seat.name)}</b>${label ? `<i class="react">${esc(label)}</i>` : ""}</div></div>`;
+    const brand = brandFor(seat);
+    return `<div class="arena-seat" data-react="${esc(react)}" data-cast="${esc(seat.id)}">${mark(seat.name, seat.hue, seat.id, brand)}<div class="seat-copy"><b>${esc(seat.name)}</b>${titleLine(seat)}${label ? `<i class="react">${esc(label)}</i>` : ""}</div></div>`;
   }).join("");
   return `
     <div class="payoff ${ui() ? ui().cardClass("result") : "lda-card lda-result"}${settle ? " sting" : ""}">
@@ -1088,7 +1128,7 @@ function agentsView() {
   }
   if (!agents.length) return `<h1 class="page">Agents</h1>${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
   return `<h1 class="page">Agents</h1><p class="fine">Characters, not algorithms with a hat on. Records are from matches they actually played.</p>` +
-    agents.map((a) => `<button class="agent-row" type="button" data-agent="${esc(a.id)}">${mark(a.name, a.hue, a.id)}<b>${esc(a.name)}</b><div class="fine">${esc(a.archetype)} · ${esc(a.record)}${a.streak ? ` · streak ${a.streak}` : ""}${a.knownFor ? ` · known for ${esc(a.knownFor)}` : ""}</div></button>`).join("");
+    agents.map((a) => `<button class="agent-row" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}">${mark(a.name, a.hue, a.id, brandFor(a))}<span><b>${esc(a.name)}</b>${titleLine(a)}</span>${paletteLine(a)}<div class="fine">${esc((brandFor(a) && brandFor(a).tagline) || a.line || a.archetype)} · ${esc(a.record)}${a.streak ? ` · streak ${a.streak}` : ""}${a.knownFor ? ` · known for ${esc(a.knownFor)}` : ""}</div></button>`).join("");
 }
 
 function agentDetail(a) {
@@ -1098,7 +1138,7 @@ function agentDetail(a) {
   const moments = (a.moments || []).map((m) => `<div class="rowbtn"><b>${esc(m.title)}</b><div class="fine">${esc(m.dek || "")}</div></div>`).join("");
   return `
     <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="agents">All agents</button>
-    <h1 class="page">${esc(a.name)}</h1>
+    <div class="agent-hero" data-cast="${esc(a.id)}">${mark(a.name, a.hue, a.id, brandFor(a))}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
     <p class="fine">${esc(a.archetype)}</p>
     <div class="statgrid">
       ${ui() ? ui().statPill(a.record, "Record") + ui().statPill(String(a.streak || 0), "Streak") + ui().statPill(`${a.winRate || 0}%`, "Win rate") + ui().statPill(String(a.played || 0), "Played") : `<div><b>${esc(a.record)}</b><span>Record</span></div><div><b>${a.streak || 0}</b><span>Streak</span></div><div><b>${a.winRate || 0}%</b><span>Win rate</span></div><div><b>${a.played || 0}</b><span>Played</span></div>`}
@@ -1124,7 +1164,8 @@ function historyView() {
   return `<h1 class="page">History</h1>${line}` + history.map((h) => `
     <button class="rowbtn lda-card lda-match" type="button" data-match="${esc(h.matchId)}">
       <b>${esc(h.title || h.winnerName)}</b>
-      <div class="fine">${esc((h.seats || []).map((s) => s.name).join(" vs "))} · ${esc(h.dek || "")}</div>
+      <div class="history-cast">${(h.seats || []).map((s) => `<span class="history-seat" data-cast="${esc(s.id)}">${mark(s.name, s.hue, s.id, brandFor(s))}<span><b>${esc(s.name)}</b>${titleLine(s)}</span></span>`).join(`<span class="x">vs</span>`)}</div>
+      <div class="fine">${esc(h.dek || "")}</div>
     </button>`).join("");
 }
 
@@ -1200,7 +1241,7 @@ function profile() {
         : `<div><b>${me.accuracy || 0}%</b><span>Correct</span></div><div><b>${me.picks || 0}</b><span>Picks</span></div><div><b>${money(me.pnl || 0)}</b><span>Test PnL</span></div><div><b>${me.streak || 0}</b><span>Streak</span></div>`}
     </div>
     <p class="fine" style="margin-top:12px">AC ${Math.round(me.credits).toLocaleString("en-US")}. Arena Credits have no monetary value. Test P&L is not earnings.</p>
-    ${me.bestRead ? `<section class="section"><h2>Best read</h2><div class="rowbtn"><b>${esc((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId)}</b><div class="fine">${me.bestRead.accuracy}% over ${me.bestRead.picks} picks</div></div></section>` : ""}
+    ${me.bestRead ? `<section class="section"><h2>Best read</h2><div class="rowbtn" data-cast="${esc(me.bestRead.agentId)}">${mark((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId, null, me.bestRead.agentId)}<span><b>${esc((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId)}</b>${titleLine({ id: me.bestRead.agentId })}</span><div class="fine">${me.bestRead.accuracy}% over ${me.bestRead.picks} picks</div></div></section>` : ""}
     <section class="section"><h2>Leaderboard</h2>
       ${(leaders.length ? leaders : [{ id: me.id, accuracy: me.accuracy, pnl: me.pnl, picks: me.picks }]).slice(0, 8).map((p, i) => `<div class="rowbtn"><b>${i + 1}. ${esc(p.id === me.id ? "You" : p.id)}</b><div class="fine">${p.accuracy || 0}% · ${money(p.pnl || 0)} test</div></div>`).join("")}
     </section>`;

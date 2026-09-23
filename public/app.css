@@ -404,9 +404,20 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 .who-now { text-align: left; font-size: 13px; color: var(--lda-text-muted); }
 .who-now b { color: var(--lda-text); font-weight: 560; }
 .stage .arena-seat {
+  position: relative;
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center;
   text-align: left; padding: 8px 10px; border-radius: 16px;
   background: var(--lda-surface); border: 1px solid var(--lda-line);
+}
+.stage .arena-seat[data-cast]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--agent-accent);
 }
 .stage .arena-seat.who b,
 .result-seats .arena-seat b {
@@ -416,11 +427,60 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 .stage .arena-seat .dice-row { margin: 0; justify-content: flex-end; }
 .seat-copy { min-width: 0; }
 .seat-copy span { display: block; margin-top: 2px; color: var(--lda-text-muted); font-size: 13px; }
+.brand-lockup { display: inline-flex; align-items: center; gap: var(--space-1); flex: 0 0 auto; }
+.who .brand-lockup { margin: 0 auto var(--space-1); }
+.agent-hero { margin: var(--space-3) 0 var(--space-2); }
+.agent-hero .mark { width: 64px; height: 64px; font-size: 28px; }
+.agent-hero .lda-emblem { width: 22px; height: 22px; }
+.agent-hero .lda-palette { margin: var(--space-2) 0; }
+.brand-title {
+  display: block;
+  margin-top: 2px;
+  color: var(--agent-accent, var(--lda-text-secondary));
+  font-size: var(--type-meta);
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.seat-copy .brand-title, .who .brand-title, .nameplate .brand-title { color: var(--agent-accent, var(--lda-text-secondary)); }
+.market-identity, .history-cast, .rival-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.market-identity { margin-bottom: var(--space-2); }
+.nameplate { min-width: 0; }
+.nameplate b, .history-seat b {
+  display: block;
+  font-family: var(--lda-font-display);
+  font-weight: 560;
+  letter-spacing: var(--tracking-tight);
+}
+.winner-market[data-cast], .prop-card[data-cast] {
+  box-shadow: inset 3px 0 0 var(--agent-accent);
+}
+.history-cast { flex-wrap: wrap; margin-top: var(--space-2); }
+.history-seat { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.rival-row { width: 100%; justify-content: space-between; }
+.rival-side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--agent-accent) 16%, var(--lda-surface));
+}
 .react {
   display: block; margin-top: 2px; font-style: normal; font-size: 11px;
   letter-spacing: 0.08em; text-transform: uppercase; color: var(--lda-gold);
 }
-.arena-seat[data-react="thinking"] .mark { animation: thinkPulse 1.1s ease-in-out infinite; }
+.arena-seat[data-motion="FAST_CONFIDENT"] { --seat-cadence: var(--dur-micro); }
+.arena-seat[data-motion="SLOW_REGAL"] { --seat-cadence: var(--dur-cinematic); }
+.arena-seat[data-motion="CHAOTIC_UNEVEN"] { --seat-cadence: var(--dur-enter); }
+.arena-seat[data-motion="MECHANICAL_PRECISE"] { --seat-cadence: var(--dur-ui); }
+.arena-seat[data-react="thinking"] .mark { animation: thinkPulse var(--seat-cadence, 1.1s) ease-in-out infinite; }
 .arena-seat[data-react="confident"] .mark { box-shadow: 0 0 0 2px var(--lda-gold); }
 .arena-seat[data-react="failed-bluff"] .react,
 .arena-seat[data-react="failed-call"] .react,

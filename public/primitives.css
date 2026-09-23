@@ -103,18 +103,42 @@ button.lda-card:hover,
   box-shadow: var(--lda-shadow-1);
 }
 .lda-avatar-glyph { line-height: 1; }
-.lda-avatar[data-cast="dracula"] { --agent-accent: var(--agent-dracula); }
-.lda-avatar[data-cast="caesar"] { --agent-accent: var(--agent-caesar); }
-.lda-avatar[data-cast="reaper"] { --agent-accent: var(--agent-reaper); }
-.lda-avatar[data-cast="athena"] { --agent-accent: var(--agent-athena); }
-.lda-avatar[data-cast="shark"] { --agent-accent: var(--agent-shark); }
-.lda-avatar[data-cast="oracle"] { --agent-accent: var(--agent-oracle); }
-.lda-avatar[data-cast="fox"] { --agent-accent: var(--agent-fox); }
-.lda-avatar[data-cast="brutus"] { --agent-accent: var(--agent-brutus); }
-.lda-avatar[data-cast="monk"] { --agent-accent: var(--agent-monk); }
-.lda-avatar[data-cast="siren"] { --agent-accent: var(--agent-siren); }
-.lda-avatar[data-cast="miser"] { --agent-accent: var(--agent-miser); }
-.lda-avatar[data-cast="jester"] { --agent-accent: var(--agent-jester); }
+[data-cast="dracula"] { --agent-accent: var(--agent-dracula); --swatch-primary: var(--brand-dracula-primary); --swatch-secondary: var(--brand-dracula-secondary); --swatch-accent: var(--brand-dracula-accent); --emblem-url: url("/static/emblems/dracula.svg"); }
+[data-cast="caesar"] { --agent-accent: var(--agent-caesar); --swatch-primary: var(--brand-caesar-primary); --swatch-secondary: var(--brand-caesar-secondary); --swatch-accent: var(--brand-caesar-accent); --emblem-url: url("/static/emblems/caesar.svg"); }
+[data-cast="reaper"] { --agent-accent: var(--agent-reaper); --swatch-primary: var(--brand-reaper-primary); --swatch-secondary: var(--brand-reaper-secondary); --swatch-accent: var(--brand-reaper-accent); --emblem-url: url("/static/emblems/reaper.svg"); }
+[data-cast="athena"] { --agent-accent: var(--agent-athena); --swatch-primary: var(--brand-athena-primary); --swatch-secondary: var(--brand-athena-secondary); --swatch-accent: var(--brand-athena-accent); --emblem-url: url("/static/emblems/athena.svg"); }
+[data-cast="shark"] { --agent-accent: var(--agent-shark); --swatch-primary: var(--brand-shark-primary); --swatch-secondary: var(--brand-shark-secondary); --swatch-accent: var(--brand-shark-accent); --emblem-url: url("/static/emblems/shark.svg"); }
+[data-cast="oracle"] { --agent-accent: var(--agent-oracle); --swatch-primary: var(--brand-oracle-primary); --swatch-secondary: var(--brand-oracle-secondary); --swatch-accent: var(--brand-oracle-accent); --emblem-url: url("/static/emblems/oracle.svg"); }
+[data-cast="fox"] { --agent-accent: var(--agent-fox); --swatch-primary: var(--brand-fox-primary); --swatch-secondary: var(--brand-fox-secondary); --swatch-accent: var(--brand-fox-accent); --emblem-url: url("/static/emblems/fox.svg"); }
+[data-cast="brutus"] { --agent-accent: var(--agent-brutus); --swatch-primary: var(--brand-brutus-primary); --swatch-secondary: var(--brand-brutus-secondary); --swatch-accent: var(--brand-brutus-accent); --emblem-url: url("/static/emblems/brutus.svg"); }
+[data-cast="monk"] { --agent-accent: var(--agent-monk); --swatch-primary: var(--brand-monk-primary); --swatch-secondary: var(--brand-monk-secondary); --swatch-accent: var(--brand-monk-accent); --emblem-url: url("/static/emblems/monk.svg"); }
+[data-cast="siren"] { --agent-accent: var(--agent-siren); --swatch-primary: var(--brand-siren-primary); --swatch-secondary: var(--brand-siren-secondary); --swatch-accent: var(--brand-siren-accent); --emblem-url: url("/static/emblems/siren.svg"); }
+[data-cast="miser"] { --agent-accent: var(--agent-miser); --swatch-primary: var(--brand-miser-primary); --swatch-secondary: var(--brand-miser-secondary); --swatch-accent: var(--brand-miser-accent); --emblem-url: url("/static/emblems/miser.svg"); }
+[data-cast="jester"] { --agent-accent: var(--agent-jester); --swatch-primary: var(--brand-jester-primary); --swatch-secondary: var(--brand-jester-secondary); --swatch-accent: var(--brand-jester-accent); --emblem-url: url("/static/emblems/jester.svg"); }
+
+.lda-emblem {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: block;
+  background: var(--agent-accent, var(--lda-text));
+  -webkit-mask: var(--emblem-url) center / contain no-repeat;
+  mask: var(--emblem-url) center / contain no-repeat;
+}
+.lda-palette {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.lda-palette i {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px var(--lda-line-strong);
+}
+.lda-palette .is-primary { background: var(--swatch-primary, var(--lda-line)); }
+.lda-palette .is-secondary { background: var(--swatch-secondary, var(--lda-line)); }
+.lda-palette .is-accent { background: var(--swatch-accent, var(--lda-text)); }
 
 .lda-badge {
   display: inline-flex;

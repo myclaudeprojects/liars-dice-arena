@@ -26,6 +26,34 @@ const SAMPLE_FLOOR = 6;
 // Settled stories kept on the show file. Older matches drop off the list.
 const HISTORY_CAP = 100;
 
+function propMetrics({ log, seats, winnerId, durationMs }) {
+  const ids = (seats || []).map((s) => s.id);
+  const roundWinners = [];
+  const roundWins = Object.fromEntries(ids.map((id) => [id, 0]));
+  const totalDiceRolled = Object.fromEntries(ids.map((id) => [id, 0]));
+  for (const ev of log || []) {
+    if (ev.type === "hand_start" && Array.isArray(ev.counts)) {
+      for (const row of ev.counts) {
+        if (row && row.id in totalDiceRolled) totalDiceRolled[row.id] += Number(row.dice) || 0;
+      }
+    }
+    if (ev.type === "challenge" && ev.loserId) {
+      const roundWinner = ids.find((id) => id !== ev.loserId) || null;
+      if (roundWinner) {
+        roundWinners.push(roundWinner);
+        roundWins[roundWinner] = (roundWins[roundWinner] || 0) + 1;
+      }
+    }
+  }
+  return {
+    winnerId,
+    durationMs: Math.max(0, Number(durationMs) || 0),
+    roundWinners,
+    roundWins,
+    totalDiceRolled,
+  };
+}
+
 function resultHash({ matchId, winnerId, seed, log }) {
   const events = (log || []).map((e) => ({
     type: e.type,
@@ -750,6 +778,7 @@ class Show {
       badge: book ? book.badge : null,
       testMarket: !!book,
       you: book ? book.you || null : null,
+      props: book ? book.props || [] : [],
       cashValue: 0,
       custody: false,
       realMoney: false,
@@ -1006,8 +1035,16 @@ class Show {
       m.settlementGate = { action: gate.action, errorCode: gate.errorCode, duplicate: !!gate.duplicate };
     }
     const resultEventId = `MATCH_RESOLVED:${m.matchId}:${hash}`;
+    const metrics = propMetrics({
+      log: exhibit.log,
+      seats: m.seats,
+      winnerId: exhibit.winnerId,
+      durationMs: m.startedAt ? endedAt - m.startedAt : 0,
+    });
     // Credits move only after the settlement gate accepts a signed VALID result.
-    // The market still sees integrityStatus, but that string is not the decision.
+    // Prop contracts settle from this log inside that same settlement, before
+    // the winner payout. The market still sees integrityStatus, but that string
+    // is not the decision.
     if (this.marketsEnabled && m.market && gate) {
       this.market.onGameEvent({
         type: "MATCH_RESOLVED",
@@ -1023,6 +1060,7 @@ class Show {
         signature: record.oracle ? record.oracle.signature : null,
         signedResultHash: record.oracle ? record.oracle.resultHash : null,
         signingKeyId: record.oracle ? record.oracle.signingKeyId : null,
+        propMetrics: gate.action === "settle" ? metrics : null,
       });
       if (gate.action === "settle" && markSettled) markSettled(true);
     } else if (markSettled) {
@@ -1291,4 +1329,4 @@ function requireFace(face) {
   return faceWord(face);
 }
 
-module.exports = { Show, Records, playExhibit, resultHash, DEFAULT_STAKE, HISTORY_CAP, SAMPLE_FLOOR };
+module.exports = { Show, Records, playExhibit, resultHash, propMetrics, DEFAULT_STAKE, HISTORY_CAP, SAMPLE_FLOOR };

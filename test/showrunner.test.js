@@ -1,4 +1,4 @@
-const { Show, playExhibit, resultHash, HISTORY_CAP } = require("../src/showrunner");
+const { Show, playExhibit, resultHash, propMetrics, HISTORY_CAP } = require("../src/showrunner");
 const { CAST, makePlayer, pairSchedule } = require("../src/characters");
 const { matchStory } = require("../src/narrative");
 
@@ -73,8 +73,14 @@ function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stri
   show.market.openPredictor("showfan01");
   const before = show.market.requirePredictor("showfan01").credits;
   const seat = show.current.seats[0];
+  const preview = show.market.publicMarket(show.market.requireMarket(marketId), "showfan01");
+  assert(preview.props && preview.props.length >= 4, "match lists the prop contracts");
+  const duration = preview.props.find((p) => p.type === "duration_under");
   show.market.buy({
     matchId: marketId, predictorId: "showfan01", agentId: seat.id, side: "yes", stake: 50,
+  });
+  show.market.buyProp({
+    matchId: marketId, propId: duration.id, predictorId: "showfan01", side: "yes", stake: 20,
   });
   const archived = await show.playOpen();
   assert(archived.winnerId, "played");
@@ -83,9 +89,15 @@ function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stri
   }), "settled hash matches the engine log");
   const pred = show.market.requirePredictor("showfan01");
   const won = archived.winnerId === seat.id;
+  const settledProps = show.market.publicMarket(show.market.requireMarket(marketId), "showfan01").props;
+  assert(settledProps.every((p) => p.status === "settled"), "props settle before the book is done");
+  eq(settledProps.find((p) => p.id === duration.id).result, "yes", "a fast match is under 90 seconds");
+  assert(settledProps.find((p) => p.id === duration.id).you.won, "duration yes pays");
   if (won) assert(pred.credits > before - 50, "winner paid from the result");
-  else assert(pred.credits === before - 50, "loser keeps the loss");
-  assert(pred.picks === 1, "pick counted");
+  else assert(pred.credits > before - 70 && pred.credits < before, "winner stake is lost and the winning prop still pays");
+  assert(pred.picks === 2, "winner and prop both count");
+  assert(pred.settled.some((s) => s.matchId === marketId), "winner prediction recorded");
+  assert(pred.settled.some((s) => s.matchId === marketId + ":" + duration.id), "prop prediction recorded");
   const book = show.market.requireMarket(marketId);
   eq(book.status, "settled", "book settled");
   eq(book.winnerId, archived.winnerId, "book winner is the match winner");
@@ -105,6 +117,20 @@ function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stri
   eq(shelf.history.length, 100, "history cap drops the oldest");
   eq(shelf.history[0].matchId, "h104", "newest stays first");
   eq(shelf.history[99].matchId, "h5", "the oldest kept match is still on the list");
+
+  const sample = propMetrics({
+    log: [
+      { type: "hand_start", counts: [{ id: "dracula", dice: 5 }, { id: "caesar", dice: 5 }] },
+      { type: "challenge", loserId: "caesar" },
+      { type: "hand_start", counts: [{ id: "dracula", dice: 5 }, { id: "caesar", dice: 4 }] },
+    ],
+    seats: [{ id: "dracula" }, { id: "caesar" }],
+    winnerId: "dracula",
+    durationMs: 1200,
+  });
+  eq(sample.roundWinners[0], "dracula", "first round winner is the other seat");
+  eq(sample.totalDiceRolled.dracula, 10, "dice roll up across hands");
+  eq(sample.durationMs, 1200, "duration comes from the match clock");
 
   console.log("showrunner ok");
 })().catch((e) => { console.error(e); process.exit(1); });

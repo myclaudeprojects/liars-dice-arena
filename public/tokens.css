@@ -88,6 +88,7 @@
   --radius-pill: 999px;
 
   /* Elevation. */
+  --lda-scrim: rgba(0, 0, 0, 0.66);
   --lda-shadow-1: 0 1px 0 rgba(0, 0, 0, 0.28);
   --lda-shadow-2: 0 10px 28px rgba(0, 0, 0, 0.32);
   --lda-shadow-3: 0 18px 48px rgba(0, 0, 0, 0.42);

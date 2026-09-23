@@ -166,6 +166,21 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ...result, cashValue: 0, realMoney: false });
       return true;
     }
+    const propBuy = path.match(/^\/markets\/([^/]+)\/props\/([^/]+)\/buy$/);
+    if (req.method === "POST" && propBuy) {
+      const body = await readBody(req);
+      const result = show.market.buyProp({
+        matchId: decodeURIComponent(propBuy[1]),
+        propId: decodeURIComponent(propBuy[2]),
+        predictorId: body.predictorId,
+        side: body.side || "yes",
+        stake: body.stake == null ? DEFAULT_STAKE : body.stake,
+        expectedPrice: body.expectedPrice,
+        clientRequestId: body.clientRequestId,
+      });
+      send(res, 200, { ...result, cashValue: 0, realMoney: false });
+      return true;
+    }
     const buy = path.match(/^\/markets\/([^/]+)\/buy$/);
     if (req.method === "POST" && buy) {
       const body = await readBody(req);

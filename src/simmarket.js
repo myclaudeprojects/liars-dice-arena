@@ -263,6 +263,25 @@ class SimMarket {
     return result;
   }
 
+  buyProp(req) {
+    const pred = this.requirePredictor(req.predictorId);
+    this.reconcile(pred);
+    const dup = this.service.peekProp(pred.id, req.propId, req.clientRequestId);
+    if (dup) return dup;
+    const m = this.service.requireMarket(req.matchId);
+    if (m.status !== "open") fail("market_locked");
+    this._hitRate(pred.id);
+    const result = this.service.buyProp({ ...req, predictorId: pred.id });
+    this.touch();
+    return result;
+  }
+
+  settleProps(matchId, metrics) {
+    const result = this.service.settleProps(matchId, metrics || {});
+    this.touch();
+    return result;
+  }
+
   sell(req) {
     const pred = this.requirePredictor(req.predictorId);
     this.reconcile(pred);
@@ -397,6 +416,8 @@ const ERROR_TEXT = {
   influence_after_lock: "The match has started. Influence is closed.",
   voided: "This test market was voided.",
   ignored_event: "That event does not settle a test market.",
+  no_prop: "That prop is not on this match.",
+  already_picked_prop: "You already have a test position on that prop.",
   bad_liquidity: "Liquidity is out of range.",
   unstable_cost: "The test price could not be priced.",
   unstable_price: "The test price could not be priced.",

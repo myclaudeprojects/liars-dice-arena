@@ -177,4 +177,106 @@ stale.createMarket({ matchId: "fresh", agents, prices: { dracula: 0.5, caesar: 0
 stale.buy({ matchId: "fresh", predictorId: "predictor6", agentId: "caesar", side: "yes", stake: 10 });
 eq(stale.buysAt.get("predictor6").length, 1, "stale stamps do not block a new buy");
 
+const propBook = new SimMarket();
+propBook.openPredictor("propfan01");
+propBook.createMarket({ matchId: "prop1", agents, prices: { dracula: 0.6, caesar: 0.4 } });
+const propMarket = propBook.publicMarket(propBook.requireMarket("prop1"), "propfan01");
+assert(Array.isArray(propMarket.props) && propMarket.props.length >= 4, "default prop markets exist");
+const types = propMarket.props.map((p) => p.type);
+for (const type of ["round_winner", "winning_margin", "duration_under", "total_dice"]) {
+  assert(types.includes(type), "prop type " + type);
+}
+const durationProp = propMarket.props.find((p) => p.type === "duration_under");
+assert(durationProp && durationProp.yesPrice > 0 && durationProp.noPrice > 0, "duration prop is priced");
+assert(Math.abs(durationProp.yesPrice + durationProp.noPrice - 1) < 1e-9, "prop prices sum to 1");
+const winnerBefore = propBook.requireMarket("prop1").yesPrice;
+const propBuy = propBook.buyProp({
+  matchId: "prop1", propId: durationProp.id, predictorId: "propfan01", side: "yes", stake: 50,
+});
+eq(propBuy.position.stake, 50, "prop stake recorded");
+eq(propBuy.credits, STARTING_CREDITS - 50, "prop stake debited");
+assert(propBuy.position.contracts > 0, "prop stake buys contracts");
+assert(propBook.requireMarket("prop1").props.find((p) => p.id === durationProp.id).yesPrice > durationProp.yesPrice, "prop buy lifts YES");
+eq(propBook.requireMarket("prop1").yesPrice, winnerBefore, "a prop trade does not reprice the winner market");
+let pickedTwice = false;
+try {
+  propBook.buyProp({ matchId: "prop1", propId: durationProp.id, predictorId: "propfan01", side: "no", stake: 10 });
+} catch (e) { pickedTwice = e.code === "already_picked_prop"; }
+assert(pickedTwice, "one prop position");
+propBook.buy({ matchId: "prop1", predictorId: "propfan01", agentId: "dracula", side: "yes", stake: 10 });
+propBook.lock("prop1");
+assert(propBook.publicMarket(propBook.requireMarket("prop1")).props.every((p) => p.status === "locked"), "props lock with the match");
+let lockedBuy = false;
+try {
+  propBook.buyProp({ matchId: "prop1", propId: "margin-2-dracula", predictorId: "propfan01", side: "yes", stake: 10 });
+} catch (e) { lockedBuy = e.code === "market_locked"; }
+assert(lockedBuy, "locked prop rejects a buy");
+const metrics = {
+  winnerId: "dracula",
+  durationMs: 84000,
+  roundWinners: ["dracula", "caesar", "dracula"],
+  roundWins: { dracula: 2, caesar: 1 },
+  totalDiceRolled: { dracula: 27, caesar: 24 },
+};
+propBook.settleProps("prop1", metrics);
+const propAfter = propBook.publicMarket(propBook.requireMarket("prop1"), "propfan01").props;
+eq(propAfter.find((p) => p.id === durationProp.id).status, "settled", "prop settles");
+eq(propAfter.find((p) => p.id === durationProp.id).result, "yes", "duration resolution");
+eq(propAfter.find((p) => p.type === "round_winner").result, "yes", "round 1 winner");
+eq(propAfter.find((p) => p.type === "winning_margin").result, "no", "margin below 2");
+eq(propAfter.find((p) => p.type === "total_dice").result, "yes", "dice threshold");
+const durationYou = propAfter.find((p) => p.id === durationProp.id).you;
+assert(durationYou && durationYou.won && durationYou.settled, "winning prop position is marked");
+assert(durationYou.payout > 0 && durationYou.testPnl != null, "winning prop has test P&L");
+const propPaid = propBook.requirePredictor("propfan01").credits;
+assert(propPaid > STARTING_CREDITS - 60, "winning prop pays test credits");
+propBook.settleProps("prop1", metrics);
+eq(propBook.requirePredictor("propfan01").credits, propPaid, "prop settlement does not pay twice");
+propBook.settle("prop1", { winnerId: "dracula", resultHash: "f".repeat(64) });
+const both = propBook.openPredictor("propfan01");
+assert(both.series.length >= 2, "winner and prop positions both record as settled predictions");
+assert(both.series.some((s) => s.matchId === "prop1"), "winner prediction recorded");
+assert(both.series.some((s) => s.matchId === "prop1:" + durationProp.id), "prop prediction recorded");
+const edge = new SimMarket();
+edge.openPredictor("propfan02");
+edge.createMarket({ matchId: "prop2", agents, prices: { dracula: 0.5, caesar: 0.5 } });
+edge.lock("prop2");
+edge.settleProps("prop2", {
+  winnerId: "dracula",
+  durationMs: 90000,
+  roundWinners: ["caesar"],
+  roundWins: { dracula: 4, caesar: 1 },
+  totalDiceRolled: { dracula: 25, caesar: 10 },
+});
+const edgeProps = edge.publicMarket(edge.requireMarket("prop2")).props;
+eq(edgeProps.find((p) => p.type === "duration_under").result, "no", "90 seconds is not under 90");
+eq(edgeProps.find((p) => p.type === "round_winner").result, "no", "round 1 went the other way");
+eq(edgeProps.find((p) => p.type === "winning_margin").result, "yes", "four rounds to one is a 2+ margin");
+eq(edgeProps.find((p) => p.type === "total_dice").result, "yes", "25 dice meets the line");
+
+const onlyProp = new SimMarket();
+onlyProp.openPredictor("propfan03");
+onlyProp.createMarket({ matchId: "prop3", agents, prices: { dracula: 0.5, caesar: 0.5 } });
+onlyProp.buyProp({
+  matchId: "prop3", propId: "duration-under-90", predictorId: "propfan03", side: "yes", stake: 25,
+});
+onlyProp.lock("prop3");
+onlyProp.settle("prop3", {
+  winnerId: "dracula",
+  resultHash: "f".repeat(64),
+  propMetrics: {
+    winnerId: "dracula",
+    durationMs: 1000,
+    roundWinners: ["dracula"],
+    roundWins: { dracula: 5, caesar: 0 },
+    totalDiceRolled: { dracula: 25, caesar: 10 },
+  },
+});
+const onlyView = onlyProp.publicMarket(onlyProp.requireMarket("prop3"), "propfan03");
+assert(!onlyView.you, "a prop-only trade is not a winner position");
+eq(onlyView.props.find((p) => p.id === "duration-under-90").result, "yes", "prop settles inside winner settlement");
+assert(onlyView.props.find((p) => p.id === "duration-under-90").you.won, "prop position pays");
+eq(onlyProp.requirePredictor("propfan03").picks, 1, "only the prop counts as a pick");
+eq(onlyProp.requirePredictor("propfan03").settled.length, 1, "no empty winner prediction is recorded");
+
 console.log("simmarket ok");

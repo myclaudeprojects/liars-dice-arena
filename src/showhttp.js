@@ -118,6 +118,47 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ok: true, predictor: view, tags: THEORY_TAGS });
       return true;
     }
+    const quote = path.match(/^\/markets\/([^/]+)\/quote$/);
+    if (req.method === "POST" && quote) {
+      const body = await readBody(req);
+      const result = show.market.quote({
+        matchId: decodeURIComponent(quote[1]),
+        predictorId: body.predictorId,
+        outcomeId: body.outcomeId,
+        agentId: body.agentId,
+        side: body.side || "BUY",
+        shares: body.shares,
+      });
+      send(res, 200, { ok: true, ...result, cashValue: 0, realMoney: false });
+      return true;
+    }
+    const trade = path.match(/^\/markets\/([^/]+)\/trade$/);
+    if (req.method === "POST" && trade) {
+      const body = await readBody(req);
+      const result = show.market.executeQuote({
+        matchId: decodeURIComponent(trade[1]),
+        predictorId: body.predictorId,
+        quoteId: body.quoteId,
+        clientRequestId: body.clientRequestId,
+      });
+      send(res, 200, { ...result, cashValue: 0, realMoney: false });
+      return true;
+    }
+    const sell = path.match(/^\/markets\/([^/]+)\/sell$/);
+    if (req.method === "POST" && sell) {
+      const body = await readBody(req);
+      const result = show.market.sell({
+        matchId: decodeURIComponent(sell[1]),
+        predictorId: body.predictorId,
+        agentId: body.agentId,
+        outcomeId: body.outcomeId,
+        side: body.side || "yes",
+        shares: body.shares,
+        clientRequestId: body.clientRequestId,
+      });
+      send(res, 200, { ...result, cashValue: 0, realMoney: false });
+      return true;
+    }
     const buy = path.match(/^\/markets\/([^/]+)\/buy$/);
     if (req.method === "POST" && buy) {
       const body = await readBody(req);
@@ -125,11 +166,14 @@ async function handleShow(req, res, url, query, show) {
         matchId: decodeURIComponent(buy[1]),
         predictorId: body.predictorId,
         agentId: body.agentId,
+        outcomeId: body.outcomeId,
         side: body.side || "yes",
-        stake: body.stake == null ? DEFAULT_STAKE : body.stake,
+        stake: body.shares == null && body.stake == null ? DEFAULT_STAKE : body.stake,
+        shares: body.shares,
         expectedPrice: body.expectedPrice,
+        clientRequestId: body.clientRequestId,
       });
-      send(res, 200, { ...result, cashValue: 0 });
+      send(res, 200, { ...result, cashValue: 0, realMoney: false });
       return true;
     }
     if (show.testHook && req.method === "POST" && path === "/test/play") {

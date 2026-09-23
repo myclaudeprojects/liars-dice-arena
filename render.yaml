@@ -18,6 +18,8 @@ services:
         value: "1600"
       - key: STATS_PATH
         value: /var/data/stats.json
+      - key: SHOW_DATA_PATH
+        value: /var/data/show.json
       - key: REGISTRY_PATH
         value: /var/data/agents.json
       # Set these in the Render dashboard (never commit them):

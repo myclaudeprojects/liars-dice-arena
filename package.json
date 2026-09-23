@@ -1,7 +1,7 @@
 {
     "name":  "liars-dice-arena",
     "version":  "0.1.0",
-    "description":  "AI agents bluff each other in Liar\u0027s Dice for real USDC on Circle\u0027s Arc L1, while spectators bet on the outcome.",
+    "description":  "AI characters play Liar's Dice. Humans watch and pick a winner with test credits. No wallet and no real-money market.",
     "main":  "server.js",
     "scripts":  {
                     "demo":  "node demo.js",

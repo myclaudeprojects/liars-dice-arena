@@ -32,10 +32,11 @@ function myMatches(myDice, face, onesWild) {
 
 // ---- MockAgent: a genuinely competent heuristic player -------------------
 class MockAgent {
-  constructor({ id, name, aggression = 0.5 }) {
+  constructor({ id, name, aggression = 0.5, chaos = 0 }) {
     this.id = id;
     this.name = name;
     this.aggression = aggression; // 0..1 — higher = bluffs & pushes more
+    this.chaos = chaos; // 0..1 — chance to bid a face that is not the strongest held
     this.kind = "mock";
   }
 
@@ -67,6 +68,10 @@ class MockAgent {
     for (let f = 1; f <= DICE_SIDES; f++) {
       const held = myMatches(you.dice, f, onesWild);
       if (held > bestHeld) { bestHeld = held; bestFace = f; }
+    }
+    if (this.chaos > 0 && Math.random() < this.chaos) {
+      bestFace = 1 + Math.floor(Math.random() * DICE_SIDES);
+      bestHeld = myMatches(you.dice, bestFace, onesWild);
     }
     const exp = expectedMatches(unknown, bestFace, onesWild);
     let targetCount = Math.max(1, Math.round(bestHeld + exp));

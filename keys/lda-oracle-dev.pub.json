@@ -1,0 +1,7 @@
+{
+  "signingKeyId": "lda-oracle-dev",
+  "algorithm": "Ed25519",
+  "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAPoZi3HWt/uKkKxYcsmvnHPS7YyBvxnR4il6moDMlKMY=\n-----END PUBLIC KEY-----\n",
+  "status": "ACTIVE",
+  "note": "Public key only. The matching private key is not in this repository. Runtime signing uses LDA_ORACLE_SIGNING_KEY, or an ephemeral dev key when that variable is unset."
+}

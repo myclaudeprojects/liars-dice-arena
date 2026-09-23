@@ -72,6 +72,13 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ok: true, leaders: show.market.leaderboard(), unit: "test-credits", cashValue: 0 });
       return true;
     }
+    const verify = path.match(/^\/matches\/([^/]+)\/verification$/);
+    if ((req.method === "GET" || req.method === "POST") && verify) {
+      const view = show.verification(decodeURIComponent(verify[1]), { replay: req.method === "POST" });
+      if (!view) { send(res, 404, { ok: false, error: "No such match." }); return true; }
+      send(res, 200, { ok: true, ...view });
+      return true;
+    }
     const matchReplay = path.match(/^\/matches\/([^/]+)\/replay$/);
     if (req.method === "GET" && matchReplay) {
       const row = show.matchDetail(decodeURIComponent(matchReplay[1]));
@@ -188,4 +195,21 @@ async function handleShow(req, res, url, query, show) {
   return true;
 }
 
-module.exports = { handleShow };
+function handleVerifyMatch(req, res, url, show) {
+  const match = String(url || "").match(/^\/api\/verify-match\/([^/]+)\/?$/);
+  if (!match) return false;
+  if (req.method !== "GET" && req.method !== "POST") {
+    send(res, 405, { ok: false, error: "Use GET to read the record or POST to replay it." });
+    return true;
+  }
+  try {
+    const view = show.verification(decodeURIComponent(match[1]), { replay: req.method === "POST" });
+    if (!view) { send(res, 404, { ok: false, error: "No such match." }); return true; }
+    send(res, 200, { ok: true, ...view });
+  } catch (e) {
+    if (!res.headersSent) fail(res, e);
+  }
+  return true;
+}
+
+module.exports = { handleShow, handleVerifyMatch };

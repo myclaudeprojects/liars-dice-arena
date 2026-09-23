@@ -82,6 +82,8 @@ function req(method, url, body) {
     const booked = [...snap.live.seats.map((s) => s.id), ...snap.upcoming.flatMap((u) => u.seats.map((s) => s.id))];
     assert(new Set(booked).size === booked.length, "slate does not double-book");
     assert(snap.live.seats.length === 2, "two characters");
+    assert(!snap.live.seed && snap.live.rngCommitment && snap.live.rngCommitment.indexOf("sha256:") === 0, "commitment is public before the match");
+    assert(snap.live.configurationHash && snap.live.integrityStatus === "PENDING", "config is frozen before the match");
     const health = await req("GET", base + "/health");
     assert(health.json && health.json.ok && health.json.mode === "show", "health");
     const me = await req("POST", base + "/api/show/predictors", { id: "httpfan01" });
@@ -108,6 +110,16 @@ function req(method, url, body) {
     assert(!/usdc|wallet|\$/i.test(replay.json.share.text), "share text is not a cash pitch");
     const linked = await req("GET", base + "/?match=" + encodeURIComponent(snap.live.matchId));
     assert(linked.status === 200 && /static\/app\.js/.test(linked.body) && /data-tab="history"/.test(linked.body), "match query serves the show app");
+    const verified = await req("GET", base + "/api/verify-match/" + snap.live.matchId);
+    assert(verified.status === 200 && verified.json.integrityStatus === "VALID" && verified.json.signature, "verify endpoint");
+    assert(verified.json.realMoney === false && verified.json.cashValue === 0, "verify payload is play money");
+    assert(verified.json.rngSeedReveal && verified.json.rngSeedReveal.indexOf("hex:") === 0, "seed revealed after the match");
+    assert(verified.json.rngCommitment === snap.live.rngCommitment, "commitment is unchanged");
+    assert(!verified.json.sealedSeed && verified.body.indexOf("BEGIN PRIVATE") < 0, "verify response has no secrets");
+    const replayed = await req("POST", base + "/api/verify-match/" + snap.live.matchId);
+    assert(replayed.status === 200 && replayed.json.replay && replayed.json.replay.diceVerified && replayed.json.replay.signatureVerified, "verify replay");
+    const viaShow = await req("GET", base + "/api/show/matches/" + snap.live.matchId + "/verification");
+    assert(viaShow.status === 200 && viaShow.json.resultHash === verified.json.resultHash, "show verification route");
     const missing = await req("GET", base + "/api/show/matches/no-such-match/replay");
     assert(missing.status === 404, "unknown replay is a miss");
     console.log("show http ok");

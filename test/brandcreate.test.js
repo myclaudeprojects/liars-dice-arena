@@ -141,6 +141,12 @@ function signatures(concepts) {
   assert(app.includes("agent-reveal"), "lock ends on a reveal");
   assert(app.includes("Advanced / Developer Options"), "developer options stay collapsed");
   assert(app.includes("hero-match-card"), "arena leads with a match card");
+  assert(app.includes("matchup-hero"), "arena hero is a matchup");
+  assert(app.includes("Watch live"), "live matchup names the watch action");
+  assert(app.includes("match-intro"), "pre-match intro exists");
+  assert(app.includes("agent-card"), "roster uses agent cards");
+  assert(app.includes("Recent moments"), "recent moments use real stories");
+  assert(app.includes("Head to head"), "rivalry card names the series");
   assert(app.includes("cast-board"), "profile carries a cast board");
 
   console.log("brandcreate ok");

@@ -53,6 +53,10 @@ assert(pathData(renderPfp(base)) !== pathData(renderPfp(louder)), "stronger expr
 assert(promptFor(base).includes("square composition"), "prompt shape is recorded");
 assert(promptFor(base).includes("No external image model"), "prompt does not claim a photo model");
 assert(promptFor(base).includes("lda-pfp-v2"), "prompt names the house style");
+assert(promptFor(base).includes("tight competitive game roster portrait"), "prompt asks for a roster crop");
+assert(promptFor(base).includes("exactly one primary visual signature"), "prompt keeps one signature");
+assert(promptFor(base).includes("designed to be recognizable at 48px"), "prompt targets the small size");
+assert(promptFor(base).includes("no movie poster layout"), "prompt rejects a poster layout");
 eq(PFP_STYLE_VERSION, "lda-pfp-v2", "style version");
 const provider = new ProceduralSvgProvider();
 const drawn = provider.renderSync({ recipe: base, size: 48, nonce: "prov" });

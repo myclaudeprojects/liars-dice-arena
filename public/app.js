@@ -9,6 +9,7 @@ const PIPS = {
 };
 const view = document.querySelector("#view");
 const matchEl = document.querySelector("#match");
+const introEl = document.querySelector("#match-intro");
 const marketEl = document.querySelector("#market");
 const sheetEl = document.querySelector("#sheet");
 const liveLineEl = document.querySelector("#live-line");
@@ -50,6 +51,9 @@ let paintedMarket = "";
 let paintedSheet = "";
 let tallySeen = "";
 let replay = null;
+let introTimer = 0;
+let introKey = "";
+const introStarted = new Map();
 
 const SOUND_KEY = "ldaSound";
 let soundMem = null;
@@ -375,18 +379,50 @@ function mark(name, hue, id, brand) {
   if (!resolved || !resolved.emblemUrl || !ui()) return avatar;
   return `<span class="brand-lockup"${cast}>${ui().emblem()}${avatar}</span>`;
 }
-function heroFace(person) {
-  const brand = brandFor(person);
-  const src = pfpSrc(brand, 160) || pfpSrc(brand, 96);
+function facePlate(person, px) {
+  const who = person || {};
+  const brand = brandFor(who);
+  const size = [48, 96, 160, 256, 320, 512, 1024].includes(px) ? px : 160;
+  const src = pfpSrc(brand, size) || pfpSrc(brand, 160) || pfpSrc(brand, 96);
+  const named = size >= 320 ? "xl" : size >= 160 ? "lg" : size >= 96 ? "md" : "sm";
   if (ui() && ui().agentAvatar) {
     return ui().agentAvatar({
-      name: person.name,
-      hue: person.hue,
-      id: person.id,
+      name: who.name,
+      hue: who.hue,
+      id: who.id || who.agentId,
       brand,
-    }, { src, size: "lg" });
+    }, { src, size: named });
   }
-  return mark(person.name, person.hue, person.id, brand);
+  return mark(who.name, who.hue, who.id || who.agentId, brand);
+}
+function heroFace(person) {
+  return facePlate(person, 320);
+}
+function heroColors(person) {
+  const brand = brandFor(person);
+  return {
+    primary: hexColor(brand && brand.primaryColor),
+    accent: hexColor(brand && brand.accentColor),
+  };
+}
+function heroThemeAttr(a, b) {
+  const left = heroColors(a).primary;
+  const right = heroColors(b).primary;
+  const bits = [];
+  if (left) bits.push("--hero-a:" + left);
+  if (right) bits.push("--hero-b:" + right);
+  return bits.length ? ` style="${bits.join(";")}"` : "";
+}
+function matchupSide(person, side, plate) {
+  const kind = plate || "hero";
+  const px = kind === "hero" ? 320 : kind === "rival" ? 160 : 160;
+  const record = person && person.record ? `<small class="matchup-agent__record">${esc(person.record)}</small>` : "";
+  return `<div class="matchup-agent matchup-agent--${side} who hero-agent" data-cast="${esc((person && (person.id || person.agentId)) || "")}"${brandStyle(person)}>
+    <div class="portrait-plate portrait-plate--${kind}">${facePlate(person, px)}</div>
+    ${titleLine(person)}
+    <b class="matchup-name">${esc((person && person.name) || "")}</b>
+    ${record}
+  </div>`;
 }
 function titleLine(person) {
   const title = personTitle(person);
@@ -620,37 +656,100 @@ function missedBlock(liveId) {
   return `<section class="section"><h2>You missed this</h2><button class="rowbtn lda-card lda-match story-card" type="button" data-match="${esc(row.matchId)}">${castLine(row.seats)}${storyMarkup(row)}</button></section>`;
 }
 
+function lastWinnerName(aId, bId) {
+  for (const row of history) {
+    const ids = (row.seats || []).map((s) => s.id);
+    if (ids.includes(aId) && ids.includes(bId) && row.winnerName) return row.winnerName;
+  }
+  return "";
+}
+
+function rivalryBlock(rows) {
+  const rival = rows && rows[0];
+  if (!rival || !rival.a || !rival.b) return "";
+  const last = lastWinnerName(rival.a.id, rival.b.id);
+  return `<section class="section"><h2>Rivalry</h2>
+    <button class="rivalry-card rowbtn" type="button" data-agent="${esc(rival.a.id)}" aria-label="${esc(rival.a.name)} versus ${esc(rival.b.name)}. Series ${esc(rival.series)}. ${rival.meetings} meetings.">
+      <span class="rivalry-card__body">
+        ${matchupSide(rival.a, "left", "rival")}
+        <span class="x matchup-hero__vs"><span>VS</span></span>
+        ${matchupSide(rival.b, "right", "rival")}
+      </span>
+      <span class="rivalry-card__score">${esc(rival.series || "")}</span>
+      <span class="kicker">Head to head</span>
+      <span class="fine">${rival.meetings} meetings${last ? ` · Last winner: ${esc(last)}` : ""}</span>
+    </button>
+  </section>`;
+}
+
+function momentRows() {
+  const rows = [];
+  const seen = new Set();
+  const push = (row) => {
+    if (!row || !row.title || !row.matchId || seen.has(row.matchId)) return;
+    seen.add(row.matchId);
+    rows.push(row);
+  };
+  for (const row of history) push(row);
+  if (snap && snap.missed) push(snap.missed);
+  return rows.slice(0, 3);
+}
+
+function momentsBlock() {
+  const rows = momentRows();
+  if (!rows.length) return "";
+  const cards = rows.map((row) => `<button class="moment-card rowbtn lda-card" type="button" data-match="${esc(row.matchId)}">
+      ${castLine(row.seats)}
+      <b class="moment-card__headline">${esc(row.title)}</b>
+      ${row.dek ? `<div class="fine">${esc(row.dek)}</div>` : ""}
+      <span class="moment-card__watch">Watch replay</span>
+    </button>`).join("");
+  return `<section class="section"><h2>Recent moments</h2>${cards}</section>`;
+}
+
+function trendingBlock(hot) {
+  if (!hot || !hot.agentId) return "";
+  const known = agents.find((a) => a.id === hot.agentId);
+  const person = { id: hot.agentId, name: hot.name, brand: hot.brand, record: known && known.record };
+  return `<section class="section"><h2>Trending</h2>
+    <button class="rowbtn trending-card" type="button" data-agent="${esc(hot.agentId)}" data-cast="${esc(hot.agentId)}"${brandStyle(person)}>
+      <span class="portrait-plate portrait-plate--roster">${facePlate(person, 96)}</span>
+      <span><b>${esc(hot.name)}</b>${titleLine(person)}</span>
+      <div class="fine">${esc(hot.text || "")}${person.record ? ` · ${esc(person.record)}` : ""}</div>
+    </button>
+  </section>`;
+}
+
 function arena() {
   const m = live();
-  if (!m) return arenaIdle() + missedBlock(null);
+  if (!m) return arenaIdle() + momentsBlock() + rivalryBlock(snap && snap.rivalries) + missedBlock(null);
   const [a, b] = m.seats;
   const open = m.phase === "pick";
   const hot = snap.hot;
-  const rival = (snap.rivalries || [])[0];
   const fresh = (snap.fresh || [])[0];
   const reads = snap.yourReads || [];
   const watching = Number(snap.watching) || 0;
   const eye = watching > 0 ? ` · ${watching} watching` : "";
-  const intro = frameBeats.some((b) => b.type === "intro" || b.type === "start") ? " intro" : "";
+  const intro = frameBeats.some((beat) => beat.type === "intro" || beat.type === "start") ? " intro" : "";
   const final = m.phase === "settled";
-  const liveLabel = (final ? "Final" : "Live now") + eye;
-  const badge = ui() ? ui().liveBadge(liveLabel, { final }) : `<div class="kicker"><span class="dot"></span> ${esc(liveLabel)}</div>`;
+  const liveLabel = (final ? "Final" : open ? "Up next" : "Live now") + eye;
   const card = ui() ? ui().cardClass("match") : "lda-card lda-match";
+  const watchLabel = open ? "Watch & pick" : final ? "See the result" : "Watch live";
   const cta = ui()
-    ? ui().button({ text: open ? "Watch & pick" : final ? "See the result" : "Watch", extra: "cta", data: { go: "watch" } })
-    : `<button class="cta" type="button" data-go="watch">${open ? "Watch & pick" : final ? "See the result" : "Watch"}</button>`;
+    ? ui().button({ text: watchLabel, extra: "cta matchup-hero__watch", data: { go: "watch" } })
+    : `<button class="cta matchup-hero__watch" type="button" data-go="watch">${watchLabel}</button>`;
   const narrativeLine = (m.narrative && m.narrative.line) || "";
   const prompt = open ? (narrativeLine || "Who's got this?") : "";
   const nowLine = !open && narrativeLine ? narrativeLine : "";
   const stateLabel = m.phase === "live" ? `Round ${m.round || 1}` : final ? "Final" : "Picks are open";
+  const status = final ? "Final" : open ? "● Up next" : "● Live";
   return `
-    ${badge}
-    <article class="live-card hero-match-card ${card}${intro}" aria-label="${esc(`${liveLabel}. ${a.name} versus ${b.name}. ${prompt || nowLine || stateLabel}`)}">
-      <div class="hero-match-card__status">${final ? "Final" : open ? "Up next" : "● Live"}</div>
-      <div class="vs hero-match-card__agents">
-        <div class="who hero-agent" data-cast="${esc(a.id)}"${brandStyle(a)}>${heroFace(a)}<b>${esc(a.name)}</b>${titleLine(a)}<span>${esc(a.record)}</span></div>
-        <div class="x hero-match-card__vs">VS</div>
-        <div class="who hero-agent" data-cast="${esc(b.id)}"${brandStyle(b)}>${heroFace(b)}<b>${esc(b.name)}</b>${titleLine(b)}<span>${esc(b.record)}</span></div>
+    <article class="live-card hero-match-card matchup-hero ${card}${intro}" aria-label="${esc(`${liveLabel}. ${a.name} versus ${b.name}. ${prompt || nowLine || stateLabel}`)}"${heroThemeAttr(a, b)}>
+      <div class="matchup-hero__status hero-match-card__status">${esc(status)}</div>
+      <div class="matchup-hero__body vs hero-match-card__agents">
+        ${matchupSide(a, "left", "hero")}
+        <div class="x matchup-hero__vs hero-match-card__vs"><span>VS</span></div>
+        ${matchupSide(b, "right", "hero")}
       </div>
       ${prompt ? `<h1 class="arena-prompt">${esc(prompt)}</h1>` : ""}
       ${nowLine ? `<p class="arena-now">${esc(nowLine)}</p>` : ""}
@@ -659,8 +758,9 @@ function arena() {
       ${noPicksYet() ? `<p class="first-run">No test position yet. YES or NO, in Arena Credits. They are not cash.</p>` : ""}
     </article>
     ${upcomingBlock()}
-    ${hot ? `<section class="section"><h2>Hot</h2><div class="rowbtn" data-cast="${esc(hot.agentId)}">${mark(hot.name, null, hot.agentId, hot.brand)}<span><b>${esc(hot.name)}</b>${titleLine(hot)}</span><div class="fine">${esc(hot.text)}</div></div></section>` : ""}
-    ${rival ? `<section class="section"><h2>Rivalries</h2><button class="rowbtn" type="button" data-agent="${esc(rival.a.id)}"><span class="rival-row">${[rival.a, rival.b].map((p) => `<span class="rival-side" data-cast="${esc(p.id)}">${mark(p.name, null, p.id, p.brand)}<span><b>${esc(p.name)}</b>${titleLine(p)}</span></span>`).join(`<span class="x">VS</span>`)}</span><div class="fine">Series ${esc(rival.series)} · ${rival.meetings} meetings</div></button></section>` : ""}
+    ${trendingBlock(hot)}
+    ${momentsBlock()}
+    ${rivalryBlock(snap.rivalries)}
     ${missedBlock(m.matchId)}
     ${fresh ? `<section class="section"><h2>New</h2><button class="rowbtn" type="button" data-agent="${esc(fresh.id)}" data-cast="${esc(fresh.id)}">${mark(fresh.name, null, fresh.id, fresh.brand)}<span><b>Meet ${esc(fresh.name)}</b>${titleLine(fresh)}</span><div class="fine">${esc(personTitle(fresh) || fresh.archetype)}. First match is this one.</div></button></section>` : ""}
     ${reads.length ? `<section class="section"><h2>Your reads</h2>${reads.map((r) => `<button class="rowbtn" type="button" data-agent="${esc(r.id)}" data-cast="${esc(r.id)}">${mark(r.name, null, r.id, r.brand)}<span><b>${esc(r.name)}</b>${titleLine(r)}</span><div class="fine">${r.correct} / ${r.picks} picks right</div></button>`).join("")}</section>` : ""}
@@ -754,16 +854,16 @@ function upcomingBlock() {
     return `
       <article class="upcard ${card}">
         <div class="fine">${["Next", "Soon", "Later", "Last"][i] || "After"}</div>
-        <div class="vs">
-          <div class="who" data-cast="${esc(a.id)}">${mark(a.name, a.hue, a.id, brandFor(a))}<b>${esc(a.name)}</b>${titleLine(a)}<span>${esc(a.record)}</span></div>
-          <div class="x">VS</div>
-          <div class="who" data-cast="${esc(b.id)}">${mark(b.name, b.hue, b.id, brandFor(b))}<b>${esc(b.name)}</b>${titleLine(b)}<span>${esc(b.record)}</span></div>
+        <div class="vs matchup-hero__body">
+          ${matchupSide(a, "left", "next")}
+          <div class="x matchup-hero__vs"><span>VS</span></div>
+          ${matchupSide(b, "right", "next")}
         </div>
         <p class="fine">${picked}</p>
         ${buttons}
       </article>`;
   }).join("");
-  return `<section class="section"><h2>Coming up</h2><div class="slate">${cards}</div></section>`;
+  return `<section class="section"><h2>Up next</h2><div class="slate">${cards}</div></section>`;
 }
 
 function seatNameFrom(card, id) {
@@ -931,9 +1031,11 @@ function picker() {
   const book = m.market || {};
   const target = (m.seats || []).find((s) => s.id === book.targetAgentId) || m.seats[0];
   const intro = frameBeats.some((beat) => beat.type === "intro") ? " intro" : "";
+  const faces = `<div class="picker-matchup" ${heroThemeAttr(m.seats[0], m.seats[1])}>${matchupSide(m.seats[0], "left", "next")}<div class="x matchup-hero__vs"><span>VS</span></div>${matchupSide(m.seats[1], "right", "next")}</div>`;
   if (snap && snap.testMarkets === false) {
     return `
       <div class="picker${intro}">
+        ${faces}
         <div class="kicker lda-kicker-predict">Who wins?</div>
         <h1>${esc(target.name)} vs ${esc(m.seats[1].name)}</h1>
         <p class="fine">Test markets are off. The match still runs.</p>
@@ -941,8 +1043,8 @@ function picker() {
   }
   return `
     <div class="picker market-picker${intro}">
+      ${faces}
       <div class="kicker lda-kicker-predict">Test market</div>
-      <h1>What happens next?</h1>
       <p class="fine">Trade the winner or a match prop before the dice hit the table. Every position uses Arena Credits. They are not cash.</p>
     </div>`;
 }
@@ -985,7 +1087,8 @@ function seatClass(seat, m, beats, stage, activeId) {
   const out = seat.alive === false;
   const active = !!(activeId && seat.id === activeId);
   const stageCls = active && stage ? `stage-${stage}` : "";
-  return ["who", "seat", hot && "hot", marked && "marked", cool && "cool", out && "out", loss && "hit", active && "active", stageCls].filter(Boolean).join(" ");
+  const turn = activeId ? ((active || hot) ? "is-active" : "is-inactive") : "";
+  return ["who", "seat", "watch-agent", hot && "hot", marked && "marked", cool && "cool", out && "out", loss && "hit", active && "active", turn, stageCls].filter(Boolean).join(" ");
 }
 
 function stageLabel(seat, stage, activeId) {
@@ -1133,14 +1236,15 @@ function seatBlock(seat, m, beats, frame, stage, activeId) {
   const tone = Number.isFinite(hue) ? hue : 40;
   const accent = HOUSE_CAST.has(seat.id) ? "" : ` style="--agent-accent:hsl(${tone} 42% 58%)"`;
   return `<div class="${seatClass(seat, m, beats, stage, activeId)} arena-seat" data-react="${esc(react)}" data-cast="${esc(seat.id)}"${motion}${accent}>
-    <div class="agent-portrait-wrap agent-face ${mood}">
+    <div class="agent-portrait-wrap watch-agent__pfp agent-face ${mood}">
       <div class="agent-aura" aria-hidden="true"></div>
-      ${mark(seat.name, seat.hue, seat.id, brand)}
+      ${facePlate(seat, 320)}
       ${thinking ? `<div class="thought-orbit" aria-hidden="true"><i></i><i></i><i></i></div>` : ""}
     </div>
     <div class="agent-copy seat-copy">
       <b>${esc(seat.name)}</b>
       ${titleLine(seat)}
+      ${seat.record ? `<span class="seat-record">${esc(seat.record)}</span>` : ""}
       <span class="agent-status">${esc(status)}</span>
       <span class="dice-count">${esc(diceLabel)}</span>
       ${label ? `<i class="react">${esc(label)}</i>` : ""}
@@ -1242,7 +1346,7 @@ function tableView(m, beats, opts) {
   const feed = visibleFeed.map((line) => `<li>${esc(line)}</li>`).join("");
   const liar = showLiar ? `<div class="cinematic-overlay liar-overlay" aria-hidden="true"><div class="liar-type">LIAR</div></div>` : "";
   return `
-    <section class="arena-shell table stage stage-${esc(stage)}${dim ? " dim" : ""}" data-state="${esc(shownState)}" data-stage="${esc(stage)}" data-camera="${esc(camera)}" data-intensity="${intensity}" data-reduced="${reduced ? "1" : "0"}">
+    <section class="arena-shell table stage stage-${esc(stage)}${dim ? " dim" : ""}${showLiar ? " is-liar-event" : ""}" data-state="${esc(shownState)}" data-stage="${esc(stage)}" data-camera="${esc(camera)}" data-intensity="${intensity}" data-reduced="${reduced ? "1" : "0"}">
       ${flash}
       ${liar}
       <div class="broadcast-strip stage-bar">
@@ -1525,15 +1629,19 @@ function creatorView() {
     const c = selectedConcept();
     const visual = (c && c.visualIdentity) || {};
     const accent = hexColor(reveal.accent || visual.accentColor) || "#E8DDD0";
-    body = `<section class="agent-reveal" style="--agent-accent:${esc(accent)};--agent-primary:${esc(hexColor(reveal.primary || visual.primaryColor) || "#6D0F1F")}">
-      <div class="agent-reveal__glow" aria-hidden="true"></div>
-      ${pfpFrame(reveal.svg || (c && c.pfpSvg))}
-      <div class="agent-reveal__copy">
+    const primary = hexColor(reveal.primary || visual.primaryColor) || "#6D0F1F";
+    const emblem = safeSvg(reveal.emblem || (c && c.emblemSvg));
+    body = `<section class="agent-reveal" style="--agent-accent:${esc(accent)};--agent-primary:${esc(primary)}">
+      <div class="agent-reveal__aura agent-reveal__glow" aria-hidden="true"></div>
+      ${emblem ? `<div class="agent-reveal__emblem" aria-hidden="true">${emblem}</div>` : ""}
+      <div class="agent-reveal__pfp">${pfpFrame(reveal.svg || (c && c.pfpSvg))}</div>
+      <div class="agent-reveal__identity agent-reveal__copy">
         <span class="agent-reveal__title">${esc(reveal.title || (c && c.title) || "")}</span>
         <h1>${esc(reveal.name || f.name)}</h1>
         <p>${esc(reveal.tagline || (c && c.tagline) || "")}</p>
       </div>
       <span class="pfp-sizes" aria-label="Small-size check">${pfpMini(reveal.svg || (c && c.pfpSvg), 48)}${pfpMini(reveal.svg || (c && c.pfpSvg), 96)}</span>
+      <button class="cta lda-btn lda-btn-primary lda-btn-block agent-reveal__enter" type="button" data-enter-arena="1"${creator.busy ? " disabled" : ""}>Enter the Arena</button>
     </section>`;
   }
   const nextLabel = step === 1 ? "Generate portraits" : step === 2 ? "Lock this portrait" : "Enter the Arena";
@@ -1545,10 +1653,10 @@ function creatorView() {
     ${body}
     ${creator.busy ? `<p class="fine creator-status" role="status">${esc(working)}</p>` : ""}
     ${creator.error ? `<div class="err lda-error" role="alert">${esc(creator.error)}</div>` : ""}
-    <div class="creator-actions">
+    ${step === 3 ? "" : `<div class="creator-actions">
       <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" ${nextAttr}="1"${creator.busy ? " disabled" : ""}>${creator.busy ? esc(working) : nextLabel}</button>
-      ${step === 3 ? "" : `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-creator-back="1"${creator.busy ? " disabled" : ""}>${step === 1 ? "Back to agents" : "Back"}</button>`}
-    </div>
+      <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-creator-back="1"${creator.busy ? " disabled" : ""}>${step === 1 ? "Back to agents" : "Back"}</button>
+    </div>`}
   </div>`;
 }
 
@@ -1668,6 +1776,7 @@ async function confirmConcept() {
       title: chosen.title,
       tagline: chosen.tagline,
       svg: chosen.pfpSvg,
+      emblem: chosen.emblemSvg,
       accent: visual.accentColor,
       primary: visual.primaryColor,
     };
@@ -1696,18 +1805,37 @@ function agentsView() {
     return `<h1 class="page">Agents</h1>${createAgentButton()}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
   }
   if (!agents.length) return `<h1 class="page">Agents</h1>${createAgentButton()}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
-  return `<h1 class="page">Agents</h1><p class="fine">Characters, not algorithms with a hat on. Records are from matches they actually played.</p>${createAgentButton()}` +
+  return `<h1 class="page">Agents</h1><p class="fine">Characters, not algorithms with a hat on. Records are from matches they actually played.</p>${createAgentButton()}<div class="agent-roster">` +
     agents.map((a) => {
-      const roster = a.roster === "user" ? (a.status === "READY" ? " · your competitor" : " · brand in progress") : "";
-      return `<button class="agent-row" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>${mark(a.name, a.hue, a.id, brandFor(a))}<span><b>${esc(a.name)}</b>${titleLine(a)}</span>${paletteLine(a)}<div class="fine">${esc((brandFor(a) && brandFor(a).tagline) || a.line || a.archetype)} · ${esc(a.record)}${a.streak ? ` · streak ${a.streak}` : ""}${roster}${a.knownFor ? ` · known for ${esc(a.knownFor)}` : ""}</div></button>`;
-    }).join("");
+      const roster = a.roster === "user" ? (a.status === "READY" ? "Your competitor" : "Brand in progress") : "";
+      return `<button class="agent-card" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
+        <span class="agent-card__portrait">${facePlate(a, 320)}</span>
+        <span class="agent-card__identity">
+          ${titleLine(a)}
+          <b class="agent-card__name">${esc(a.name)}</b>
+          <span class="agent-card__stats"><span>${esc(a.record || "0–0")}</span>${a.streak ? `<span>Streak ${a.streak}</span>` : ""}</span>
+          ${roster || a.knownFor ? `<span class="fine">${esc([roster, a.knownFor ? `Known for ${a.knownFor}` : ""].filter(Boolean).join(" · "))}</span>` : ""}
+        </span>
+      </button>`;
+    }).join("") + `</div>`;
 }
 
 function agentDetail(a) {
   const mine = (me && me.theories && me.theories[a.id]) || [];
   const tags = ["Aggressive", "Conservative", "Bluffer", "Risk-taker", "Pressure player", "Unpredictable"];
-  const rivals = (a.rivals || []).map((r) => `<div class="rowbtn"><b>${esc(r.name)}</b><div class="fine">${esc(r.series)} in ${r.meetings}</div></div>`).join("");
-  const moments = (a.moments || []).map((m) => `<div class="rowbtn"><b>${esc(m.title)}</b><div class="fine">${esc(m.dek || "")}</div></div>`).join("");
+  const rivals = (a.rivals || []).map((r) => {
+    const person = { id: r.id, name: r.name };
+    const meetings = Number(r.meetings) || 0;
+    const plate = meetings >= 2
+      ? `<span class="portrait-plate portrait-plate--roster">${facePlate(person, 96)}</span>`
+      : mark(r.name, null, r.id);
+    return `<div class="rowbtn rival-note" data-cast="${esc(r.id)}">${plate}<span><b>${esc(r.name)}</b>${titleLine(person)}</span><div class="fine">${esc(r.series)} in ${r.meetings}${meetings >= 2 ? " · head to head" : ""}</div></div>`;
+  }).join("");
+  const moments = (a.moments || []).map((m) => {
+    const replayId = history.find((h) => h.title && h.title === m.title);
+    const watch = replayId ? `<button class="ghost moment-card__watch" type="button" data-match="${esc(replayId.matchId)}">Watch replay</button>` : "";
+    return `<div class="rowbtn moment-note"><span class="portrait-plate portrait-plate--market">${facePlate(a, 96)}</span><span><b>${esc(m.title)}</b><div class="fine">${esc(m.dek || "")}</div>${watch}</span></div>`;
+  }).join("");
   const tendencies = presentApi() && presentApi().tendencyLines ? presentApi().tendencyLines(a) : [];
   return `
     <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="agents">All agents</button>
@@ -1815,12 +1943,12 @@ function matchReplay(m) {
 function castBoard() {
   const rows = agents.slice().sort((a, b) => (b.won || 0) - (a.won || 0) || String(a.name).localeCompare(String(b.name))).slice(0, 8);
   if (!rows.length) return "";
-  return `<section class="section cast-board"><h2>Cast</h2>${rows.map((a, i) => `
-    <button class="rowbtn cast-row" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
+  return `<section class="section cast-board"><h2>Leaderboard</h2>${rows.map((a, i) => `
+    <button class="rowbtn cast-row roster-row" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
       <span class="cast-rank">#${i + 1}</span>
-      ${mark(a.name, a.hue, a.id, brandFor(a))}
-      <span><b>${esc(a.name)}</b>${titleLine(a)}</span>
-      <div class="fine">${esc(a.record || "0–0")}${a.streak ? ` · streak ${a.streak}` : ""}</div>
+      <span class="portrait-plate portrait-plate--roster">${facePlate(a, 96)}</span>
+      <span class="roster-id"><b>${esc(a.name)}</b>${titleLine(a)}</span>
+      <span class="roster-stats"><span>${esc(a.record || "0–0")}</span>${a.streak ? `<span class="roster-extra">Streak ${a.streak}</span>` : ""}</span>
     </button>`).join("")}</section>`;
 }
 
@@ -1836,7 +1964,7 @@ function profile() {
     </div>
     <p class="fine" style="margin-top:12px">AC ${Math.round(me.credits).toLocaleString("en-US")}. Arena Credits have no monetary value. Test P&L is not earnings.</p>
     ${me.bestRead ? `<section class="section"><h2>Best read</h2><div class="rowbtn" data-cast="${esc(me.bestRead.agentId)}">${mark((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId, null, me.bestRead.agentId)}<span><b>${esc((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId)}</b>${titleLine({ id: me.bestRead.agentId })}</span><div class="fine">${me.bestRead.accuracy}% over ${me.bestRead.picks} picks</div></div></section>` : ""}
-    <section class="section"><h2>Leaderboard</h2>
+    <section class="section"><h2>Predictors</h2>
       ${(leaders.length ? leaders : [{ id: me.id, accuracy: me.accuracy, pnl: me.pnl, picks: me.picks }]).slice(0, 8).map((p, i) => `<div class="rowbtn"><b>${i + 1}. ${esc(p.id === me.id ? "You" : p.id)}</b><div class="fine">${p.accuracy || 0}% · ${money(p.pnl || 0)} test</div></div>`).join("")}
     </section>
     ${castBoard()}`;
@@ -2007,6 +2135,89 @@ function paintSlot(el, html, prev) {
   return html;
 }
 
+function introClock(match) {
+  if (!match || !match.matchId || reducedMotion() || tab !== "watch") return null;
+  const round = Number(match.round) || 1;
+  const started = !!(match.bid && (match.bid.count || match.bid.face)) || !!(match.reveal && match.reveal.length);
+  const early = match.phase === "pick" || (match.phase === "live" && round <= 1 && !started);
+  if (!early) return null;
+  if (!introStarted.has(match.matchId)) introStarted.set(match.matchId, performance.now());
+  const t = performance.now() - introStarted.get(match.matchId);
+  if (t > 1900) return null;
+  return t;
+}
+
+function introClass(t) {
+  const bits = ["match-intro"];
+  if (t >= 200) bits.push("show-agent-a");
+  if (t >= 500) bits.push("show-agent-b");
+  if (t >= 800) bits.push("show-vs");
+  if (t >= 1000) bits.push("show-copy");
+  if (t >= 1250) bits.push("show-records");
+  if (t >= 1550) bits.push("intro-complete");
+  return bits.join(" ");
+}
+
+function scheduleIntro(t) {
+  if (introTimer || t == null) return;
+  const marks = [200, 500, 800, 1000, 1250, 1550, 1920];
+  const next = marks.find((mark) => mark > t + 16);
+  if (!next) return;
+  introTimer = setTimeout(() => {
+    introTimer = 0;
+    if (creatorSession()) return;
+    render();
+  }, Math.max(16, next - t));
+}
+
+function clearIntro() {
+  if (introTimer) clearTimeout(introTimer);
+  introTimer = 0;
+  introKey = "";
+  if (!introEl) return;
+  introEl.innerHTML = "";
+  introEl.className = "";
+  introEl.hidden = true;
+  introEl.style.removeProperty("--hero-a");
+  introEl.style.removeProperty("--hero-b");
+}
+
+function finishIntro() {
+  const match = live();
+  if (match && match.matchId) introStarted.set(match.matchId, performance.now() - 4000);
+  clearIntro();
+}
+
+function paintMatchIntro(match) {
+  if (!introEl) return;
+  const t = introClock(match);
+  if (t == null) {
+    if (introKey) clearIntro();
+    return;
+  }
+  const key = match.matchId;
+  if (introKey !== key) {
+    const [a, b] = match.seats || [];
+    introEl.innerHTML = a && b ? `<section class="match-intro" data-match-intro="1">
+      <div class="match-intro__body">
+        <div class="match-intro__agent is-a">${matchupSide(a, "left", "hero")}</div>
+        <div class="match-intro__vs"><span>VS</span></div>
+        <div class="match-intro__agent is-b">${matchupSide(b, "right", "hero")}</div>
+      </div>
+    </section>` : "";
+    const left = heroColors(a).primary;
+    const right = heroColors(b).primary;
+    if (left) introEl.style.setProperty("--hero-a", left);
+    if (right) introEl.style.setProperty("--hero-b", right);
+    introKey = key;
+    introEl.hidden = false;
+  }
+  const root = introEl.querySelector(".match-intro");
+  if (root) root.className = introClass(t);
+  introEl.classList.toggle("intro-complete", t >= 1550);
+  scheduleIntro(t);
+}
+
 function render() {
   syncCreatorFromDom();
   frameBeats = activeMotion(live());
@@ -2032,6 +2243,7 @@ function render() {
       : profile()) + errHtml;
   const marketHtml = tab === "watch" ? watchMarket() : "";
   const sheetHtml = tradeSheetMarkup();
+  paintMatchIntro(tab === "watch" ? watching : null);
   if (matchHtml === paintedMatch && marketHtml === paintedMarket && sheetHtml === paintedSheet && !arriving) {
     announceLine(watching && watching.narrative && watching.narrative.line);
     return;
@@ -2694,7 +2906,7 @@ async function poll() {
   const prevLive = heardLive;
   hear(j.live);
   applyMotion(prevLive, j.live);
-  if (!creatorSession() && (tab === "agents" || tab === "history" || tab === "profile")) await refreshLists();
+  if (!creatorSession() && (tab === "arena" || tab === "agents" || tab === "history" || tab === "profile")) await refreshLists();
   if (gen !== pollGen) return;
   if (creatorSession()) {
     renderCredits();
@@ -2725,6 +2937,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   const tag = (e.target && e.target.tagName) || "";
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (introKey) finishIntro();
   if (tab !== "watch" || !director) return;
   const frame = director.frame();
   if (!frame || frame.done) return;

@@ -34,8 +34,9 @@ function readBody(req) {
 
 function fail(res, e) {
   const code = e.code || e.message || "error";
-  const status = code === "no_market" || code === "unknown_predictor" ? 404 : 400;
-  send(res, status, { ok: false, error: ERROR_TEXT[code] || code });
+  let status = code === "no_market" || code === "unknown_predictor" || code === "unknown_agent" || code === "unknown_concept" ? 404 : 400;
+  if (Number.isInteger(e.status) && e.status >= 400 && e.status < 600) status = e.status;
+  send(res, status, { ok: false, error: e.publicMessage || ERROR_TEXT[code] || code, code });
 }
 
 async function handleShow(req, res, url, query, show) {
@@ -64,7 +65,39 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ok: true, brand: show.brandView(decodeURIComponent(brandGet[1])) });
       return true;
     }
-    if (req.method === "POST" && (path === "/agents/brand/create" || /^\/agents\/([^/]+)\/brand\/(concepts|select|assets|rebrand)$/.test(path))) {
+    const emblemGet = path.match(/^\/agents\/([^/]+)\/emblem\.svg$/);
+    if (req.method === "GET" && emblemGet) {
+      const svg = show.emblemSvgFor(decodeURIComponent(emblemGet[1]));
+      if (!svg) { send(res, 404, { ok: false, error: "No emblem for that agent.", code: "unknown_agent" }); return true; }
+      res.writeHead(200, {
+        "content-type": "image/svg+xml; charset=utf-8",
+        "cache-control": "no-cache",
+      });
+      res.end(svg);
+      return true;
+    }
+    if (req.method === "GET" && path === "/agents/brand/options") {
+      send(res, 200, { ok: true, ...show.creatorOptions() });
+      return true;
+    }
+    if (req.method === "POST" && path === "/agents/brand/create") {
+      const body = await readBody(req);
+      send(res, 200, { ok: true, ...show.createAgent(body) });
+      return true;
+    }
+    const concepts = path.match(/^\/agents\/([^/]+)\/brand\/concepts$/);
+    if (req.method === "POST" && concepts) {
+      const body = await readBody(req);
+      send(res, 200, { ok: true, ...show.generateConcepts(decodeURIComponent(concepts[1]), body) });
+      return true;
+    }
+    const select = path.match(/^\/agents\/([^/]+)\/brand\/select$/);
+    if (req.method === "POST" && select) {
+      const body = await readBody(req);
+      send(res, 200, { ok: true, ...show.selectConcept(decodeURIComponent(select[1]), body.conceptId) });
+      return true;
+    }
+    if (req.method === "POST" && /^\/agents\/([^/]+)\/brand\/(assets|rebrand)$/.test(path)) {
       send(res, 501, { ok: false, error: "not_implemented", status: "DRAFT" });
       return true;
     }

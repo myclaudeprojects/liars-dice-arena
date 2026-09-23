@@ -43,7 +43,8 @@ class MatchIntegrity {
     if (!opts.oracle) throw coded("ORACLE_REQUIRED");
     this.oracle = opts.oracle;
     this.env = opts.env || process.env;
-    this.configs = new MatchConfigStore();
+    this.agentLookup = opts.agentLookup || null;
+    this.configs = new MatchConfigStore({ lookup: this.agentLookup });
     this.matches = new Map();
     this.audit = [];
   }
@@ -162,7 +163,7 @@ class MatchIntegrity {
       let agentActual = null;
       for (const agent of frozen.config.agents) {
         let fresh;
-        try { fresh = agentSnapshot(agent.agentId); }
+        try { fresh = agentSnapshot(agent.agentId, this.agentLookup); }
         catch { fresh = null; }
         if (!fresh || fresh.configurationHash !== agent.configurationHash || fresh.agentVersionId !== agent.agentVersionId) {
           agentsOk = false;

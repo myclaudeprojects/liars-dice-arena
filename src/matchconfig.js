@@ -15,8 +15,8 @@ const {
   MARKET_LOCK_POLICY_VERSION,
 } = require("./versions");
 
-function agentSnapshot(agentId) {
-  const c = character(agentId);
+function agentSnapshot(agentId, lookup) {
+  const c = typeof lookup === "function" ? lookup(agentId) : character(agentId);
   const strategy = {
     aggression: c.aggression,
     chaos: c.chaos,
@@ -63,10 +63,10 @@ function agentSnapshot(agentId) {
   };
 }
 
-function buildCompetitiveConfig({ matchId, seats, scheduledAt }) {
+function buildCompetitiveConfig({ matchId, seats, scheduledAt, lookup }) {
   if (!matchId) throw coded("MATCH_ID_REQUIRED");
   if (!Array.isArray(seats) || seats.length < 2) throw coded("NEED_AGENTS");
-  const agents = seats.map((s) => agentSnapshot(s.id));
+  const agents = seats.map((s) => agentSnapshot(s.id, lookup));
   return {
     matchId: String(matchId),
     game: "LIARS_DICE",
@@ -90,16 +90,17 @@ function configurationHash(config) {
 }
 
 class MatchConfigStore {
-  constructor() {
+  constructor(opts = {}) {
     this.rows = new Map();
     this.audit = [];
+    this.lookup = opts.lookup || null;
   }
 
   freeze({ matchId, seats, frozenBy = "show", scheduledAt = null, now = Date.now() }) {
     const id = String(matchId);
     const existing = this.rows.get(id);
     if (existing && existing.locked) throw coded("MATCH_CONFIGURATION_LOCKED");
-    const config = buildCompetitiveConfig({ matchId: id, seats, scheduledAt });
+    const config = buildCompetitiveConfig({ matchId: id, seats, scheduledAt, lookup: this.lookup });
     const canonical = canonicalJson(config);
     const hash = sha256Prefixed(canonical);
     const row = {

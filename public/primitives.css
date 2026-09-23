@@ -103,6 +103,12 @@ button.lda-card:hover,
   box-shadow: var(--lda-shadow-1);
 }
 .lda-avatar-glyph { line-height: 1; }
+img.lda-avatar.lda-pfp {
+  display: block;
+  object-fit: cover;
+  overflow: hidden;
+  padding: 0;
+}
 [data-cast="dracula"] { --agent-accent: var(--agent-dracula); --swatch-primary: var(--brand-dracula-primary); --swatch-secondary: var(--brand-dracula-secondary); --swatch-accent: var(--brand-dracula-accent); --emblem-url: url("/static/emblems/dracula.svg"); }
 [data-cast="caesar"] { --agent-accent: var(--agent-caesar); --swatch-primary: var(--brand-caesar-primary); --swatch-secondary: var(--brand-caesar-secondary); --swatch-accent: var(--brand-caesar-accent); --emblem-url: url("/static/emblems/caesar.svg"); }
 [data-cast="reaper"] { --agent-accent: var(--agent-reaper); --swatch-primary: var(--brand-reaper-primary); --swatch-secondary: var(--brand-reaper-secondary); --swatch-accent: var(--brand-reaper-accent); --emblem-url: url("/static/emblems/reaper.svg"); }

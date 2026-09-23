@@ -39,7 +39,15 @@
     return `<span class="lda-palette" data-cast="${esc(id)}" aria-hidden="true"><i class="is-primary"></i><i class="is-secondary"></i><i class="is-accent"></i></span>`;
   }
 
-  function avatar(name, hue, id) {
+  function avatar(name, hue, id, opts) {
+    const o = opts || {};
+    const src = typeof o.src === "string" ? o.src : "";
+    const safeSrc = /^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?size=(?:48|96|160|320|512|1024))?$/i.test(src) ? src : "";
+    if (safeSrc) {
+      const w = [48, 96, 160, 320, 512, 1024].includes(Number(o.size)) ? Number(o.size) : 96;
+      const castAttr = id ? ` data-cast="${esc(id)}"` : "";
+      return `<img class="mark lda-avatar lda-pfp" src="${esc(safeSrc)}" alt="" width="${w}" height="${w}"${castAttr}>`;
+    }
     const raw = String(name || "?").replace(/^The /, "");
     const letter = raw[0] || "?";
     const cast = CAST_IDS.includes(id) ? id : "";

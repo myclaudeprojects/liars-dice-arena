@@ -337,16 +337,29 @@ function personTitle(person) {
   const brand = brandFor(person);
   return (brand && brand.title) || (person && person.archetype) || "";
 }
+function pfpPath(url) {
+  const text = String(url || "");
+  if (/^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?size=(?:48|96|160|320|512|1024))?$/i.test(text)) return text;
+  return "";
+}
+function pfpSrc(brand, size) {
+  if (!brand) return "";
+  const sized = brand.avatarSizes && (brand.avatarSizes[size] || brand.avatarSizes[String(size)]);
+  return pfpPath(sized || brand.pfpUrl || "");
+}
 function mark(name, hue, id, brand) {
   const resolved = brand || brandFor({ id });
   const cast = id ? ` data-cast="${esc(id)}"` : "";
-  const avatar = ui()
-    ? ui().avatar(name, hue, id)
-    : (() => {
-      const letter = esc((name || "?").replace(/^The /, "")[0] || "?");
-      const tone = hue == null ? 40 : hue;
-      return `<div class="mark lda-avatar"${cast} style="--agent-accent:hsl(${tone} 42% 58%)">${letter}</div>`;
-    })();
+  const src = pfpSrc(resolved, 96);
+  const avatar = src && ui()
+    ? ui().avatar(name, hue, id, { src, size: 96 })
+    : ui()
+      ? ui().avatar(name, hue, id)
+      : (() => {
+        const letter = esc((name || "?").replace(/^The /, "")[0] || "?");
+        const tone = hue == null ? 40 : hue;
+        return `<div class="mark lda-avatar"${cast} style="--agent-accent:hsl(${tone} 42% 58%)">${letter}</div>`;
+      })();
   if (!resolved || !resolved.emblemUrl || !ui()) return avatar;
   return `<span class="brand-lockup"${cast}>${ui().emblem()}${avatar}</span>`;
 }
@@ -365,6 +378,40 @@ const HOUSE_CAST = new Set([
 ]);
 function hexColor(value) {
   return /^#[0-9a-fA-F]{6}$/.test(String(value || "")) ? String(value) : "";
+}
+function agentPortrait(agent) {
+  const brand = brandFor(agent);
+  const large = pfpSrc(brand, 320);
+  if (!large) return mark(agent.name, agent.hue, agent.id, brand);
+  const small = pfpSrc(brand, 48);
+  const mid = pfpSrc(brand, 96);
+  return `<img class="agent-pfp" src="${esc(large)}" alt="" width="320" height="320">
+    <span class="pfp-sizes" aria-label="Avatar sizes">${small ? `<img class="pfp-mini" src="${esc(small)}" alt="" width="48" height="48">` : ""}${mid ? `<img class="pfp-mini is-96" src="${esc(mid)}" alt="" width="96" height="96">` : ""}</span>`;
+}
+function pfpFrame(svg) {
+  const art = safeSvg(svg);
+  if (!art) return "";
+  return `<span class="pfp-frame">${art}</span>`;
+}
+function pfpMini(svg, size) {
+  const art = safeSvg(svg);
+  if (!art) return "";
+  const uri = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(art);
+  return `<img class="pfp-mini${size === 96 ? " is-96" : ""}" src="${uri}" alt="" width="${size}" height="${size}">`;
+}
+function conceptPortrait(c) {
+  const visual = c.visualIdentity || {};
+  const on = c.id === creator.selectedId;
+  return `<button class="concept-card lda-card${on ? " is-selected" : ""}" type="button" data-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}">
+    ${pfpFrame(c.pfpSvg)}
+    <span class="concept-copy">
+      <span class="concept-name"><b>${esc(creator.form.name)}</b><span class="concept-emblem" style="color:${esc(hexColor(visual.accentColor) || "#e4c27a")}">${safeSvg(c.emblemSvg)}</span></span>
+      <span class="brand-title">${esc(c.title)}</span>
+      <span class="concept-tag">${esc(c.tagline)}</span>
+    </span>
+    <span class="swatches" aria-hidden="true"><i class="swatch" style="background:${esc(hexColor(visual.primaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.secondaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.accentColor))}"></i></span>
+    <span class="pfp-select">${on ? "Selected" : "Select"}</span>
+  </button>`;
 }
 function emblemPath(url) {
   const text = String(url || "");
@@ -1307,7 +1354,7 @@ function selectedConcept() {
 function creatorView() {
   const step = creator.step;
   const f = creator.form;
-  const titles = ["Name", "Personality", "Visual direction", "Concepts", "Confirm"];
+  const titles = ["Name", "Personality", "Visual direction", "Portraits", "Confirm"];
   const kicker = `Step ${step} of 5 · ${titles[step - 1] || "Create"}`;
   let body = "";
   if (step === 1) {
@@ -1332,36 +1379,31 @@ function creatorView() {
         ${sliderField("adaptability", "Adaptability")}
       ` : ""}`;
   } else if (step === 3) {
-    body = `<label>Optional visual direction<textarea name="visualDirection" maxlength="160" placeholder="Cold steel, moonlit, no text in the mark.">${esc(f.visualDirection)}</textarea></label><p class="fine">This shifts the palette and motif. Portraits stay as emblems for now.</p>`;
+    body = `<label>Optional visual direction<textarea name="visualDirection" maxlength="160" placeholder="Cold steel, moonlit, a calm face.">${esc(f.visualDirection)}</textarea></label><p class="fine">This shifts the palette and the face. Next you’ll pick a square portrait.</p>`;
   } else if (step === 4) {
-    const cards = (creator.concepts || []).map((c) => {
-      const on = c.id === creator.selectedId;
-      const visual = c.visualIdentity || {};
-      return `<button class="concept-card lda-card${on ? " is-selected" : ""}" type="button" data-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}">
-        <span class="concept-top"><span class="concept-emblem" style="color:${esc(hexColor(visual.accentColor) || "#e4c27a")}">${safeSvg(c.emblemSvg)}</span><span><b>${esc(c.title)}</b><span class="brand-title">${esc(c.tagline)}</span></span></span>
-        <span class="swatches" aria-hidden="true"><i class="swatch" style="background:${esc(hexColor(visual.primaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.secondaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.accentColor))}"></i></span>
-        <span class="fine">${esc(String(visual.silhouette || "").replace(/_/g, " ").toLowerCase())} · ${esc(String(c.emblem || "").replace(/_/g, " ").toLowerCase())}</span>
-      </button>`;
-    }).join("");
-    body = `<div class="concept-grid">${cards}</div>
+    const cards = (creator.concepts || []).map((c) => conceptPortrait(c)).join("");
+    body = `<p class="fine">Square portraits. Same competitor, different expression and headwear. Pick the face that should be canonical.</p>
+      <div class="concept-grid">${cards}</div>
       <label>Refine<textarea name="refine" maxlength="160" placeholder="More like the quiet one, different metal.">${esc(f.refine)}</textarea></label>
       <div class="creator-actions">
-        <button class="ghost" type="button" data-creator-vary="all"${creator.busy ? " disabled" : ""}>Regenerate</button>
-        <button class="ghost" type="button" data-creator-vary="colors"${creator.busy ? " disabled" : ""}>Different colors</button>
-        <button class="ghost" type="button" data-creator-vary="emblem"${creator.busy ? " disabled" : ""}>Different emblem</button>
+        <button class="ghost" type="button" data-creator-vary="all"${creator.busy ? " disabled" : ""}>Regenerate all</button>
+        <button class="ghost" type="button" data-creator-vary="expression"${creator.busy ? " disabled" : ""}>Stronger expression</button>
+        <button class="ghost" type="button" data-creator-vary="darker"${creator.busy ? " disabled" : ""}>Darker version</button>
+        <button class="ghost" type="button" data-creator-vary="cleaner"${creator.busy ? " disabled" : ""}>Cleaner background</button>
         <button class="ghost" type="button" data-creator-vary="like"${creator.busy ? " disabled" : ""}>More like this</button>
       </div>`;
   } else {
     const c = selectedConcept();
     const visual = (c && c.visualIdentity) || {};
     body = c ? `<article class="concept-card lda-card">
-      <span class="concept-top"><span class="concept-emblem" style="color:${esc(hexColor(visual.accentColor) || "#e4c27a")}">${safeSvg(c.emblemSvg)}</span><span><b>${esc(creator.form.name)}</b><span class="brand-title">${esc(c.title)}</span></span></span>
-      <p>${esc(c.tagline)}</p>
+      ${pfpFrame(c.pfpSvg)}
+      <span class="concept-copy"><b>${esc(creator.form.name)}</b><span class="brand-title">${esc(c.title)}</span><span class="concept-tag">${esc(c.tagline)}</span></span>
       <span class="swatches" aria-hidden="true"><i class="swatch" style="background:${esc(hexColor(visual.primaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.secondaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.accentColor))}"></i></span>
-      <p class="fine">${esc(archetypeLabel(creator.form.archetype))} · ${esc(String(visual.silhouette || "").replace(/_/g, " ").toLowerCase())}</p>
-    </article>` : `<p class="fine">Pick a concept first.</p>`;
+      <span class="pfp-sizes" aria-label="Small-size check">${pfpMini(c.pfpSvg, 48)}${pfpMini(c.pfpSvg, 96)}</span>
+      <p class="fine">${esc(archetypeLabel(creator.form.archetype))} · face-first portrait</p>
+    </article>` : `<p class="fine">Pick a portrait first.</p>`;
   }
-  const nextLabel = step === 3 ? "Generate concepts" : step === 4 ? "Review this concept" : step === 5 ? "Enter the arena" : "Next";
+  const nextLabel = step === 3 ? "Generate portraits" : step === 4 ? "Use this portrait" : step === 5 ? "Enter the arena" : "Next";
   const nextAttr = step === 3 ? "data-creator-generate" : step === 5 ? "data-creator-confirm" : "data-creator-next";
   return `<div class="creator">
     <p class="kicker">${esc(kicker)}</p>
@@ -1433,7 +1475,7 @@ async function runConcepts(vary) {
     const body = { count: 4, vary: vary || "all" };
     if (vary && vary !== "all" && creator.selectedId) body.anchorConceptId = creator.selectedId;
     if (creator.form.refine) body.refine = creator.form.refine;
-    const concepts = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/concepts", {
+    const concepts = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/pfp-concepts", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -1468,7 +1510,7 @@ async function confirmConcept() {
   render();
   const id = creator.draft.agent.id;
   try {
-    await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/select", {
+    await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/pfp-select", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ conceptId: chosen.id }),
@@ -1516,7 +1558,7 @@ function agentDetail(a) {
   const moments = (a.moments || []).map((m) => `<div class="rowbtn"><b>${esc(m.title)}</b><div class="fine">${esc(m.dek || "")}</div></div>`).join("");
   return `
     <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="agents">All agents</button>
-    <div class="agent-hero" data-cast="${esc(a.id)}"${brandStyle(a)}>${mark(a.name, a.hue, a.id, brandFor(a))}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
+    <div class="agent-hero" data-cast="${esc(a.id)}"${brandStyle(a)}>${agentPortrait(a)}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
     ${a.roster === "user" && a.status && a.status !== "READY" ? `<button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-resume-agent="1">Continue branding</button>` : ""}
     ${a.roster === "user" && a.playable ? `<p class="fine">User roster. The show seats this agent against the house cast when a chair is free${a.seated ? ", and they are on the slate now" : ""}.</p>` : ""}
     <p class="fine">${esc(a.archetype)}</p>

@@ -24,14 +24,17 @@ const {
   ARCHETYPE_IDS,
   SLIDER_KEYS,
   OPTIONAL_SLIDERS,
+  PFP_TOUCHES,
   createDraft,
   buildConcepts,
+  retouchConcepts,
   lockBrand,
   publicDraft,
   emblemSvg,
   creatorError,
   humanize,
 } = require("./brandcreate");
+const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls } = require("./pfp");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
 const SAMPLE_FLOOR = 6;
@@ -1561,7 +1564,14 @@ class Show {
     if (draft.status === "READY") {
       throw creatorError("brand_locked", "This brand is already locked.", 409);
     }
-    const vary = ["all", "colors", "emblem", "like"].includes(opts.vary) ? opts.vary : "all";
+    const vary = ["all", "colors", "emblem", "like", ...PFP_TOUCHES].includes(opts.vary) ? opts.vary : "all";
+    if (PFP_TOUCHES.includes(vary) && (draft.concepts || []).length >= 3) {
+      draft.concepts = retouchConcepts(draft, vary);
+      draft.status = "AWAITING_SELECTION";
+      draft.updatedAt = new Date().toISOString();
+      this.persist();
+      return { agent: this.agentSummary(draft), concepts: draft.concepts, status: draft.status };
+    }
     if (opts.direction) draft.visualDirection = String(opts.direction).replace(/\s+/g, " ").trim().slice(0, 160);
     if (opts.refine) {
       const extra = String(opts.refine).replace(/\s+/g, " ").trim().slice(0, 160);
@@ -1579,11 +1589,11 @@ class Show {
       anchor,
       brands: this.brandPool(),
     });
-    draft.concepts = concepts;
+    draft.concepts = PFP_TOUCHES.includes(vary) ? retouchConcepts({ ...draft, concepts }, vary) : concepts;
     draft.status = "AWAITING_SELECTION";
     draft.updatedAt = new Date().toISOString();
     this.persist();
-    return { agent: this.agentSummary(draft), concepts, status: draft.status };
+    return { agent: this.agentSummary(draft), concepts: draft.concepts, status: draft.status };
   }
 
   selectConcept(agentId, conceptId) {
@@ -1639,6 +1649,44 @@ class Show {
     const brand = this.brands.full(agentId);
     const emblem = brand && brand.visualIdentity && brand.visualIdentity.emblem;
     return emblem ? emblemSvg(emblem) : null;
+  }
+
+  pfpSvgFor(agentId, size) {
+    const brand = this.brands.full(agentId);
+    if (!brand || !brand.visualIdentity) return null;
+    const recipe = brand.pfpRecipe && brand.pfpRecipe.colors ? brand.pfpRecipe : recipeFromBrand(brand);
+    return renderPfp(recipe, { size, nonce: agentId });
+  }
+
+  deriveAssets(agentId) {
+    const brand = this.brands.full(agentId);
+    if (!brand || !brand.generation || brand.generation.status !== "READY") {
+      throw creatorError("brand_not_ready", "Lock a portrait before deriving avatar sizes.", 409);
+    }
+    const urls = assetUrls(agentId);
+    const assets = brand.assets || {};
+    return {
+      agentId,
+      assetType: ASSET_TYPE,
+      primaryPfpAssetId: brand.primaryPfpAssetId || `pfp_${agentId}_canonical`,
+      pfpStyleVersion: brand.pfpStyleVersion || PFP_STYLE_VERSION,
+      assets: {
+        pfpPortrait: assets.pfpPortrait || urls.master,
+        avatar: assets.avatar || urls.avatar,
+        avatar48: assets.avatar48 || urls.sizes["48"],
+        avatar96: assets.avatar96 || urls.sizes["96"],
+        avatar160: assets.avatar160 || urls.sizes["160"],
+        avatar320: assets.avatar320 || urls.sizes["320"],
+        avatar512: assets.avatar512 || urls.sizes["512"],
+        emblem: assets.emblem || null,
+        heroPortrait: assets.heroPortrait || null,
+        introCard: assets.introCard || null,
+        victoryCard: assets.victoryCard || null,
+        defeatCard: assets.defeatCard || null,
+        shareTemplate: assets.shareTemplate || null,
+      },
+      deferred: ["HERO_ART", "INTRO_CARD", "VICTORY_CARD", "DEFEAT_CARD", "MARKET_CARD", "RIVALRY_CARD"],
+    };
   }
 
   creatorOptions() {
@@ -1717,7 +1765,29 @@ class Show {
       err.code = "unknown_agent";
       throw err;
     }
-    return brand;
+    const urls = assetUrls(id);
+    return {
+      ...brand,
+      pfpAssetType: ASSET_TYPE,
+      primaryPfpAssetId: brand.primaryPfpAssetId || `pfp_${id}_canonical`,
+      pfpStyleVersion: brand.pfpStyleVersion || PFP_STYLE_VERSION,
+      pfpSafeZone: brand.pfpSafeZone || { circle: 0.82, face: { x: 0.29, y: 0.17, w: 0.42, h: 0.5 } },
+      avatarCrop: brand.avatarCrop || {
+        sizes: [48, 96, 160, 320, 512],
+        sourceAssetType: ASSET_TYPE,
+        method: "uniform-scale",
+      },
+      assets: {
+        ...brand.assets,
+        pfpPortrait: (brand.assets && brand.assets.pfpPortrait) || urls.master,
+        avatar: (brand.assets && brand.assets.avatar) || urls.avatar,
+        avatar48: (brand.assets && brand.assets.avatar48) || urls.sizes["48"],
+        avatar96: (brand.assets && brand.assets.avatar96) || urls.sizes["96"],
+        avatar160: (brand.assets && brand.assets.avatar160) || urls.sizes["160"],
+        avatar320: (brand.assets && brand.assets.avatar320) || urls.sizes["320"],
+        avatar512: (brand.assets && brand.assets.avatar512) || urls.sizes["512"],
+      },
+    };
   }
 
   brandsForSeats(seats) {

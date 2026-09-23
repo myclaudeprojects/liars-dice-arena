@@ -1,9 +1,9 @@
-// brandcreate.js — Spectator agent creation. Phases 2–5 of the brand spec.
+// brandcreate.js — Spectator agent creation.
 //
-// Identity, Visual DNA, and 3–5 concepts are deterministic. No image model.
-// Portraits stay deferred: concepts are emblem SVGs, palette chips, and a
-// silhouette. Selecting a concept locks brand v1. The house cast is not
-// rewritten here; callers persist the draft and the locked brand.
+// Identity, Visual DNA, and 3–5 concepts are deterministic. Each concept
+// carries a square procedural PFP (see pfp.js). There is no image model.
+// Selecting a concept locks brand v1 and that portrait. The house cast is
+// not rewritten here; callers persist the draft and the locked brand.
 
 const {
   PERSONALITY_KEYS,
@@ -14,8 +14,20 @@ const {
   validateBrand,
   wordCount,
 } = require("./brands");
+const {
+  PFP_STYLE_VERSION,
+  PFP_PROMPT_VERSION,
+  ASSET_TYPE,
+  AVATAR_SIZES,
+  buildRecipe,
+  renderPfp,
+  qualityCheck,
+  promptFor,
+  assetUrls,
+} = require("./pfp");
 
-const MODEL_VERSION = "emblem-svg-v1";
+const MODEL_VERSION = PFP_STYLE_VERSION;
+const PFP_TOUCHES = Object.freeze(["expression", "darker", "cleaner", "minimal", "premium"]);
 const ROSTER_CAP = 16;
 
 const ARCHETYPE_IDS = Object.freeze([
@@ -506,6 +518,57 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
   return null;
 }
 
+function attachPfp(draft, concept, index, treatment) {
+  const recipe = buildRecipe({
+    name: draft.name,
+    title: concept.title,
+    archetype: draft.archetype,
+    visual: concept.visualIdentity,
+    variation: index,
+    treatment: treatment || "standard",
+  });
+  const nonce = `${concept.id || "c"}_${recipe.treatment}`;
+  let svg = renderPfp(recipe, { size: 1024, nonce });
+  let quality = qualityCheck(recipe, svg);
+  if (!quality.ok) {
+    const lifted = buildRecipe({
+      name: draft.name,
+      title: concept.title,
+      archetype: draft.archetype,
+      visual: {
+        ...concept.visualIdentity,
+        secondaryColor: "#100E0C",
+        facialAttitude: concept.visualIdentity.facialAttitude,
+      },
+      variation: index,
+      treatment: treatment || "standard",
+    });
+    svg = renderPfp(lifted, { size: 1024, nonce });
+    quality = qualityCheck(lifted, svg);
+    concept.pfp = pfpRecord(draft, concept, lifted, quality);
+    concept.pfpSvg = svg;
+    concept.assetType = ASSET_TYPE;
+    return concept;
+  }
+  concept.pfp = pfpRecord(draft, concept, recipe, quality);
+  concept.pfpSvg = svg;
+  concept.assetType = ASSET_TYPE;
+  return concept;
+}
+
+function pfpRecord(draft, concept, recipe, quality) {
+  return {
+    assetType: ASSET_TYPE,
+    assetId: `pfp_${draft.id}_${concept.id}`,
+    styleVersion: PFP_STYLE_VERSION,
+    promptVersion: PFP_PROMPT_VERSION,
+    recipe,
+    safeZone: recipe.safeZone,
+    quality,
+    prompt: promptFor(recipe),
+  };
+}
+
 function emblemSvg(emblemId) {
   const body = EMBLEM_PATHS[emblemId];
   if (!body) return null;
@@ -513,15 +576,34 @@ function emblemSvg(emblemId) {
 }
 
 function userAssetRefs(agentId) {
+  const urls = assetUrls(agentId);
   return {
     heroPortrait: null,
-    avatar: null,
+    avatar: urls.avatar,
     emblem: `/api/show/agents/${encodeURIComponent(agentId)}/emblem.svg`,
     introCard: null,
     victoryCard: null,
     defeatCard: null,
     shareTemplate: null,
+    pfpPortrait: urls.master,
+    avatar48: urls.sizes["48"],
+    avatar96: urls.sizes["96"],
+    avatar160: urls.sizes["160"],
+    avatar320: urls.sizes["320"],
+    avatar512: urls.sizes["512"],
   };
+}
+
+function retouchConcepts(draft, treatment) {
+  const mode = PFP_TOUCHES.includes(treatment) ? treatment : "standard";
+  return (draft.concepts || []).map((concept, index) => {
+    const next = {
+      ...concept,
+      visualIdentity: { ...concept.visualIdentity },
+      palette: concept.palette ? { ...concept.palette } : concept.palette,
+    };
+    return attachPfp(draft, next, index, mode);
+  });
 }
 
 function allocateId(name, taken) {
@@ -616,7 +698,7 @@ function buildConcepts(draft, opts = {}) {
     local.titles.push(row.title);
     local.emblems.add(row.emblem);
     local.palettes.push({ visualIdentity: row.visualIdentity });
-    concepts.push(row);
+    concepts.push(attachPfp(draft, row, i, "standard"));
   }
   if (concepts.length < 3) {
     throw creatorError("uniqueness_exhausted", "Could not make three distinct concepts. Try a different direction.", 409);
@@ -646,6 +728,7 @@ function sheetFor(draft, concept) {
 
 function lockBrand(draft, concept, at) {
   const stamp = at || new Date().toISOString();
+  const portrait = concept.pfp || attachPfp(draft, concept, Math.max(0, (concept.conceptNumber || 1) - 1), "standard").pfp;
   const brand = {
     agentId: draft.id,
     brandVersion: "v1",
@@ -658,8 +741,24 @@ function lockBrand(draft, concept, at) {
       ...concept.visualIdentity,
       materialLanguage: concept.visualIdentity.materialLanguage.slice(),
     },
+    primaryPfpAssetId: portrait.assetId,
+    pfpStyleVersion: portrait.styleVersion,
+    pfpPromptVersion: portrait.promptVersion,
+    pfpSafeZone: portrait.safeZone,
+    avatarCrop: {
+      sizes: AVATAR_SIZES.slice(),
+      sourceAssetType: ASSET_TYPE,
+      sourceAssetId: portrait.assetId,
+      method: "uniform-scale",
+    },
+    pfpRecipe: portrait.recipe,
     assets: userAssetRefs(draft.id),
-    generation: generationStamp({ status: "READY", at: stamp, modelVersion: MODEL_VERSION }),
+    generation: generationStamp({
+      status: "READY",
+      at: stamp,
+      modelVersion: MODEL_VERSION,
+      assetStatus: { pfpPortrait: "READY", avatar: "READY" },
+    }),
   };
   const check = validateBrand(brand);
   if (!check.ok) {
@@ -698,6 +797,7 @@ module.exports = {
   OPTIONAL_SLIDERS,
   EMBLEM_IDS,
   MODEL_VERSION,
+  PFP_TOUCHES,
   ROSTER_CAP,
   SAFE_TITLES,
   archetypeLabel,
@@ -705,6 +805,7 @@ module.exports = {
   emblemSvg,
   createDraft,
   buildConcepts,
+  retouchConcepts,
   lockBrand,
   publicDraft,
   creatorError,

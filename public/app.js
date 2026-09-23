@@ -24,6 +24,14 @@ let shareNote = "";
 let pollGen = 0;
 let heardLive = null;
 let audioCtx = null;
+let motionState = { sig: "", until: 0, beats: [] };
+let motionTimer = 0;
+let frameBeats = [];
+let enterView = true;
+let seenSnap = false;
+let painted = "";
+let tallySeen = "";
+let replay = null;
 
 const SOUND_KEY = "ldaSound";
 
@@ -108,6 +116,57 @@ function hear(live) {
   heardLive = live;
 }
 
+function motionApi() {
+  return window.ldaMotion || {
+    motionBeats: () => [],
+    countShown: () => 0,
+    frameKey: () => "",
+    replayFrames: () => [],
+  };
+}
+
+function reducedMotion() {
+  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+
+function beatHold(beats) {
+  if (beats.some((b) => b.type === "reveal")) return 1700;
+  if (beats.some((b) => b.type === "settle")) return 1500;
+  if (beats.some((b) => b.type === "lose-die")) return 980;
+  if (beats.some((b) => b.type === "call")) return 880;
+  if (beats.some((b) => b.type === "start") || beats.some((b) => b.type === "roll")) return 820;
+  if (beats.some((b) => b.type === "bid")) return 720;
+  return 640;
+}
+
+function applyMotion(prev, live) {
+  const beats = motionApi().motionBeats(prev, live);
+  if (!beats.length) return;
+  clearTimeout(motionTimer);
+  if (reducedMotion()) {
+    motionState = { sig: "", until: 0, beats: [] };
+    return;
+  }
+  const ms = beatHold(beats);
+  motionState = { sig: motionApi().frameKey(live), until: performance.now() + ms, beats };
+  motionTimer = setTimeout(() => {
+    if (focusMatch || focusAgent) return;
+    render();
+  }, ms + 40);
+}
+
+function activeMotion(m) {
+  if (!m || !motionState.beats.length) return [];
+  if (performance.now() > motionState.until) return [];
+  if (motionState.sig !== motionApi().frameKey(m)) return [];
+  return motionState.beats;
+}
+
+function clearReplay() {
+  if (replay && replay.timer) clearTimeout(replay.timer);
+  replay = null;
+}
+
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -130,14 +189,14 @@ async function api(path, opts) {
 function faceWord(face) { return FACE[face] || "dice"; }
 function mark(name, hue) {
   const letter = esc((name || "?").replace(/^The /, "")[0] || "?");
-  return `<div class="mark" style="box-shadow:inset 0 0 0 2px hsl(${hue || 40} 42% 58%)">${letter}</div>`;
+  const tone = hue == null ? 40 : hue;
+  return `<div class="mark" style="border-color:hsl(${tone} 42% 58%)">${letter}</div>`;
 }
-function die(n) {
-  const pips = (PIPS[n] || []).map(([x, y]) => `<i class="pip" style="left:calc(${x}% - 2.5px);top:calc(${y}% - 2.5px)"></i>`).join("");
-  return `<span class="die">${pips}</span>`;
-}
-function backs(count) {
-  return Array.from({ length: Math.max(0, count) }, () => `<span class="die back"></span>`).join("");
+function die(n, extra) {
+  const pips = (PIPS[n] || []).map(([x, y]) => `<i class="pip" style="left:calc(${x}% - 2px);top:calc(${y}% - 2px)"></i>`).join("");
+  const cls = ["die", extra && extra.cls].filter(Boolean).join(" ");
+  const style = extra && extra.style ? ` style="${extra.style}"` : "";
+  return `<span class="${cls}"${style}>${pips}</span>`;
 }
 function money(n) {
   const v = Math.round(Number(n) || 0);
@@ -164,7 +223,10 @@ function setTab(next) {
   focusAgent = null;
   focusMatch = null;
   shareNote = "";
+  clearReplay();
   clearReplayHash();
+  enterView = true;
+  painted = "";
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   render();
 }
@@ -220,9 +282,10 @@ function arena() {
   const reads = snap.yourReads || [];
   const watching = Number(snap.watching) || 0;
   const eye = watching > 0 ? ` · ${watching} watching` : "";
+  const intro = frameBeats.some((b) => b.type === "intro" || b.type === "start") ? " intro" : "";
   return `
     <div class="kicker"><span class="dot"></span> ${open ? "Live now" : m.phase === "settled" ? "Final" : "Live now"}${eye}</div>
-    <article class="live-card">
+    <article class="live-card${intro}">
       <div class="vs">
         <div class="who">${mark(a.name, a.hue)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
         <div class="x">VS</div>
@@ -280,8 +343,9 @@ function seatNameFrom(card, id) {
 function picker() {
   const m = live();
   const [a, b] = m.seats;
+  const intro = frameBeats.some((b) => b.type === "intro") ? " intro" : "";
   return `
-    <div class="picker">
+    <div class="picker${intro}">
       <div class="kicker">One tap</div>
       <h1>Who's got this?</h1>
       <button class="giant" type="button" data-pick="${esc(a.id)}">${mark(a.name, a.hue)}<span><b>${esc(a.name)}</b><span>${esc(a.record)} · ${esc(a.archetype)}</span></span></button>
@@ -291,40 +355,154 @@ function picker() {
     </div>`;
 }
 
-function watchTable() {
-  const m = live();
-  const [a, b] = m.seats;
-  const reveal = m.reveal;
-  const diceFor = (seat) => {
-    if (reveal) {
-      const hand = reveal.find((r) => r.id === seat.id);
-      if (hand) return hand.dice.map(die).join("");
-    }
-    return backs(seat.alive ? seat.dice : 0);
-  };
-  const n = m.narrative || {};
-  const head = n.headline ? `<div class="headline ${n.pace === "critical" ? "critical" : ""}">${esc(n.headline)}</div>` : "";
+function bidderOf(bid) {
+  if (!bid) return "";
+  return bid.agentId || bid.byId || "";
+}
+
+function challengerOf(m) {
+  const bid = m && m.bid;
+  if (!bid || !bid.name) return "";
+  const bidder = bidderOf(bid);
+  const seat = (m.seats || []).find((s) => s.name === bid.name && s.id !== bidder);
+  return seat ? seat.id : "";
+}
+
+function seatClass(seat, m, beats) {
+  const bid = m.bid;
+  const bidder = bidderOf(bid);
+  const calling = m.narrative && m.narrative.headline === "LIAR.";
+  const bidBeat = beats.find((b) => b.type === "bid");
+  const loss = beats.find((b) => b.type === "lose-die" && b.id === seat.id);
+  let hot = false;
+  let marked = false;
+  let cool = false;
+  if (calling) {
+    hot = seat.id === challengerOf(m);
+    marked = seat.id === bidder;
+  } else if (bid && seat.id === bidder) hot = true;
+  if (bidBeat && bidBeat.prevBid) {
+    const prevId = bidBeat.prevBid.agentId || bidBeat.prevBid.byId;
+    if (prevId && seat.id === prevId && seat.id !== bidder) cool = true;
+  }
+  const out = seat.alive === false;
+  return ["who", "seat", hot && "hot", marked && "marked", cool && "cool", out && "out", loss && "hit"].filter(Boolean).join(" ");
+}
+
+function diceFor(seat, m, beats) {
+  const loss = beats.find((b) => b.type === "lose-die" && b.id === seat.id);
+  const reveal = m.reveal && m.reveal.find((r) => r.id === seat.id);
+  const rolling = beats.some((b) => b.type === "roll" || b.type === "start" || b.type === "call");
+  const revealing = beats.some((b) => b.type === "reveal");
+  const face = m.bid && m.bid.face;
+  if (reveal && reveal.dice && reveal.dice.length && (seat.alive !== false || loss)) {
+    return reveal.dice.map((n, i) => {
+      const wild = !!(face && n === 1 && face !== 1);
+      const match = !!(face && (n === face || wild));
+      const classes = [];
+      if (revealing) classes.push("tumble");
+      if (match) classes.push("hit");
+      if (wild) classes.push("wild");
+      if (loss && loss.eliminated) classes.push("out");
+      const style = `--d:${i * 70}ms`;
+      return die(n, { cls: classes.join(" "), style });
+    }).join("");
+  }
+  if (seat.alive === false && !loss) return "";
+  const count = seat.alive === false ? 0 : (seat.dice || 0);
+  const ghosts = loss ? Math.max(0, (loss.from || 0) - count) : 0;
+  let html = "";
+  for (let i = 0; i < count; i++) {
+    html += `<span class="die back${rolling ? " shake" : ""}" style="--d:${i * 40}ms"></span>`;
+  }
+  for (let g = 0; g < ghosts; g++) html += `<span class="die back out"></span>`;
+  return html;
+}
+
+function bookBar(m, beats) {
+  const price = m.market && m.market.price;
+  if (!price || !m.seats) return "";
+  const pulse = beats.some((b) => b.type === "price") ? " pulse" : "";
+  const bits = m.seats.map((s) => `<span><b>${esc(s.name)}</b> ${Math.round((price[s.id] || 0) * 100)}</span>`).join("");
+  return `<div class="book${pulse}" aria-label="Test-credit book">${bits}</div>`;
+}
+
+function bidChip(m, beats) {
+  if (!m.bid) return `<div class="bid-slot"></div>`;
+  const calling = m.narrative && m.narrative.headline === "LIAR.";
+  const bidBeat = beats.find((b) => b.type === "bid");
+  const callBeat = beats.some((b) => b.type === "call");
+  const cls = ["bidchip", bidBeat && "pop", calling && "liar", callBeat && "slam"].filter(Boolean).join(" ");
+  const prev = bidBeat && bidBeat.prevBid;
+  const prevHtml = prev ? `<span class="prev">${prev.count} ${esc(faceWord(prev.face))}</span>` : "";
+  if (calling) {
+    return `<div class="${cls}"><span class="qty">LIAR</span><span class="by">on ${m.bid.count} ${esc(faceWord(m.bid.face))}</span></div>`;
+  }
+  return `<div class="${cls}">${prevHtml}<span class="qty">${m.bid.count}</span><span class="face">${esc(faceWord(m.bid.face))}</span><span class="by">${esc(m.bid.name || "")}</span></div>`;
+}
+
+function tallyBlock(m, beats) {
+  if (!m.reveal || !m.bid || !m.bid.face) return "";
+  const face = m.bid.face;
+  const actual = motionApi().countShown(m.reveal, face);
+  const key = (m.matchId || "replay") + ":" + motionApi().frameKey(m);
+  const done = tallySeen === key || reducedMotion();
+  const shown = done ? actual : 0;
+  const truth = m.narrative && m.narrative.headline === "HE WAS TELLING THE TRUTH.";
+  const bluff = m.narrative && m.narrative.headline === "HE WAS BLUFFING.";
+  const note = truth ? "The bid stands. Challenger loses a die." : bluff ? "Caught. Bidder loses a die." : "";
+  const on = beats.some((b) => b.type === "reveal") ? " on" : "";
+  return `<div class="tally${on}" data-tally="${actual}" data-tally-key="${esc(key)}" aria-label="${actual} ${esc(faceWord(face))} showing, ${m.bid.count} bid">counting ${esc(faceWord(face))}… <b>${shown}</b> of ${m.bid.count}</div>${note ? `<div class="verdict-line ${truth ? "good" : "bad"}">${note}</div>` : ""}`;
+}
+
+function youBlock(m, beats) {
   const pos = position;
+  const pulse = beats.some((b) => b.type === "price") ? " pulse" : "";
   const delta = pos && Math.abs(pos.unrealized) >= 0.5
     ? ` <span class="${pos.unrealized >= 0 ? "good" : "bad"}">${money(pos.unrealized)}</span>`
     : "";
   const you = pos
-    ? `<div class="you">You picked <b>${esc(seatName(pos.agentId))}</b> · worth <b>${Math.round(pos.value)}</b> test credits${delta}</div>`
+    ? `<div class="you${pulse}">You picked <b>${esc(seatName(pos.agentId))}</b> · worth <b>${Math.round(pos.value)}</b> test credits${delta}</div>`
     : `<div class="you">Watching. Picks are closed for this one.</div>`;
+  return you + spark(pos && pos.trail);
+}
+
+function seatBlock(seat, m, beats) {
+  const diceLabel = seat.alive === false ? "out" : `${seat.dice} dice`;
+  return `<div class="${seatClass(seat, m, beats)}">${mark(seat.name, seat.hue)}<b>${esc(seat.name)}</b><span>${diceLabel}</span><div class="dice-row">${diceFor(seat, m, beats)}</div></div>`;
+}
+
+function tableView(m, beats, opts) {
+  if (!m || !m.seats || m.seats.length < 2) return `<p class="fine">No match yet.</p>`;
+  const [a, b] = m.seats;
+  const n = m.narrative || {};
+  const showYou = !opts || opts.you !== false;
+  const sting = beats.some((b) => b.type === "reveal" || b.type === "call" || b.type === "settle");
+  const headCls = ["headline", n.pace === "critical" ? "critical" : "", sting && n.headline ? "stinger" : ""].filter(Boolean).join(" ");
+  const head = n.headline ? `<div class="${headCls}">${esc(n.headline)}</div>` : "";
+  const flash = beats.some((b) => b.type === "call") ? `<div class="slam-flash" aria-hidden="true"></div>` : "";
+  const liveSting = beats.some((b) => b.type === "start") ? `<div class="live-sting">LIVE</div>` : "";
   return `
     <div class="table">
+      ${flash}
+      ${liveSting}
       <div class="vs">
-        <div class="who">${mark(a.name, a.hue)}<b>${esc(a.name)}</b><span>${a.dice} dice</span><div class="dice-row">${diceFor(a)}</div></div>
+        ${seatBlock(a, m, beats)}
         <div class="x">${m.phase === "settled" ? "FINAL" : "R" + (m.round || 1)}</div>
-        <div class="who">${mark(b.name, b.hue)}<b>${esc(b.name)}</b><span>${b.dice} dice</span><div class="dice-row">${diceFor(b)}</div></div>
+        ${seatBlock(b, m, beats)}
       </div>
+      ${bookBar(m, beats)}
+      ${bidChip(m, beats)}
       ${head}
-      <div class="line">${esc(n.line || "")}</div>
+      <div class="line" aria-live="polite">${esc(n.line || "")}</div>
       ${n.aside ? `<div class="aside">${esc(n.aside)}</div>` : ""}
-      ${m.bid && m.phase === "live" && !n.headline ? `<div class="fine">${esc(m.bid.name || "")} · ${m.bid.count} ${esc(faceWord(m.bid.face))}</div>` : ""}
-      ${you}
-      ${spark(pos && pos.trail)}
+      ${tallyBlock(m, beats)}
+      ${showYou ? youBlock(m, beats) : ""}
     </div>`;
+}
+
+function watchTable() {
+  return tableView(live(), frameBeats);
 }
 
 function payoff() {
@@ -334,13 +512,18 @@ function payoff() {
   const picked = pos ? seatName(pos.agentId) : null;
   const won = pos && pos.won;
   const lesson = story.lesson || "";
+  const settle = frameBeats.some((b) => b.type === "settle");
+  const verdict = !pos ? "FINAL" : won ? "YES" : "NO";
+  const tone = !pos ? "final" : won ? "yes" : "no";
   return `
-    <div class="payoff">
+    <div class="payoff${settle ? " sting" : ""}">
+      ${won && settle ? `<div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>` : ""}
+      <div class="verdict ${tone}">${verdict}</div>
       <div class="headline">${esc(story.title || m.narrative?.line || "Settled")}</div>
       <p>${esc(story.dek || "")}</p>
       ${pos ? `<p>${won ? `<b class="good">You called it.</b>` : `<b>You missed this one.</b>`} Your pick: <b>${esc(picked)}</b>.</p>` : `<p class="fine">You watched this one without a pick.</p>`}
       ${lesson ? `<p class="fine">${esc(lesson)}</p>` : ""}
-      ${pos ? `<p>Test credits ${money(pos.pnl)} · balance ${Math.round(bankroll())}</p>` : ""}
+      ${pos ? `<p class="delta ${won ? "good" : "bad"}">${money(pos.pnl)} test</p><p class="fine">Balance ${Math.round(bankroll())}</p>` : ""}
       ${careerBlock(me, { quiet: true })}
       ${m.share ? shareBlock({ ...m.share, matchId: m.matchId }) : ""}
     </div>`;
@@ -399,17 +582,57 @@ function historyView() {
     </button>`).join("");
 }
 
+const REPLAY_HOLD = { roll: 780, bid: 860, call: 820, reveal: 1680, out: 980, settle: 2200 };
+
+function armReplay() {
+  if (!replay) return;
+  if (replay.timer) clearTimeout(replay.timer);
+  if (replay.index >= replay.frames.length - 1) return;
+  const frame = replay.frames[replay.index];
+  const ms = reducedMotion() ? 480 : (REPLAY_HOLD[frame.kind] || 800);
+  replay.timer = setTimeout(() => {
+    if (!replay || tab !== "history" || !focusMatch) return;
+    replay.index += 1;
+    render();
+    armReplay();
+  }, ms);
+}
+
+function restartReplay() {
+  if (!replay || !replay.frames.length) return;
+  if (replay.timer) clearTimeout(replay.timer);
+  replay.index = 0;
+  tallySeen = "";
+  render();
+  armReplay();
+}
+
 function matchReplay(m) {
   const events = m.events || [];
+  const frames = replay && replay.id === m.matchId ? replay.frames : motionApi().replayFrames(events);
+  const index = replay && replay.id === m.matchId ? replay.index : Math.max(0, frames.length - 1);
+  const frame = frames[index];
+  const stage = frame ? tableView({
+    matchId: m.matchId,
+    phase: "live",
+    round: frame.round,
+    seats: frame.seats,
+    bid: frame.bid,
+    reveal: frame.reveal,
+    narrative: frame.narrative,
+  }, reducedMotion() ? [] : (frame.beats || []), { you: false }) : "";
   const beats = events.filter((e) => e.type === "bid" || e.type === "challenge" || e.type === "match_over").map((e) => {
     if (e.type === "bid") return `<li>${esc(e.name)} bids ${e.count} ${esc(faceWord(e.face))}.</li>`;
     if (e.type === "challenge") return `<li><b>${esc(e.bidWasTrue ? "Telling the truth." : "Bluffing.")}</b> Call on ${e.bid.count} ${esc(faceWord(e.bid.face))}.</li>`;
     return `<li><b>${esc(e.name)} wins.</b></li>`;
   }).join("");
+  const at = frames.length ? `${index + 1} / ${frames.length}` : "";
   return `
     <button class="ghost" type="button" data-back="history">All stories</button>
     <h1 class="page">${esc(m.story && m.story.title || "Match")}</h1>
     <p>${esc(m.story && m.story.dek || "")}</p>
+    ${stage}
+    <div class="replay-meta"><span class="fine">${at}</span><button class="ghost" type="button" data-replay>Play again</button></div>
     ${m.share ? shareBlock({ ...m.share, matchId: m.matchId }) : ""}
     <ol class="log">${beats}</ol>`;
 }
@@ -432,14 +655,54 @@ function profile() {
     </section>`;
 }
 
+function kickTally() {
+  const el = view.querySelector("[data-tally]");
+  if (!el) return;
+  const key = el.dataset.tallyKey;
+  const target = Number(el.dataset.tally);
+  const num = el.querySelector("b");
+  if (!num || !Number.isFinite(target)) return;
+  if (key === tallySeen || reducedMotion()) {
+    num.textContent = String(target);
+    tallySeen = key;
+    return;
+  }
+  tallySeen = key;
+  const t0 = performance.now();
+  const dur = 720;
+  const step = (now) => {
+    if (!num.isConnected) return;
+    const p = Math.min(1, (now - t0) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    num.textContent = String(Math.round(target * eased));
+    if (p < 1) requestAnimationFrame(step);
+    else num.textContent = String(target);
+  };
+  requestAnimationFrame(step);
+}
+
 function render() {
-  renderCredits();
+  frameBeats = activeMotion(live());
+  const settle = frameBeats.some((b) => b.type === "settle");
+  const nextCredits = me ? `${Math.round(me.credits)} test` : "—";
+  const creditChanged = creditsEl.textContent && creditsEl.textContent !== "—" && creditsEl.textContent !== nextCredits;
+  creditsEl.textContent = nextCredits;
+  creditsEl.classList.toggle("bump", !!(settle && creditChanged) || (settle && creditsEl.classList.contains("bump")));
+  if (!settle) creditsEl.classList.remove("bump");
+  const arriving = enterView || (!seenSnap && !!snap);
+  if (snap) seenSnap = true;
+  enterView = false;
   const body = tab === "arena" ? arena()
     : tab === "watch" ? watch()
     : tab === "agents" ? agentsView()
     : tab === "history" ? historyView()
     : profile();
-  view.innerHTML = body + (tab !== "watch" && err ? `<div class="err">${esc(err)}</div>` : "");
+  const html = body + (tab !== "watch" && err ? `<div class="err">${esc(err)}</div>` : "");
+  if (html === painted && !arriving) return;
+  painted = html;
+  view.classList.toggle("enter", !!arriving);
+  view.innerHTML = html;
+  kickTally();
   paintShareCards();
 }
 
@@ -475,6 +738,8 @@ view.addEventListener("click", async (e) => {
   if (save) return saveCard();
   const share = e.target.closest("[data-share]");
   if (share) return doShare();
+  const again = e.target.closest("[data-replay]");
+  if (again) return restartReplay();
 });
 
 async function doAhead(matchId, agentId) {
@@ -711,14 +976,28 @@ async function loadReplay(id) {
   err = "";
   shareNote = "";
   const j = await api("/api/show/matches/" + encodeURIComponent(id) + "/replay");
+  if (!agents.length) await refreshLists();
   focusAgent = null;
   focusMatch = j;
+  clearReplay();
+  const frames = motionApi().replayFrames(j.events || [], {
+    hueOf: (agentId) => {
+      const found = agents.find((a) => a.id === agentId);
+      return found ? found.hue : 40;
+    },
+  });
+  replay = { id: j.matchId || id, frames, index: 0, timer: 0 };
+  if (reducedMotion() && frames.length) replay.index = frames.length - 1;
   tab = "history";
+  enterView = true;
+  painted = "";
+  tallySeen = "";
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === "history"));
   const href = cardHref({ ...j.share, matchId: j.matchId || id });
   const next = location.pathname + href;
   if (location.pathname + location.search + location.hash !== next) window.history.replaceState(null, "", next);
   render();
+  if (!reducedMotion()) armReplay();
 }
 
 async function openLinkedReplay() {
@@ -760,7 +1039,9 @@ async function poll() {
     // match's position would show the wrong name once the next one is live.
     if (j.live && j.live.market && j.live.market.you) position = j.live.market.you;
     else position = null;
+    const prevLive = heardLive;
     hear(j.live);
+    applyMotion(prevLive, j.live);
     if (tab === "agents" || tab === "history" || tab === "profile") await refreshLists();
     if (gen !== pollGen) return;
     if (!focusAgent && !focusMatch) render();

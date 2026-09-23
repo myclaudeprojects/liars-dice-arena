@@ -5,11 +5,17 @@
 // background. Avatar sizes reuse the same paths. Only the root width and
 // height change. Nothing here calls a diffusion model or invents a photo URL.
 
-const PFP_STYLE_VERSION = "lda-pfp-v1";
-const PFP_PROMPT_VERSION = "pfp-prompt-v1";
+const PFP_STYLE_VERSION = "lda-pfp-v2";
+const PFP_PROMPT_VERSION = "agent-pfp-v2";
 const ASSET_TYPE = "PFP_PORTRAIT";
 const MASTER_SIZE = 1024;
-const AVATAR_SIZES = Object.freeze([48, 96, 160, 320, 512]);
+const AVATAR_SIZES = Object.freeze([48, 96, 160, 256, 320, 512]);
+// Head + upper torso sit in this band. Face box is the readable bust crop.
+const CHARACTER_TOP = 104;
+const CHARACTER_BOTTOM = 882;
+const FACE_TOP = 176;
+const FACE_BOTTOM = 708;
+const FACE_HALF = 220;
 const TREATMENTS = Object.freeze(["standard", "expression", "darker", "cleaner", "minimal", "premium"]);
 const ATTITUDES = Object.freeze([
   "SMUG", "STOIC", "MANIC", "SERENE", "PREDATORY", "MYSTERIOUS", "COLD", "PLAYFUL", "REGAL",
@@ -169,7 +175,7 @@ function buildRecipe(input) {
     variation,
     turn: (variation % 3) - 1,
     attitude,
-    intensity: treatment === "expression" ? 1.45 : 1,
+    intensity: treatment === "expression" ? 1.7 : 1.2,
     headwear,
     hair: hairUnder(headwear),
     silhouette: visual.silhouette || "SLIM_ELEGANT",
@@ -199,9 +205,16 @@ function buildRecipe(input) {
       glow: darker ? mix(primary, "#000000", 0.35) : mix(primary, accent, 0.28),
       iris,
     },
+    signature: signatureOf(headwear),
+    scale: compositionScale(),
     safeZone: {
-      circle: 0.82,
-      face: { x: 0.29, y: 0.17, w: 0.42, h: 0.5 },
+      circle: 0.86,
+      face: {
+        x: (512 - FACE_HALF) / MASTER_SIZE,
+        y: FACE_TOP / MASTER_SIZE,
+        w: (FACE_HALF * 2) / MASTER_SIZE,
+        h: (FACE_BOTTOM - FACE_TOP) / MASTER_SIZE,
+      },
     },
     identity: {
       name: String(src.name || "").slice(0, 40),
@@ -239,37 +252,73 @@ function recipeFromBrand(brand) {
   });
 }
 
+function signatureOf(headwear) {
+  const table = {
+    crown: "CROWN",
+    laurel: "LAUREL",
+    crest: "CREST",
+    hood: "HOOD",
+    cowl: "COWL",
+    long: "VEIL",
+    helm: "HELM",
+    cropped: "COLLAR",
+    halfmask: "MASK",
+    asymmetric: "HAIR",
+    swept: "HAIR",
+    ears: "HORNS",
+    wild: "MANE",
+    halo: "HALO",
+  };
+  return table[headwear] || "COLLAR";
+}
+
+function compositionScale() {
+  return {
+    characterHeight: Math.round(((CHARACTER_BOTTOM - CHARACTER_TOP) / MASTER_SIZE) * 1000) / 1000,
+    faceHeight: Math.round(((FACE_BOTTOM - FACE_TOP) / MASTER_SIZE) * 1000) / 1000,
+  };
+}
+
 function promptFor(recipe) {
   const id = recipe.identity || {};
   const c = recipe.colors || {};
   return [
-    "Create a premium square profile-picture style portrait for a Liar’s Dice Arena competitor.",
+    "Create a premium square profile-picture portrait for a competitor in Liar's Dice Arena.",
     "",
-    "STYLE:",
-    "premium collectible avatar art,",
-    "high-end stylized digital illustration,",
-    "clean face readability,",
-    "strong silhouette,",
-    "simple premium background,",
+    "LDA HOUSE STYLE:",
+    "premium competitive game roster portrait,",
+    "collectible avatar composition,",
+    "polished stylized digital illustration,",
+    "cinematic but controlled lighting,",
+    "bold graphic silhouette,",
+    "expressive face,",
+    "limited deliberate palette,",
+    "clean simple background,",
+    "readable at 48px,",
     "square composition,",
-    "mobile-readable,",
-    "consistent LDA house style.",
+    "designed to sit beside another competitor in a VS screen.",
     "",
     "COMPOSITION:",
-    "head-and-shoulders or chest-up portrait,",
-    "single character only,",
-    "face dominant in frame,",
-    "clear expression,",
-    "clean separation from background,",
-    "no text inside image,",
+    "exact 1:1 square,",
+    "one character only,",
+    "tight head-and-shoulders,",
+    "face occupies a large portion of the image,",
+    "front-facing or subtle 3/4 angle,",
+    "eyes clearly visible,",
+    "crop-safe for a circular avatar,",
+    "no text,",
     "no watermark,",
-    "no busy scenery.",
+    "no frame baked into the image,",
+    "no full-body pose,",
+    "no landscape scene,",
+    "no busy environment.",
     "",
     "IDENTITY:",
     `Name: ${id.name || "Competitor"}`,
     `Title: ${id.title || ""}`,
     `Archetype: ${id.archetype || ""}`,
     `Facial attitude: ${recipe.attitude || ""}`,
+    `Signature silhouette: ${recipe.signature || ""}`,
     `Primary color: ${c.primary || ""}`,
     `Secondary color: ${c.secondary || ""}`,
     `Accent color: ${c.accent || ""}`,
@@ -279,23 +328,30 @@ function promptFor(recipe) {
     `Lighting style: ${recipe.lighting || ""}`,
     `Emblem concept: ${recipe.emblem || ""}`,
     "",
-    "RENDERER: procedural SVG, lda-pfp-v1. No external image model.",
+    "AVOID:",
+    "generic fantasy portrait, movie poster composition, tiny face, bland symmetrical model face.",
+    "",
+    "RENDERER: procedural SVG, lda-pfp-v2. No external image model.",
   ].join("\n");
 }
 
 function facePath(x) {
-  return `M ${x} 176 C ${x + 168} 188 ${x + 214} 320 ${x + 206} 470 C ${x + 196} 640 ${x + 124} 742 ${x} 756 C ${x - 124} 742 ${x - 196} 640 ${x - 206} 470 C ${x - 214} 320 ${x - 168} 188 ${x} 176 Z`;
+  const top = FACE_TOP;
+  const bot = FACE_BOTTOM;
+  const mid = Math.round((top + bot) / 2);
+  return `M ${x} ${top} C ${x + 188} ${top + 16} ${x + FACE_HALF + 8} ${mid - 70} ${x + FACE_HALF - 6} ${mid} C ${x + 198} ${mid + 110} ${x + 128} ${bot - 18} ${x} ${bot} C ${x - 128} ${bot - 18} ${x - 198} ${mid + 110} ${x - FACE_HALF + 6} ${mid} C ${x - FACE_HALF - 8} ${mid - 70} ${x - 188} ${top + 16} ${x} ${top} Z`;
 }
 
 function shoulderPath(x, silhouette) {
   const broad = silhouette === "BROAD_IMPOSING" || silhouette === "HEAVY_ARMORED";
   const slim = silhouette === "SLIM_ELEGANT" || silhouette === "TALL_SHARP" || silhouette === "ROBED_MYSTIC";
-  const w = broad ? 430 : slim ? 300 : 360;
-  const rise = silhouette === "ASYMMETRIC_CHAOTIC" ? 70 : 0;
+  const w = broad ? 460 : slim ? 320 : 390;
+  const rise = silhouette === "ASYMMETRIC_CHAOTIC" ? 54 : 0;
+  const chest = CHARACTER_BOTTOM - 70;
   if (silhouette === "MECHANICAL") {
-    return `M ${x - w} 1024 L ${x - w + 40} 780 L ${x - 120} 700 L ${x - 70} 760 L ${x + 70} 760 L ${x + 120} 700 L ${x + w - 40} 780 L ${x + w} 1024 Z`;
+    return `M ${x - w} 1024 L ${x - w + 28} ${chest + 40} L ${x - 130} ${chest - 40} L ${x - 64} ${chest + 10} L ${x + 64} ${chest + 10} L ${x + 130} ${chest - 40} L ${x + w - 28} ${chest + 40} L ${x + w} 1024 Z`;
   }
-  return `M ${x - w - 40} 1024 L ${x - w} 860 C ${x - w + 80} ${700 - rise} ${x - 150} 760 ${x - 78} 800 L ${x} 848 L ${x + 78} 800 C ${x + 150} ${760 + rise} ${x + w - 80} 700 ${x + w} 860 L ${x + w + 40} 1024 Z`;
+  return `M ${x - w - 20} 1024 L ${x - w} ${chest + 80} C ${x - w + 70} ${chest - 90 - rise} ${x - 150} ${chest - 20} ${x - 72} ${chest + 16} L ${x} ${chest + 48} L ${x + 72} ${chest + 16} C ${x + 150} ${chest - 20 + rise} ${x + w - 70} ${chest - 90} ${x + w} ${chest + 80} L ${x + w + 20} 1024 Z`;
 }
 
 function hairPath(kind, x, lean, color) {
@@ -325,42 +381,53 @@ function hairPath(kind, x, lean, color) {
 }
 
 function hoodPath(x) {
-  return `M ${x} 108 C ${x + 250} 130 ${x + 286} 340 ${x + 250} 560 C ${x + 220} 760 ${x + 120} 860 ${x} 900 C ${x - 120} 860 ${x - 220} 760 ${x - 250} 560 C ${x - 286} 340 ${x - 250} 130 ${x} 108 Z`;
+  const top = CHARACTER_TOP;
+  return `M ${x} ${top} C ${x + 280} ${top + 30} ${x + 310} 360 ${x + 270} 580 C ${x + 230} 780 ${x + 130} 860 ${x} 900 C ${x - 130} 860 ${x - 230} 780 ${x - 270} 580 C ${x - 310} 360 ${x - 280} ${top + 30} ${x} ${top} Z`;
 }
 
 function crownPath(x) {
-  return `M ${x - 150} 268 L ${x - 118} 150 L ${x - 70} 230 L ${x - 10} 118 L ${x + 54} 214 L ${x + 108} 146 L ${x + 156} 268 L ${x + 132} 300 L ${x - 132} 300 Z`;
+  const tip = CHARACTER_TOP + 8;
+  return `M ${x - 168} 250 L ${x - 132} ${tip + 36} L ${x - 78} 210 L ${x} ${tip} L ${x + 72} 198 L ${x + 124} ${tip + 28} L ${x + 172} 250 L ${x + 146} 292 L ${x - 146} 292 Z`;
 }
 
 function helmPath(x) {
-  return `M ${x - 196} 392 C ${x - 210} 240 ${x - 90} 150 ${x} 140 C ${x + 100} 150 ${x + 214} 250 ${x + 198} 392 L ${x + 150} 360 C ${x + 70} 300 ${x - 70} 300 ${x - 150} 360 Z`;
+  return `M ${x - 210} 400 C ${x - 228} ${CHARACTER_TOP + 80} ${x - 90} ${CHARACTER_TOP + 20} ${x} ${CHARACTER_TOP + 12} C ${x + 110} ${CHARACTER_TOP + 24} ${x + 230} ${CHARACTER_TOP + 90} ${x + 212} 400 L ${x + 156} 362 C ${x + 70} 300 ${x - 70} 300 ${x - 156} 362 Z`;
 }
 
 function motifMarkup(motif, colors, cleaner) {
-  const opacity = cleaner ? 0.035 : 0.12;
-  const kind = hashString(motif) % 4;
+  const opacity = cleaner ? 0.05 : 0.14;
   const fill = colors.trim;
-  if (kind === 0) return el("circle", { cx: 512, cy: 430, r: 280, fill, opacity });
-  if (kind === 1) return el("path", { fill, opacity, d: "M 512 150 L 820 470 L 512 860 L 204 470 Z" });
-  if (kind === 2) return el("path", { fill, opacity, d: "M 180 760 C 180 300 844 300 844 760 L 760 760 C 760 420 264 420 264 760 Z" });
-  return el("g", { fill, opacity }, [
-    el("rect", { x: 250, y: 160, width: 36, height: 700, rx: 18 }),
-    el("rect", { x: 738, y: 160, width: 36, height: 700, rx: 18 }),
-  ].join(""));
+  const ring = el("circle", { cx: 512, cy: 430, r: 300, fill: "none", stroke: fill, "stroke-width": 28, opacity });
+  const bloom = el("circle", { cx: 512, cy: 400, r: 220, fill, opacity: cleaner ? 0.04 : 0.08 });
+  const dots = [];
+  const n = cleaner ? 0 : 4;
+  const seed = hashString(motif);
+  for (let i = 0; i < n; i++) {
+    const ang = ((seed + i * 97) % 360) * Math.PI / 180;
+    const rad = 250 + (seed + i * 13) % 40;
+    dots.push(el("circle", {
+      cx: Math.round(512 + Math.cos(ang) * rad),
+      cy: Math.round(390 + Math.sin(ang) * rad * 0.72),
+      r: 5 + (i % 2) * 2,
+      fill,
+      opacity: 0.35,
+    }));
+  }
+  return ring + bloom + dots.join("");
 }
 
 function eyeMarkup(cx, cy, squint, wide, colors, glow) {
-  const rx = 86;
-  const ry = Math.max(40, 68 * (1 + wide) * (1 - Math.min(0.42, squint)));
-  const ix = 42;
-  const iy = Math.max(30, ry * 0.7);
+  const rx = 108;
+  const ry = Math.max(46, 78 * (1 + wide) * (1 - Math.min(0.4, squint)));
+  const ix = 50;
+  const iy = Math.max(34, ry * 0.72);
   return [
     el("ellipse", { cx, cy, rx: rx + 12, ry: ry + 10, fill: "#1A1412" }),
     el("ellipse", { cx, cy, rx, ry, fill: colors.sclera }),
     el("ellipse", { cx, cy: cy + 2, rx: ix, ry: iy, fill: colors.iris }),
     glow ? el("ellipse", { cx, cy: cy + 2, rx: ix * 0.78, ry: iy * 0.78, fill: colors.trim, opacity: glow }) : "",
     el("ellipse", { cx, cy: cy + 3, rx: 18, ry: 18, fill: "#120E0C" }),
-    el("ellipse", { cx: cx - 14, cy: cy - 10, rx: 8, ry: 8, fill: "#F8F6F2" }),
+    el("ellipse", { cx: cx - 18, cy: cy - 14, rx: 11, ry: 11, fill: "#F8F6F2" }),
   ].join("");
 }
 
@@ -377,18 +444,18 @@ function mouthMarkup(cx, cy, kind, lip, scale) {
   const s = scale > 1 ? scale : 1;
   const p = (dx, dy) => `${Math.round(cx + dx * s)} ${Math.round(cy + dy * s)}`;
   if (kind === "grin") {
-    return el("path", { fill: lip, d: `M ${p(-108, 0)} Q ${p(0, 86)} ${p(108, 0)} Q ${p(0, 28)} ${p(-108, 0)} Z` });
+    return el("path", { fill: lip, d: `M ${p(-128, 0)} Q ${p(0, 108)} ${p(128, 0)} Q ${p(0, 34)} ${p(-128, 0)} Z` });
   }
   if (kind === "smile") {
-    return el("path", { fill: lip, d: `M ${p(-72, 0)} Q ${p(0, 52)} ${p(72, 0)} Q ${p(0, 16)} ${p(-72, 0)} Z` });
+    return el("path", { fill: lip, d: `M ${p(-88, 0)} Q ${p(0, 64)} ${p(88, 0)} Q ${p(0, 18)} ${p(-88, 0)} Z` });
   }
   if (kind === "smirk") {
-    return el("path", { fill: lip, d: `M ${p(-36, 8)} Q ${p(10, -18)} ${p(86, 4)} Q ${p(24, 40)} ${p(-36, 8)} Z` });
+    return el("path", { fill: lip, d: `M ${p(-48, 10)} Q ${p(16, -28)} ${p(104, 2)} Q ${p(30, 52)} ${p(-48, 10)} Z` });
   }
   if (kind === "tight") {
-    return el("path", { fill: lip, d: `M ${p(-48, 0)} H ${Math.round(cx + 36 * s)} Q ${p(36, 22)} ${p(0, 22)} Q ${p(-48, 22)} ${p(-48, 0)} Z` });
+    return el("path", { fill: lip, d: `M ${p(-62, 0)} H ${Math.round(cx + 48 * s)} Q ${p(48, 28)} ${p(0, 28)} Q ${p(-62, 28)} ${p(-62, 0)} Z` });
   }
-  return el("path", { fill: lip, d: `M ${p(-70, -8)} H ${Math.round(cx + 70 * s)} Q ${p(70, 24)} ${p(0, 24)} Q ${p(-70, 24)} ${p(-70, -8)} Z` });
+  return el("path", { fill: lip, d: `M ${p(-84, -6)} H ${Math.round(cx + 84 * s)} Q ${p(84, 30)} ${p(0, 30)} Q ${p(-84, 30)} ${p(-84, -6)} Z` });
 }
 
 function leaves(x, y, color) {
@@ -413,7 +480,7 @@ function renderPfp(recipe, opts) {
   const lean = row.turn * 36;
   const face = expressionOf(row.attitude, row.intensity || 1);
   const id = (name) => `${nonce}_${name}`;
-  const rim = row.lighting === "DRAMATIC_RIM_LIGHT" || row.premium ? 18 : 12;
+  const rim = row.lighting === "DRAMATIC_RIM_LIGHT" || row.premium ? 26 : 18;
   const keyX = row.turn >= 0 ? x - 70 : x + 70;
   const beard = !row.cleaner && (row.attitude === "REGAL" || row.attitude === "STOIC") && (row.headwear === "crown" || row.headwear === "laurel");
   const pauldrons = row.silhouette === "HEAVY_ARMORED" || row.silhouette === "MECHANICAL";
@@ -433,16 +500,17 @@ function renderPfp(recipe, opts) {
       el("stop", { offset: "100%", "stop-color": c.skinShadow }),
     ].join("")),
     el("clipPath", { id: id("face") }, el("path", { d: facePath(x) })),
+    el("filter", { id: id("rim"), x: "-20%", y: "-20%", width: "140%", height: "140%" }, el("feGaussianBlur", { stdDeviation: "6" })),
   ].join("");
-  const eyesY = 446;
-  const mouthY = 612;
+  const eyesY = 430;
+  const mouthY = 575;
   const features = [
-    el("ellipse", { cx: x, cy: 690, rx: 110, ry: 48, fill: c.skinDeep, opacity: "0.28" }),
+    el("ellipse", { cx: x, cy: 650, rx: 120, ry: 52, fill: c.skinDeep, opacity: "0.28" }),
     el("path", { fill: c.skinShadow, opacity: "0.55", d: `M ${x - 16} 500 L ${x + 18} 500 L ${x + 8} 560 L ${x - 8} 560 Z` }),
-    eyeMarkup(x - 112, eyesY, face.squint + (face.wink || 0), face.wide, c, face.glow || 0),
-    eyeMarkup(x + 112, eyesY, face.squint, face.wide, c, face.glow || 0),
-    browMarkup(x - 112, 360, face.brow[0], face.brow[0] < 0),
-    browMarkup(x + 112, 360, face.brow[1], face.brow[1] < 0),
+    eyeMarkup(x - 118, eyesY, face.squint + (face.wink || 0), face.wide, c, face.glow || 0),
+    eyeMarkup(x + 118, eyesY, face.squint, face.wide, c, face.glow || 0),
+    browMarkup(x - 118, 340, face.brow[0] * (row.intensity || 1), face.brow[0] < 0),
+    browMarkup(x + 118, 340, face.brow[1] * (row.intensity || 1), face.brow[1] < 0),
     mouthMarkup(x + (face.mouth === "smirk" ? 8 : 0), mouthY, face.mouth, c.lip, row.intensity),
     beard ? el("path", { fill: c.hair, d: `M ${x - 70} 650 Q ${x} 760 ${x + 78} 646 Q ${x + 40} 700 ${x} 710 Q ${x - 36} 700 ${x - 70} 650 Z` }) : "",
   ].join("");
@@ -451,17 +519,18 @@ function renderPfp(recipe, opts) {
     el("ellipse", { cx: x + 214, cy: 500, rx: 30, ry: 46, fill: c.skin }),
   ].join("");
   const beast = row.headwear === "ears" ? [
-    el("path", { fill: c.hair, d: `M ${x - 170} 250 L ${x - 210} 120 L ${x - 90} 230 Z` }),
-    el("path", { fill: c.hair, d: `M ${x + 170} 250 L ${x + 220} 110 L ${x + 96} 230 Z` }),
-    el("path", { fill: c.skin, d: `M ${x - 158} 230 L ${x - 186} 150 L ${x - 112} 220 Z` }),
-    el("path", { fill: c.skin, d: `M ${x + 158} 230 L ${x + 192} 146 L ${x + 114} 220 Z` }),
+    el("path", { fill: c.hair, d: `M ${x - 168} 250 L ${x - 230} ${CHARACTER_TOP} L ${x - 70} 220 Z` }),
+    el("path", { fill: c.hair, d: `M ${x + 168} 250 L ${x + 240} ${CHARACTER_TOP - 6} L ${x + 78} 220 Z` }),
+    el("path", { fill: c.skin, d: `M ${x - 150} 228 L ${x - 198} ${CHARACTER_TOP + 36} L ${x - 96} 214 Z` }),
+    el("path", { fill: c.skin, d: `M ${x + 150} 228 L ${x + 206} ${CHARACTER_TOP + 30} L ${x + 100} 214 Z` }),
   ].join("") : "";
   const wear = [];
   if (row.headwear === "hood" || row.headwear === "cowl") {
     wear.push(el("path", { fill: luma(c.cloth) < 0.08 ? mix(c.trim, "#1A1020", 0.55) : c.clothDeep, stroke: c.trim, "stroke-width": 14, d: hoodPath(x) }));
   }
   if (row.headwear === "halo") {
-    wear.push(el("ellipse", { cx: x, cy: 450, rx: 300, ry: 330, fill: "none", stroke: c.trim, "stroke-width": 22, opacity: "0.75" }));
+    wear.push(el("ellipse", { cx: x, cy: 430, rx: 310, ry: 250, fill: "none", stroke: c.trim, "stroke-width": 28, opacity: "0.9" }));
+    wear.push(el("ellipse", { cx: x, cy: CHARACTER_TOP + 40, rx: 150, ry: 28, fill: "none", stroke: c.trim, "stroke-width": 16, opacity: "0.85" }));
   }
   const front = [];
   if (row.hair && row.hair !== "none") front.push(hairPath(row.hair, x, lean, c.hair));
@@ -476,10 +545,9 @@ function renderPfp(recipe, opts) {
     front.push(el("path", { fill: c.cloth, d: `M ${x - 120} 700 Q ${x} 640 ${x + 120} 700 Q ${x} 780 ${x - 120} 700 Z` }));
   }
   const collar = row.minimal ? "" : el("path", {
-    fill: "none",
-    stroke: c.trim,
-    "stroke-width": row.premium ? 14 : 8,
-    d: `M ${x - 70} 790 L ${x} 860 L ${x + 70} 790`,
+    fill: c.trim,
+    opacity: "0.92",
+    d: `M ${x - 150} 760 L ${x} 860 L ${x + 156} 748 L ${x + 86} 900 L ${x} 868 L ${x - 86} 908 Z`,
   });
   const gem = row.premium && !row.minimal
     ? el("path", { fill: c.trim, d: `M ${x} 868 L ${x + 14} 886 L ${x} 904 L ${x - 14} 886 Z` })
@@ -505,12 +573,15 @@ function renderPfp(recipe, opts) {
       el("ellipse", { cx: keyX, cy: 400, rx: 140, ry: 180, fill: "#FFFFFF", opacity: row.darker ? "0.06" : "0.14" }),
       features,
     ].join("")),
-    el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim, opacity: row.darker ? "0.45" : "0.78" }),
+    el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim + 16, opacity: "0.45", filter: `url(#${id("rim")})` }),
+    el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 10, opacity: "0.55" }),
+    el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim, opacity: row.darker ? "0.55" : "0.9" }),
     front.join(""),
     collar,
     gem,
   ].join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
+  const scale = compositionScale();
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" data-signature="${row.signature || "COLLAR"}" data-character-scale="${scale.characterHeight}" data-face-scale="${scale.faceHeight}" aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
 }
 
 function normalizeSize(value) {
@@ -540,7 +611,29 @@ function qualityCheck(recipe, svg) {
   }
   const colors = (recipe && recipe.colors) || {};
   if (colorDistance(colors.skin, colors.edge) < 70) reasons.push("low_contrast");
+  const scale = (recipe && recipe.scale) || compositionScale();
+  if (!(scale.characterHeight >= 0.65 && scale.characterHeight <= 0.82)) reasons.push("character_scale");
+  if (!(scale.faceHeight >= 0.45 && scale.faceHeight <= 0.7)) reasons.push("face_scale");
+  if (svg && (!svg.includes(String(FACE_TOP)) || !svg.includes(String(FACE_BOTTOM)))) reasons.push("face_scale");
+  if (svg && !/data-style="lda-pfp-v2"/.test(svg)) reasons.push("style_version");
   return { ok: reasons.length === 0, reasons };
+}
+
+function validatePfpMetadata({ width, height, fileSize } = {}) {
+  const errors = [];
+  if (width !== height) errors.push("not_square");
+  if (!(width >= 768)) errors.push("resolution_too_low");
+  if (fileSize != null && fileSize < 800) errors.push("suspiciously_small");
+  return { ok: errors.length === 0, errors };
+}
+
+function measureFaceScale(svg) {
+  const character = /data-character-scale="([0-9.]+)"/.exec(svg || "");
+  const face = /data-face-scale="([0-9.]+)"/.exec(svg || "");
+  return {
+    characterHeight: character ? Number(character[1]) : 0,
+    faceHeight: face ? Number(face[1]) : 0,
+  };
 }
 
 function assetUrls(agentId) {
@@ -565,6 +658,9 @@ module.exports = {
   recipeFromBrand,
   renderPfp,
   qualityCheck,
+  validatePfpMetadata,
+  measureFaceScale,
+  compositionScale,
   promptFor,
   assetUrls,
   pathData,

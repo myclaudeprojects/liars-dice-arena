@@ -11,6 +11,7 @@ const {
   generationStamp,
   paletteNear,
   titlesTooClose,
+  brandSimilarity,
   validateBrand,
   wordCount,
 } = require("./brands");
@@ -20,11 +21,13 @@ const {
   ASSET_TYPE,
   AVATAR_SIZES,
   buildRecipe,
-  renderPfp,
   qualityCheck,
   promptFor,
   assetUrls,
 } = require("./pfp");
+const { createImageProvider } = require("./imageprovider");
+
+const imageProvider = createImageProvider();
 
 const MODEL_VERSION = PFP_STYLE_VERSION;
 const PFP_TOUCHES = Object.freeze(["expression", "darker", "cleaner", "minimal", "premium"]);
@@ -497,6 +500,9 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
     if (!keepEmblem && (occ.emblems.has(emblem) || usedEmblems.has(emblem))) continue;
     if (!paletteFree(visual, occ, usedPalettes)) continue;
     if (wordCount(tagline) < 4 || wordCount(tagline) > 14) continue;
+    const candidate = { archetype: draft.archetype, visualIdentity: visual };
+    const crowded = [...(occ.palettes || []), ...usedPalettes].some((other) => brandSimilarity(candidate, other) >= 0.75);
+    if (crowded) continue;
     return {
       id: `c${index + 1}`,
       conceptNumber: index + 1,
@@ -528,7 +534,7 @@ function attachPfp(draft, concept, index, treatment) {
     treatment: treatment || "standard",
   });
   const nonce = `${concept.id || "c"}_${recipe.treatment}`;
-  let svg = renderPfp(recipe, { size: 1024, nonce });
+  let svg = imageProvider.renderSync({ recipe, size: 1024, nonce });
   let quality = qualityCheck(recipe, svg);
   if (!quality.ok) {
     const lifted = buildRecipe({
@@ -543,7 +549,7 @@ function attachPfp(draft, concept, index, treatment) {
       variation: index,
       treatment: treatment || "standard",
     });
-    svg = renderPfp(lifted, { size: 1024, nonce });
+    svg = imageProvider.renderSync({ recipe: lifted, size: 1024, nonce });
     quality = qualityCheck(lifted, svg);
     concept.pfp = pfpRecord(draft, concept, lifted, quality);
     concept.pfpSvg = svg;
@@ -589,6 +595,7 @@ function userAssetRefs(agentId) {
     avatar48: urls.sizes["48"],
     avatar96: urls.sizes["96"],
     avatar160: urls.sizes["160"],
+    avatar256: urls.sizes["256"],
     avatar320: urls.sizes["320"],
     avatar512: urls.sizes["512"],
   };
@@ -742,6 +749,7 @@ function lockBrand(draft, concept, at) {
       materialLanguage: concept.visualIdentity.materialLanguage.slice(),
     },
     primaryPfpAssetId: portrait.assetId,
+    selectedConceptId: concept.id,
     pfpStyleVersion: portrait.styleVersion,
     pfpPromptVersion: portrait.promptVersion,
     pfpSafeZone: portrait.safeZone,

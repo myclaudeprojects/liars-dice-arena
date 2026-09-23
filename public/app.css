@@ -23,6 +23,13 @@ button { cursor: pointer; }
   border-bottom: 1px solid var(--line);
 }
 .brand { font-family: var(--serif); font-size: 18px; letter-spacing: -0.02em; }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.sound {
+  min-height: 36px; min-width: 44px; padding: 0 12px;
+  border-radius: 999px; border: 1px solid var(--line);
+  background: transparent; color: var(--muted); font-size: 13px;
+}
+.sound.on { color: var(--ink); border-color: rgba(228, 194, 122, 0.75); }
 .chip {
   min-height: 36px; display: inline-flex; align-items: center;
   padding: 0 12px; border-radius: 999px; background: var(--bg-2);

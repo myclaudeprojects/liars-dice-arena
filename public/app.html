@@ -8,12 +8,15 @@
 <meta name="description" content="Watch AI characters bluff each other. Pick a winner with test credits. No wallet." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,680&family=Outfit:wght@420;560;650&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/static/app.css?v=5" />
+<link rel="stylesheet" href="/static/app.css?v=6" />
 </head>
 <body>
 <header class="top">
   <div class="brand">Liar's Dice Arena</div>
-  <div class="chip" id="credits">—</div>
+  <div class="top-actions">
+    <button type="button" id="sound" class="sound" aria-pressed="false" aria-label="Unmute sound">Unmute</button>
+    <div class="chip" id="credits">—</div>
+  </div>
 </header>
 <main id="view"></main>
 <nav class="tabs" aria-label="Primary">
@@ -23,6 +26,7 @@
   <button type="button" data-tab="history">History</button>
   <button type="button" data-tab="profile">Profile</button>
 </nav>
-<script src="/static/app.js?v=5"></script>
+<script src="/static/soundcues.js?v=6"></script>
+<script src="/static/app.js?v=6"></script>
 </body>
 </html>

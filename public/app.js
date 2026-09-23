@@ -22,6 +22,91 @@ let err = "";
 let flash = null;
 let shareNote = "";
 let pollGen = 0;
+let heardLive = null;
+let audioCtx = null;
+
+const SOUND_KEY = "ldaSound";
+
+function soundEnabled() {
+  return localStorage.getItem(SOUND_KEY) === "1";
+}
+
+function paintSound() {
+  const btn = document.querySelector("#sound");
+  if (!btn) return;
+  const on = soundEnabled();
+  btn.classList.toggle("on", on);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.textContent = on ? "Mute" : "Unmute";
+  btn.setAttribute("aria-label", on ? "Mute sound" : "Unmute sound");
+}
+
+function audio() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!audioCtx) audioCtx = new AC();
+  return audioCtx;
+}
+
+function unlockAudio() {
+  const ctx = audio();
+  if (ctx && ctx.state === "suspended") ctx.resume();
+  return ctx;
+}
+
+function blip(ctx, t, freq, dur, gain, type, slide) {
+  const osc = ctx.createOscillator();
+  const amp = ctx.createGain();
+  osc.type = type || "sine";
+  osc.frequency.setValueAtTime(freq, t);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, slide), t + dur);
+  amp.gain.setValueAtTime(0.0001, t);
+  amp.gain.exponentialRampToValueAtTime(gain, t + 0.015);
+  amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(amp);
+  amp.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.03);
+}
+
+const CUES = {
+  "pick-open": (ctx, t) => {
+    blip(ctx, t, 440, 0.09, 0.04);
+    blip(ctx, t + 0.1, 660, 0.12, 0.035);
+  },
+  "pick-locked": (ctx, t) => blip(ctx, t, 330, 0.14, 0.045, "triangle", 220),
+  bid: (ctx, t) => blip(ctx, t, 540, 0.05, 0.028, "square"),
+  call: (ctx, t) => {
+    blip(ctx, t, 150, 0.16, 0.05, "sawtooth", 90);
+    blip(ctx, t + 0.04, 460, 0.07, 0.028, "square");
+  },
+  reveal: (ctx, t) => {
+    blip(ctx, t, 392, 0.08, 0.038);
+    blip(ctx, t + 0.09, 523, 0.11, 0.036);
+  },
+  "settle-win": (ctx, t) => {
+    blip(ctx, t, 523, 0.1, 0.04);
+    blip(ctx, t + 0.11, 659, 0.1, 0.038);
+    blip(ctx, t + 0.22, 784, 0.16, 0.042);
+  },
+  "settle-miss": (ctx, t) => blip(ctx, t, 294, 0.16, 0.04, "triangle", 180),
+};
+
+function playCues(names) {
+  if (!soundEnabled() || !names || !names.length) return;
+  const ctx = audio();
+  if (!ctx || ctx.state !== "running") return;
+  names.forEach((name, i) => {
+    const fn = CUES[name];
+    if (fn) fn(ctx, ctx.currentTime + i * 0.14);
+  });
+}
+
+function hear(live) {
+  if (!live) return;
+  if (heardLive && window.ldaSoundCues) playCues(window.ldaSoundCues.soundCues(heardLive, live));
+  heardLive = live;
+}
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -675,6 +760,7 @@ async function poll() {
     // match's position would show the wrong name once the next one is live.
     if (j.live && j.live.market && j.live.market.you) position = j.live.market.you;
     else position = null;
+    hear(j.live);
     if (tab === "agents" || tab === "history" || tab === "profile") await refreshLists();
     if (gen !== pollGen) return;
     if (!focusAgent && !focusMatch) render();
@@ -682,7 +768,21 @@ async function poll() {
   } catch { /* keep last frame */ }
 }
 
+document.querySelector("#sound").addEventListener("click", async () => {
+  const next = !soundEnabled();
+  localStorage.setItem(SOUND_KEY, next ? "1" : "0");
+  paintSound();
+  if (!next) return;
+  const ctx = unlockAudio();
+  if (ctx && ctx.resume) await ctx.resume();
+  if (ctx && ctx.state === "running") CUES["pick-open"](ctx, ctx.currentTime);
+});
+document.addEventListener("pointerdown", () => {
+  if (soundEnabled()) unlockAudio();
+}, { passive: true });
+
 async function boot() {
+  paintSound();
   render();
   const opened = await api("/api/show/predictors", {
     method: "POST",

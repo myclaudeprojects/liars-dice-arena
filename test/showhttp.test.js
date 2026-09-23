@@ -65,7 +65,7 @@ function req(method, url, body) {
       }
       try {
         const home = await req("GET", base + "/");
-        if (home.status === 200 && /Who's got this|Watch & pick|Liar's Dice Arena/.test(home.body) && /data-tab="watch"/.test(home.body)) {
+        if (home.status === 200 && /Who's got this|Watch & pick|Liar's Dice Arena/.test(home.body) && /data-tab="watch"/.test(home.body) && /id="sound"/.test(home.body)) {
           const s = await req("GET", base + "/api/show");
           if (s.json && s.json.live && s.json.live.phase === "pick") { snap = s.json; break; }
         }

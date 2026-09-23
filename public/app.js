@@ -135,27 +135,28 @@ function pct(price, id) {
 function upcomingBlock() {
   const rows = (snap && snap.upcoming) || [];
   if (!rows.length) return "";
-  return rows.map((u) => {
+  const cards = rows.map((u, i) => {
     const [a, b] = u.seats;
     const you = u.you;
-    const picked = you ? `You picked ${esc(seatNameFrom(u, you.agentId))}.` : "Pick ahead. This one is not live yet.";
+    const picked = you ? `You picked ${esc(seatNameFrom(u, you.agentId))}.` : "Pick ahead.";
     const buttons = you ? "" : `
       <div class="ahead">
         <button type="button" data-ahead="${esc(u.matchId)}" data-ahead-agent="${esc(a.id)}">${esc(a.name)} · ${pct(u.price, a.id)}</button>
         <button type="button" data-ahead="${esc(u.matchId)}" data-ahead-agent="${esc(b.id)}">${esc(b.name)} · ${pct(u.price, b.id)}</button>
       </div>`;
     return `
-      <section class="section">
-        <h2>Up next</h2>
-        <div class="upcard">
+      <article class="upcard">
+        <div class="fine">${i === 0 ? "Next" : "Later"}</div>
+        <div class="vs">
           <div class="who">${mark(a.name, a.hue)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
           <div class="x">VS</div>
           <div class="who">${mark(b.name, b.hue)}<b>${esc(b.name)}</b><span>${esc(b.record)}</span></div>
         </div>
         <p class="fine">${picked}</p>
         ${buttons}
-      </section>`;
+      </article>`;
   }).join("");
+  return `<section class="section"><h2>Coming up</h2><div class="slate">${cards}</div></section>`;
 }
 
 function seatNameFrom(card, id) {

@@ -28,8 +28,14 @@ function opts(file, extra = {}) {
   await show.start();
   const first = show.snapshot("persist01");
   assert(first.live && first.live.phase === "pick", "boots into live now");
-  assert(first.upcoming && first.upcoming.length >= 1, "upcoming market is on the slate");
+  assert(first.upcoming && first.upcoming.length === 2, "two matches coming up");
   assert(first.upcoming[0].matchId !== first.live.matchId, "upcoming is a second book");
+  const seated = [
+    ...first.live.seats.map((s) => s.id),
+    ...first.upcoming.flatMap((u) => u.seats.map((s) => s.id)),
+  ];
+  assert(new Set(seated).size === seated.length, "nobody is booked twice");
+  assert(first.upcoming.every((u) => u.cashValue === 0 && u.custody === false && u.realMoney === false), "upcoming books are test credits");
   assert(first.cashValue === 0 && first.custody === false && first.realMoney === false, "still worthless credits");
   assert(first.partner.status === "not_contracted" && first.partner.realMoney === false, "partner not contracted");
 
@@ -81,6 +87,38 @@ function opts(file, extra = {}) {
   assert(pred.credits !== 1000, "stake was not refunded into a fresh grant");
   const book = resumed.market.markets.get(interruptedId);
   assert(!book || book.status === "settled", "resumed book is settled");
+
+  const wideFile = path.join(dir, "wide.json");
+  const wide = new Show(opts(wideFile, { slateAhead: 5 }));
+  await wide.start();
+  eq(wide.upcoming.length, 2, "a longer request still stops at two ahead");
+  const wideIds = [
+    ...wide.current.seats.map((s) => s.id),
+    ...wide.upcoming.flatMap((u) => u.seats.map((s) => s.id)),
+  ];
+  assert(new Set(wideIds).size === wideIds.length, "five-ahead request does not double-book");
+  const secondId = wide.upcoming[1].matchId;
+  const secondSeat = wide.upcoming[1].seats[0].id;
+  wide.market.openPredictor("slatefan01");
+  wide.market.buy({ matchId: secondId, predictorId: "slatefan01", agentId: secondSeat, side: "yes", stake: 30 });
+  const firstUpcoming = wide.upcoming[0].matchId;
+  await wide.playOpen();
+  wide.openNext();
+  eq(wide.current.matchId, firstUpcoming, "the queue rotates the first coming-up book into live");
+  eq(wide.upcoming[0].matchId, secondId, "the later book keeps its place");
+  eq(wide.upcoming.length, 2, "rotation refills the board");
+  const rotated = [
+    ...wide.current.seats.map((s) => s.id),
+    ...wide.upcoming.flatMap((u) => u.seats.map((s) => s.id)),
+  ];
+  assert(new Set(rotated).size === rotated.length, "rotated board does not double-book");
+  const kept = wide.market.positionFor(secondId, "slatefan01");
+  assert(kept && kept.stake === 30 && !kept.settled, "pick on a later book stays open");
+  wide.persist();
+  const wide2 = new Show(opts(wideFile, { slateAhead: 5, bootstrapCount: 30 }));
+  await wide2.start();
+  const kept2 = wide2.market.positionFor(secondId, "slatefan01");
+  assert(kept2 && kept2.stake === 30 && !kept2.settled, "later-book pick survived restart");
 
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(dir2, { recursive: true, force: true });

@@ -217,6 +217,9 @@ class Show {
     this.bootstrapCount = opts.bootstrapCount ?? 16;
     this.loopEnabled = opts.loopEnabled !== false;
     this.testHook = !!opts.testHook;
+    // Live now plus two coming-up books uses the whole cast of six once.
+    // A longer board would seat someone twice.
+    this.slateAhead = Math.max(1, opts.slateAhead ?? 2);
     this.schedule = pairSchedule("athena");
     this.pairIdx = 0;
     this.seq = 0;
@@ -496,13 +499,18 @@ class Show {
     }
     const rest = CAST.map((c) => c.id).filter(free);
     if (rest.length >= 2) return [rest[0], rest[1]];
-    const pair = this.schedule[this.pairIdx % this.schedule.length];
-    this.pairIdx++;
-    return pair;
+    if (busy.size === 0) {
+      const pair = this.schedule[this.pairIdx % this.schedule.length];
+      this.pairIdx++;
+      return pair;
+    }
+    return null;
   }
 
   makeCard(phase) {
-    const [a, b] = this.nextPair();
+    const pair = this.nextPair();
+    if (!pair) return null;
+    const [a, b] = pair;
     const seats = [a, b].map((id) => {
       const c = character(id);
       return { id: c.id, name: c.name, dice: 5, alive: true };
@@ -532,9 +540,13 @@ class Show {
     };
   }
 
-  ensureUpcoming(n = 1) {
-    const want = Math.max(0, n | 0);
-    while (this.upcoming.length < want) this.upcoming.push(this.makeCard("upcoming"));
+  ensureUpcoming(n) {
+    const want = Math.max(0, (n == null ? this.slateAhead : n) | 0);
+    while (this.upcoming.length < want) {
+      const card = this.makeCard("upcoming");
+      if (!card) break;
+      this.upcoming.push(card);
+    }
   }
 
   upcomingCard(m, predictorId) {
@@ -553,13 +565,14 @@ class Show {
       you: book.you || null,
       cashValue: 0,
       custody: false,
+      realMoney: false,
     };
   }
 
   openNext(opts = {}) {
     const queue = opts.queue !== false;
     if (this.current && (this.current.phase === "pick" || this.current.phase === "live")) {
-      if (queue) this.ensureUpcoming(1);
+      if (queue) this.ensureUpcoming();
       this.persist();
       return this.current;
     }
@@ -571,10 +584,11 @@ class Show {
       card.round = 0;
     } else {
       card = this.makeCard("pick");
+      if (!card) throw new Error("no_pair");
     }
     this.current = card;
     this.phase = "pick";
-    if (queue) this.ensureUpcoming(1);
+    if (queue) this.ensureUpcoming();
     this.persist();
     this.emitState();
     return this.current;
@@ -785,7 +799,7 @@ class Show {
       this.current = null;
       this.openNext();
     } else {
-      this.ensureUpcoming(1);
+      this.ensureUpcoming();
       this.persist();
       this.emitState();
     }

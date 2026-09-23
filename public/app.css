@@ -138,5 +138,11 @@ button { cursor: pointer; }
 .share {
   white-space: pre-wrap; font-family: var(--serif); font-size: 22px; line-height: 1.25; margin: 8px 0;
 }
+.share-card {
+  width: 100%; height: auto; display: block; margin: 12px 0;
+  border-radius: 16px; background: var(--bg);
+}
+.share-actions { display: flex; gap: 8px; }
+.share-actions .ghost { flex: 1; width: auto; margin-top: 0; }
 h1.page { font-family: var(--serif); font-size: 36px; margin: 4px 0 8px; font-weight: 560; }
 .flash h1 { font-family: var(--serif); font-size: 44px; line-height: 0.95; margin: 24px 0; font-weight: 680; }

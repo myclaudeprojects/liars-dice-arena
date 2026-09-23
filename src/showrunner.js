@@ -696,7 +696,7 @@ class Show {
     this.records.applyMatch({ seats: m.seats, winnerId: exhibit.winnerId, story });
     const streak = this.records.get(exhibit.winnerId).streak;
     m.story = story;
-    m.share = shareCard({ story, winnerName: winner.name, streak, loserName: loser && loser.name });
+    m.share = shareCard({ story, winnerName: winner.name, streak, loserName: loser && loser.name, matchId: m.matchId });
     m.oracle = {
       matchId: m.matchId,
       winnerId: exhibit.winnerId,

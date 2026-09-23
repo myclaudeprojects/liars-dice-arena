@@ -20,6 +20,7 @@ let history = [];
 let leaders = [];
 let err = "";
 let flash = null;
+let shareNote = "";
 let pollGen = 0;
 
 function esc(s) {
@@ -58,10 +59,27 @@ function money(n) {
   return (v > 0 ? "+" : "") + v;
 }
 
+function replayIdFromLocation() {
+  const q = new URLSearchParams(location.search).get("match");
+  if (q) return q;
+  const m = /^#replay=(.*)$/.exec(location.hash || "");
+  if (!m || !m[1]) return "";
+  try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+}
+
+function clearReplayHash() {
+  const hasQuery = new URLSearchParams(location.search).has("match");
+  const hasHash = /^#replay=/.test(location.hash || "");
+  if (!hasQuery && !hasHash) return;
+  history.replaceState(null, "", location.pathname);
+}
+
 function setTab(next) {
   tab = next;
   focusAgent = null;
   focusMatch = null;
+  shareNote = "";
+  clearReplayHash();
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   render();
 }
@@ -239,7 +257,7 @@ function payoff() {
       ${lesson ? `<p class="fine">${esc(lesson)}</p>` : ""}
       ${pos ? `<p>Test credits ${money(pos.pnl)} · balance ${Math.round(bankroll())}</p>` : ""}
       ${careerBlock(me, { quiet: true })}
-      ${m.share ? `<div class="share">${esc(m.share.text)}</div><button class="ghost" type="button" data-share>Share the call</button>` : ""}
+      ${m.share ? shareBlock({ ...m.share, matchId: m.matchId }) : ""}
     </div>`;
 }
 
@@ -307,7 +325,7 @@ function matchReplay(m) {
     <button class="ghost" type="button" data-back="history">All stories</button>
     <h1 class="page">${esc(m.story && m.story.title || "Match")}</h1>
     <p>${esc(m.story && m.story.dek || "")}</p>
-    ${m.share ? `<div class="share">${esc(m.share.text)}</div>` : ""}
+    ${m.share ? shareBlock({ ...m.share, matchId: m.matchId }) : ""}
     <ol class="log">${beats}</ol>`;
 }
 
@@ -337,6 +355,7 @@ function render() {
     : tab === "history" ? historyView()
     : profile();
   view.innerHTML = body + (tab !== "watch" && err ? `<div class="err">${esc(err)}</div>` : "");
+  paintShareCards();
 }
 
 view.addEventListener("click", async (e) => {
@@ -357,11 +376,8 @@ view.addEventListener("click", async (e) => {
   }
   const matchBtn = e.target.closest("[data-match]");
   if (matchBtn) {
-    try {
-      const j = await api("/api/show/matches/" + encodeURIComponent(matchBtn.dataset.match) + "/replay");
-      focusMatch = j;
-      render();
-    } catch (ex) { err = ex.message; render(); }
+    try { await loadReplay(matchBtn.dataset.match); }
+    catch (ex) { err = ex.message; render(); }
     return;
   }
   const ahead = e.target.closest("[data-ahead]");
@@ -370,6 +386,8 @@ view.addEventListener("click", async (e) => {
   if (pick) return doPick(pick.dataset.pick);
   const tag = e.target.closest("[data-tag]");
   if (tag && focusAgent) return toggleTag(tag.dataset.tag);
+  const save = e.target.closest("[data-save-card]");
+  if (save) return saveCard();
   const share = e.target.closest("[data-share]");
   if (share) return doShare();
 });
@@ -428,13 +446,209 @@ async function toggleTag(tag) {
   } catch (ex) { err = ex.message; render(); }
 }
 
-async function doShare() {
-  const text = live() && live().share && live().share.text;
-  if (!text) return;
+function shareBlock(card) {
+  if (!card) return "";
+  return `
+    <canvas class="share-card" width="720" height="960" aria-label="Share card"></canvas>
+    <div class="share-actions">
+      <button class="ghost" type="button" data-share>Share the call</button>
+      <button class="ghost" type="button" data-save-card>Save card</button>
+    </div>
+    ${shareNote ? `<p class="fine">${esc(shareNote)}</p>` : ""}`;
+}
+
+function activeShare() {
+  if (focusMatch && focusMatch.share) return { ...focusMatch.share, matchId: focusMatch.matchId };
+  const m = live();
+  if (m && m.share) return { ...m.share, matchId: m.matchId };
+  return null;
+}
+
+function cardHref(card) {
+  if (card && card.href) return card.href;
+  if (card && card.matchId) return "#replay=" + encodeURIComponent(card.matchId);
+  return "";
+}
+
+function replayUrl(card) {
+  const href = cardHref(card);
+  if (!href) return location.href;
+  return new URL(href, location.href).toString();
+}
+
+function wrapLines(ctx, text, maxWidth) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const next = line ? line + " " + word : word;
+    if (line && ctx.measureText(next).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function traceRound(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+function drawShareCard(card, canvas) {
+  const w = canvas.width;
+  const h = canvas.height;
+  const g = canvas.getContext("2d");
+  g.clearRect(0, 0, w, h);
+  g.fillStyle = "#0e0d0b";
+  g.fillRect(0, 0, w, h);
+  traceRound(g, 36, 36, w - 72, h - 72, 28);
+  g.fillStyle = "#171511";
+  g.fill();
+  g.strokeStyle = "rgba(228,194,122,0.45)";
+  g.lineWidth = 2;
+  g.stroke();
+  g.fillStyle = "#e4c27a";
+  g.fillRect(72, 96, 72, 6);
+  g.font = "600 22px Outfit, sans-serif";
+  g.fillText("LIAR'S DICE ARENA", 72, 156);
+  g.font = "680 52px Fraunces, Georgia, serif";
+  g.fillStyle = "#f4efe6";
+  let y = 240;
+  for (const line of wrapLines(g, card.title || "Settled", w - 144).slice(0, 4)) {
+    g.fillText(line, 72, y);
+    y += 62;
+  }
+  y += 8;
+  g.font = "420 28px Outfit, sans-serif";
+  g.fillStyle = "#a39b8d";
+  for (const line of wrapLines(g, String(card.body || "").replace(/\n/g, " "), w - 144).slice(0, 5)) {
+    g.fillText(line, 72, y);
+    y += 38;
+  }
+  if (Number(card.streak) >= 3) {
+    g.fillStyle = "#9ddeaf";
+    g.font = "650 26px Outfit, sans-serif";
+    g.fillText("WIN STREAK " + card.streak, 72, h - 196);
+  }
+  g.fillStyle = "#e4c27a";
+  g.font = "560 26px Outfit, sans-serif";
+  g.fillText("Watch the final call", 72, h - 148);
+  g.fillStyle = "#a39b8d";
+  g.font = "420 22px Outfit, sans-serif";
+  g.fillText("Test credits. Not real money.", 72, h - 108);
+}
+
+function paintShareCards() {
+  const card = activeShare();
+  if (!card) return;
+  document.querySelectorAll("canvas.share-card").forEach((c) => drawShareCard(card, c));
+}
+
+function canvasBlob(canvas) {
+  return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
+}
+
+async function cardImage(card) {
+  const shown = document.querySelector("canvas.share-card");
+  const canvas = shown || document.createElement("canvas");
+  if (!shown) { canvas.width = 720; canvas.height = 960; }
+  drawShareCard(card, canvas);
+  const blob = await canvasBlob(canvas);
+  if (!blob) throw new Error("Could not draw the card.");
+  return blob;
+}
+
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function shareMessage(card) {
+  const url = replayUrl(card);
+  const text = [card.text, url].filter(Boolean).join("\n");
+  return { title: card.title || "Liar's Dice Arena", text, url };
+}
+
+async function saveCard() {
+  const card = activeShare();
+  if (!card) return;
   try {
-    if (navigator.share) await navigator.share({ text });
-    else { await navigator.clipboard.writeText(text); err = ""; flash = null; }
-  } catch { /* dismissed */ }
+    const blob = await cardImage(card);
+    downloadBlob(blob, `liars-dice-${card.matchId || "match"}.png`);
+    shareNote = "Card saved on this device.";
+    render();
+  } catch (ex) {
+    err = ex.message;
+    render();
+  }
+}
+
+async function doShare() {
+  const card = activeShare();
+  if (!card) return;
+  const payload = shareMessage(card);
+  try {
+    const blob = await cardImage(card);
+    const file = new File([blob], `liars-dice-${card.matchId || "match"}.png`, { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ ...payload, files: [file] });
+      return;
+    }
+    if (navigator.share) {
+      await navigator.share(payload);
+      return;
+    }
+    downloadBlob(blob, file.name);
+    if (navigator.clipboard) await navigator.clipboard.writeText(payload.text);
+    shareNote = "Card saved. Link copied.";
+    render();
+  } catch (ex) {
+    if (ex && ex.name === "AbortError") return;
+    err = ex.message;
+    render();
+  }
+}
+
+async function loadReplay(id) {
+  err = "";
+  shareNote = "";
+  const j = await api("/api/show/matches/" + encodeURIComponent(id) + "/replay");
+  focusAgent = null;
+  focusMatch = j;
+  tab = "history";
+  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === "history"));
+  const href = cardHref({ ...j.share, matchId: j.matchId || id });
+  const next = location.pathname + href;
+  if (location.pathname + location.search + location.hash !== next) history.replaceState(null, "", next);
+  render();
+}
+
+async function openLinkedReplay() {
+  const id = replayIdFromLocation();
+  if (!id) return;
+  if (focusMatch && focusMatch.matchId === id && tab === "history") return;
+  try { await loadReplay(id); }
+  catch (ex) {
+    focusMatch = null;
+    tab = "history";
+    shareNote = "";
+    document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === "history"));
+    err = ex.message || "That story isn't in the book.";
+    render();
+  }
 }
 
 async function refreshLists() {
@@ -478,7 +692,9 @@ async function boot() {
   me = opened.predictor;
   renderCredits();
   await poll();
+  await openLinkedReplay();
   setInterval(poll, 2000);
+  window.addEventListener("hashchange", () => { openLinkedReplay().catch(() => {}); });
   try {
     const es = new EventSource("/api/show/events");
     es.onmessage = () => { poll(); };

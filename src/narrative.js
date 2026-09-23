@@ -94,17 +94,20 @@ function matchStory({ seats, winnerId, log }) {
   };
 }
 
-function shareCard({ story, winnerName, streak, loserName }) {
+function shareCard({ story, winnerName, streak, loserName, matchId }) {
   const lines = [story?.title || `${winnerName || "Someone"} just did this.`];
   if (story?.dek) lines.push(story.dek);
   if (streak >= 3) lines.push(`WIN STREAK: ${streak}`);
   lines.push("Watch the final call →", "Liar's Dice Arena");
+  const id = String(matchId || "");
   return {
     title: lines[0],
     body: lines.slice(1, -2).join("\n"),
     streak: streak || 0,
     text: lines.join("\n"),
     loserName: loserName || null,
+    matchId: id || null,
+    href: id ? `#replay=${encodeURIComponent(id)}` : "",
   };
 }
 

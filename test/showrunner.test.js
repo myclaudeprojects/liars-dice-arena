@@ -74,6 +74,11 @@ function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stri
   assert(settledView.live.market.you, "snapshot carries the position");
   assert(settledView.you && settledView.you.credits === pred.credits, "snapshot balance matches the settled book");
   assert(show.snapshot().custody === false && show.snapshot().cashValue === 0, "snapshot is not a real market");
+  assert(archived.share && archived.share.text, "settled match has a share card");
+  eq(archived.share.href, "#replay=" + encodeURIComponent(archived.matchId), "share card links to the replay");
+  eq(archived.share.matchId, archived.matchId, "share card names the match");
+  assert(!/usdc|wallet|\$/i.test(archived.share.text), "share text stays on the show");
+  eq(show.matchDetail(archived.matchId).share.href, archived.share.href, "history keeps the replay link");
 
   console.log("showrunner ok");
 })().catch((e) => { console.error(e); process.exit(1); });

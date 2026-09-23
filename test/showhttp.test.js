@@ -102,6 +102,14 @@ function req(method, url, body) {
     else assert(after.json.predictor.credits === 950, "settled loss keeps the stake");
     const replay = await req("GET", base + "/api/show/matches/" + snap.live.matchId + "/replay");
     assert(replay.json.events.length > 0 && replay.json.oracle.resultHash === lockedOut.json.match.oracle.resultHash, "replay is the same result");
+    assert(replay.json.share && replay.json.share.text, "replay carries the share card");
+    assert(replay.json.share.href === "#replay=" + encodeURIComponent(snap.live.matchId), "share href is the replay hash");
+    assert(replay.json.matchId === snap.live.matchId, "replay names the match");
+    assert(!/usdc|wallet|\$/i.test(replay.json.share.text), "share text is not a cash pitch");
+    const linked = await req("GET", base + "/?match=" + encodeURIComponent(snap.live.matchId));
+    assert(linked.status === 200 && /static\/app\.js/.test(linked.body) && /data-tab="history"/.test(linked.body), "match query serves the show app");
+    const missing = await req("GET", base + "/api/show/matches/no-such-match/replay");
+    assert(missing.status === 404, "unknown replay is a miss");
     console.log("show http ok");
   } finally {
     child.kill("SIGTERM");

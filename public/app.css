@@ -591,7 +591,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.66);
+  background: var(--lda-scrim);
 }
 .trade-sheet {
   width: min(100%, 480px);

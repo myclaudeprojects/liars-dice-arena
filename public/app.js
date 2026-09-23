@@ -124,6 +124,15 @@ function blip(ctx, t, freq, dur, gain, type, slide) {
 }
 
 const CUES = {
+  ambience: (ctx, t) => {
+    blip(ctx, t, 110, 0.22, 0.02, "sine", 90);
+    blip(ctx, t + 0.05, 164, 0.18, 0.012, "triangle");
+  },
+  roll: (ctx, t) => {
+    blip(ctx, t, 180, 0.04, 0.03, "square", 90);
+    blip(ctx, t + 0.06, 240, 0.05, 0.025, "triangle", 120);
+    blip(ctx, t + 0.12, 320, 0.04, 0.02, "square");
+  },
   "pick-open": (ctx, t) => {
     blip(ctx, t, 440, 0.09, 0.04);
     blip(ctx, t + 0.1, 660, 0.12, 0.035);
@@ -561,9 +570,42 @@ function arenaIdle() {
   return emptyState("Between matches", "Nothing is live right now", body) + upcomingBlock();
 }
 
+function storyMarkup(row) {
+  const api = presentApi();
+  const src = api && api.storySource ? api.storySource(row) : {
+    title: (row && row.title) || "",
+    dek: (row && row.dek) || "",
+    winnerName: (row && row.winnerName) || "",
+    loserName: (row && row.loserName) || "",
+  };
+  if (!src.title && !src.dek) return "";
+  const kicker = api && api.storyKicker ? api.storyKicker(src) : "";
+  const lines = api && api.storyLines ? api.storyLines(src) : [src.dek].filter(Boolean);
+  const who = src.winnerName && src.loserName
+    ? `${src.winnerName} won · ${src.loserName} lost`
+    : (src.winnerName ? `${src.winnerName} won` : "");
+  return `
+    ${kicker ? `<div class="story-kicker">${esc(kicker)}</div>` : ""}
+    ${src.title ? `<b>${esc(src.title)}</b>` : ""}
+    ${who ? `<div class="fine">${esc(who)}</div>` : ""}
+    ${lines.map((line) => `<div class="fine">${esc(line)}</div>`).join("")}`;
+}
+
+function castLine(seats) {
+  if (!seats || !seats.length) return "";
+  return `<div class="history-cast">${seats.map((s) => `<span class="history-seat" data-cast="${esc(s.id)}">${mark(s.name, s.hue, s.id, brandFor(s))}<span><b>${esc(s.name)}</b>${titleLine(s)}</span></span>`).join(`<span class="x">vs</span>`)}</div>`;
+}
+
+function missedBlock(liveId) {
+  const row = snap && snap.missed;
+  if (!row || !row.matchId || row.matchId === liveId) return "";
+  if (!row.title && !row.dek) return "";
+  return `<section class="section"><h2>You missed this</h2><button class="rowbtn lda-card lda-match story-card" type="button" data-match="${esc(row.matchId)}">${castLine(row.seats)}${storyMarkup(row)}</button></section>`;
+}
+
 function arena() {
   const m = live();
-  if (!m) return arenaIdle();
+  if (!m) return arenaIdle() + missedBlock(null);
   const [a, b] = m.seats;
   const open = m.phase === "pick";
   const hot = snap.hot;
@@ -580,21 +622,28 @@ function arena() {
   const cta = ui()
     ? ui().button({ text: open ? "Watch & pick" : final ? "See the result" : "Watch", extra: "cta", data: { go: "watch" } })
     : `<button class="cta" type="button" data-go="watch">${open ? "Watch & pick" : final ? "See the result" : "Watch"}</button>`;
+  const narrativeLine = (m.narrative && m.narrative.line) || "";
+  const prompt = open ? (narrativeLine || "Who's got this?") : "";
+  const nowLine = !open && narrativeLine ? narrativeLine : "";
+  const stateLabel = m.phase === "live" ? `Round ${m.round || 1}` : final ? "Final" : "Picks are open";
   return `
     ${badge}
-    <article class="live-card ${card}${intro}">
+    <article class="live-card ${card}${intro}" aria-label="${esc(`${liveLabel}. ${a.name} versus ${b.name}. ${prompt || nowLine || stateLabel}`)}">
       <div class="vs">
         <div class="who" data-cast="${esc(a.id)}">${mark(a.name, a.hue, a.id, brandFor(a))}<b>${esc(a.name)}</b>${titleLine(a)}<span>${esc(a.record)}</span></div>
         <div class="x">VS</div>
         <div class="who" data-cast="${esc(b.id)}">${mark(b.name, b.hue, b.id, brandFor(b))}<b>${esc(b.name)}</b>${titleLine(b)}<span>${esc(b.record)}</span></div>
       </div>
-      <div class="status">${m.phase === "live" ? `Round ${m.round || 1}` : final ? esc(m.story && m.story.title || "Settled") : "Picks are open"}</div>
+      ${prompt ? `<h1 class="arena-prompt">${esc(prompt)}</h1>` : ""}
+      ${nowLine ? `<p class="arena-now">${esc(nowLine)}</p>` : ""}
+      <div class="status">${esc(stateLabel)}</div>
       ${cta}
       ${noPicksYet() ? `<p class="first-run">No test position yet. YES or NO, in Arena Credits. They are not cash.</p>` : ""}
     </article>
     ${upcomingBlock()}
     ${hot ? `<section class="section"><h2>Hot</h2><div class="rowbtn" data-cast="${esc(hot.agentId)}">${mark(hot.name, null, hot.agentId, hot.brand)}<span><b>${esc(hot.name)}</b>${titleLine(hot)}</span><div class="fine">${esc(hot.text)}</div></div></section>` : ""}
     ${rival ? `<section class="section"><h2>Rivalries</h2><button class="rowbtn" type="button" data-agent="${esc(rival.a.id)}"><span class="rival-row">${[rival.a, rival.b].map((p) => `<span class="rival-side" data-cast="${esc(p.id)}">${mark(p.name, null, p.id, p.brand)}<span><b>${esc(p.name)}</b>${titleLine(p)}</span></span>`).join(`<span class="x">VS</span>`)}</span><div class="fine">Series ${esc(rival.series)} · ${rival.meetings} meetings</div></button></section>` : ""}
+    ${missedBlock(m.matchId)}
     ${fresh ? `<section class="section"><h2>New</h2><button class="rowbtn" type="button" data-agent="${esc(fresh.id)}" data-cast="${esc(fresh.id)}">${mark(fresh.name, null, fresh.id, fresh.brand)}<span><b>Meet ${esc(fresh.name)}</b>${titleLine(fresh)}</span><div class="fine">${esc(personTitle(fresh) || fresh.archetype)}. First match is this one.</div></button></section>` : ""}
     ${reads.length ? `<section class="section"><h2>Your reads</h2>${reads.map((r) => `<button class="rowbtn" type="button" data-agent="${esc(r.id)}" data-cast="${esc(r.id)}">${mark(r.name, null, r.id, r.brand)}<span><b>${esc(r.name)}</b>${titleLine(r)}</span><div class="fine">${r.correct} / ${r.picks} picks right</div></button>`).join("")}</section>` : ""}
     <p class="fine" style="margin-top:18px">Test credits have no cash value. No wallet. The agents play. You pick.</p>`;
@@ -1144,10 +1193,11 @@ function tableView(m, beats, opts) {
         : shownState === "REVEAL" || shownState === "ROUND_RESULT"
           ? "Dice are up"
           : "Cups down";
-  const flash = showLiar && !reducedMotion() ? `<div class="slam-flash" aria-hidden="true"></div>` : "";
+  const reduced = reducedMotion();
+  const flash = showLiar && !reduced ? `<div class="slam-flash" aria-hidden="true"></div>` : "";
   const liveSting = beats.some((b) => b.type === "start") ? `<div class="live-sting">LIVE</div>` : "";
   const skip = cinematic && intensity >= 4 && (pres.state === "CALL" || (m.reveal && m.reveal.length))
-    ? `<button class="skip" type="button" data-skip>Skip</button>`
+    ? `<button class="skip" type="button" data-skip aria-keyshortcuts="Escape">Skip</button>`
     : "";
   const countReady = reducedMotion() || !!(frame && frame.done);
   const countHtml = showCount && callFacts
@@ -1165,7 +1215,7 @@ function tableView(m, beats, opts) {
   const feed = visibleFeed.map((line) => `<li>${esc(line)}</li>`).join("");
   const liar = showLiar ? `<div class="cinematic-overlay liar-overlay" aria-hidden="true"><div class="liar-type">LIAR</div></div>` : "";
   return `
-    <section class="arena-shell table stage stage-${esc(stage)}${dim ? " dim" : ""}" data-state="${esc(shownState)}" data-stage="${esc(stage)}" data-camera="${esc(camera)}" data-intensity="${intensity}">
+    <section class="arena-shell table stage stage-${esc(stage)}${dim ? " dim" : ""}" data-state="${esc(shownState)}" data-stage="${esc(stage)}" data-camera="${esc(camera)}" data-intensity="${intensity}" data-reduced="${reduced ? "1" : "0"}">
       ${flash}
       ${liar}
       <div class="broadcast-strip stage-bar">
@@ -1556,6 +1606,7 @@ function agentDetail(a) {
   const tags = ["Aggressive", "Conservative", "Bluffer", "Risk-taker", "Pressure player", "Unpredictable"];
   const rivals = (a.rivals || []).map((r) => `<div class="rowbtn"><b>${esc(r.name)}</b><div class="fine">${esc(r.series)} in ${r.meetings}</div></div>`).join("");
   const moments = (a.moments || []).map((m) => `<div class="rowbtn"><b>${esc(m.title)}</b><div class="fine">${esc(m.dek || "")}</div></div>`).join("");
+  const tendencies = presentApi() && presentApi().tendencyLines ? presentApi().tendencyLines(a) : [];
   return `
     <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="agents">All agents</button>
     <div class="agent-hero" data-cast="${esc(a.id)}"${brandStyle(a)}>${agentPortrait(a)}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
@@ -1563,9 +1614,12 @@ function agentDetail(a) {
     ${a.roster === "user" && a.playable ? `<p class="fine">User roster. The show seats this agent against the house cast when a chair is free${a.seated ? ", and they are on the slate now" : ""}.</p>` : ""}
     <p class="fine">${esc(a.archetype)}</p>
     <div class="statgrid">
-      ${ui() ? ui().statPill(a.record, "Record") + ui().statPill(String(a.streak || 0), "Streak") + ui().statPill(`${a.winRate || 0}%`, "Win rate") + ui().statPill(String(a.played || 0), "Played") : `<div><b>${esc(a.record)}</b><span>Record</span></div><div><b>${a.streak || 0}</b><span>Streak</span></div><div><b>${a.winRate || 0}%</b><span>Win rate</span></div><div><b>${a.played || 0}</b><span>Played</span></div>`}
+      ${ui()
+        ? ui().statPill(a.record, "Record") + ui().statPill(String(a.streak || 0), "Streak") + (a.bestStreak > 0 ? ui().statPill(String(a.bestStreak), "Best streak") : "") + ui().statPill(`${a.winRate || 0}%`, "Win rate") + ui().statPill(String(a.played || 0), "Played")
+        : `<div><b>${esc(a.record)}</b><span>Record</span></div><div><b>${a.streak || 0}</b><span>Streak</span></div>${a.bestStreak > 0 ? `<div><b>${a.bestStreak}</b><span>Best streak</span></div>` : ""}<div><b>${a.winRate || 0}%</b><span>Win rate</span></div><div><b>${a.played || 0}</b><span>Played</span></div>`}
     </div>
-    <section class="section"><h2>Style</h2><p>${esc(a.line)}</p><p class="fine">Strength: ${esc(a.strength)} Weakness: ${esc(a.weakness)}</p>${a.knownFor ? `<p class="fine">From the matches: ${esc(a.knownFor)}.</p>` : ""}${a.bluffLine ? `<p class="fine">${esc(a.bluffLine)}.</p>` : ""}${a.callLine ? `<p class="fine">${esc(a.callLine)}.</p>` : ""}</section>
+    <section class="section"><h2>Style</h2><p>${esc(a.line)}</p><p class="fine">Strength: ${esc(a.strength)} Weakness: ${esc(a.weakness)}</p></section>
+    ${tendencies.length ? `<section class="section"><h2>From the matches</h2>${tendencies.map((line) => `<p class="fine">${esc(line)}</p>`).join("")}</section>` : ""}
     <section class="section"><h2>Recent form</h2><div class="form">${(a.form || []).map((x) => `<i class="${x === "W" ? "w" : "l"}">${esc(x)}</i>`).join("") || "—"}</div></section>
     ${rivals ? `<section class="section"><h2>Rivals</h2>${rivals}</section>` : ""}
     ${moments ? `<section class="section"><h2>Recent moments</h2>${moments}</section>` : ""}
@@ -1584,10 +1638,9 @@ function historyView() {
   }
   if (!history.length) return `<h1 class="page">History</h1>${line}${emptyState("No stories yet", "Nothing has finished", "When a match settles, the story and the replay land here. Your line above stays at zero until you pick a winner.")}`;
   return `<h1 class="page">History</h1>${line}` + history.map((h) => `
-    <button class="rowbtn lda-card lda-match" type="button" data-match="${esc(h.matchId)}">
-      <b>${esc(h.title || h.winnerName)}</b>
-      <div class="history-cast">${(h.seats || []).map((s) => `<span class="history-seat" data-cast="${esc(s.id)}">${mark(s.name, s.hue, s.id, brandFor(s))}<span><b>${esc(s.name)}</b>${titleLine(s)}</span></span>`).join(`<span class="x">vs</span>`)}</div>
-      <div class="fine">${esc(h.dek || "")}</div>
+    <button class="rowbtn lda-card lda-match story-card" type="button" data-match="${esc(h.matchId)}">
+      ${castLine(h.seats)}
+      ${storyMarkup(h)}
     </button>`).join("");
 }
 
@@ -1642,10 +1695,15 @@ function matchReplay(m) {
     return `<li><b>${esc(e.name)} wins.</b></li>`;
   }).join("");
   const at = frames.length ? `${index + 1} / ${frames.length}` : "";
+  const kicker = api && api.storyKicker ? api.storyKicker(m) : "";
+  const dek = (m.story && m.story.dek) || "";
+  const extra = api && api.storyLines ? api.storyLines(m).filter((line) => line !== dek) : [];
   return `
     <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="history">All stories</button>
+    ${kicker ? `<div class="story-kicker">${esc(kicker)}</div>` : ""}
     <h1 class="page">${esc(m.story && m.story.title || "Match")}</h1>
-    <p>${esc(m.story && m.story.dek || "")}</p>
+    <p>${esc(dek)}</p>
+    ${extra.map((line) => `<p class="fine">${esc(line)}</p>`).join("")}
     ${stage}
     <div class="replay-meta"><span class="fine">${at}</span><button class="ghost" type="button" data-replay>Play again</button></div>
     ${m.share ? shareBlock({ ...m.share, matchId: m.matchId }) : ""}
@@ -2498,6 +2556,18 @@ document.addEventListener("visibilitychange", () => {
   director.fastForward();
   directorSig = directorSignature(director.frame());
   if (tab === "watch") render();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const tag = (e.target && e.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (tab !== "watch" || !director) return;
+  const frame = director.frame();
+  if (!frame || frame.done) return;
+  e.preventDefault();
+  director.fastForward();
+  directorSig = directorSignature(director.frame());
+  render();
 });
 
 async function boot() {

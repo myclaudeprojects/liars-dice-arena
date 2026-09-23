@@ -30,7 +30,7 @@ const locked = {
   bid: { agentId: "dracula", name: "Dracula", count: 2, face: 6 },
   narrative: { headline: null, line: "Dracula bids 2 sixes." },
 };
-eq(soundCues(pick, locked), ["pick-locked", "bid"], "the table locks and the first bid sounds");
+eq(soundCues(pick, locked), ["pick-locked", "ambience", "bid"], "the table locks, the room opens, and the first bid sounds");
 
 const sameBid = { ...locked };
 eq(soundCues(locked, sameBid), [], "the same bid does not repeat");
@@ -72,6 +72,26 @@ eq(soundCues(revealed, missed), ["settle-miss"], "a missed pick settles down");
 
 const watched = { ...revealed, phase: "settled", market: {} };
 eq(soundCues(revealed, watched), [], "watching without a pick is not a miss");
+
+const opening = {
+  ...pick,
+  phase: "live",
+  actionStage: "roll",
+  round: 1,
+  bid: null,
+  narrative: { headline: null, pace: "roll", line: "Cups down." },
+};
+eq(soundCues(pick, opening), ["pick-locked", "ambience", "roll"], "cups down get a roll, not a bid");
+eq(soundCues(opening, opening), [], "the same roll does not repeat");
+
+const nextHand = {
+  ...locked,
+  bid: null,
+  round: 2,
+  actionStage: "roll",
+  narrative: { headline: null, pace: "roll", line: "Cups down." },
+};
+eq(soundCues(locked, nextHand), ["roll"], "the next hand rolls without reopening the room");
 
 const mid = { ...locked, matchId: "m9" };
 eq(soundCues(locked, mid), [], "joining a match already in play stays quiet");

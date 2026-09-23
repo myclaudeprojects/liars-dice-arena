@@ -3,6 +3,7 @@ const path = require("path");
 const {
   presentationOf, reactionsOf, roundCall, transition, commandFor, commandKey,
   direct, AnimationDirector, bidWords, pressureLabel, nextHint, broadcastStage, countFace,
+  storySource, storyKicker, storyLines, tendencyLines,
 } = require("../public/presentation");
 const { countShown } = require("../public/motion");
 
@@ -210,6 +211,43 @@ for (const name of [".stage", ".liar-type", ".think-line", ".felt", "thinkPulse"
 assert(css.includes("prefers-reduced-motion") && css.includes("transform: none"), "reduced motion drops camera transforms");
 const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
 assert(app.includes("data-skip") && app.includes("data-state") && app.includes("syncDirector"), "watch stage is wired to the director");
+assert(app.includes("Escape") && app.includes("fastForward") && app.includes("data-reduced"), "skip and reduced motion stay on the stage");
+assert(app.includes("Who's got this?") && app.includes("You missed this"), "arena leads with the pick and the last real story");
+
+const card = storySource({
+  title: "Caesar called the bluff.",
+  dek: "6 threes were not on the table.",
+  result: "Caesar wins.",
+  keyMoment: "The call on 6 threes.",
+  turningPoint: "Caesar was behind on dice.",
+  comeback: true,
+  calledBluff: true,
+  winnerName: "Caesar",
+  loserName: "Dracula",
+});
+eq(storyKicker(card), "Comeback", "comeback leads the card");
+eq(storyLines(card), [
+  "6 threes were not on the table.",
+  "The call on 6 threes.",
+  "Caesar was behind on dice.",
+], "story lines are the stored facts");
+assert(!storyLines(card).some((line) => /viewer|watching|0:42/i.test(line)), "story cards do not invent a clip");
+eq(storyKicker(storySource({ calledBluff: true })), "Called the bluff", "bluff flag");
+eq(storyKicker(storySource({ toldTruth: true })), "Told the truth", "truth flag");
+eq(storyKicker(storySource({})), "", "no kicker without a flag");
+eq(storyLines(storySource({ story: { title: "Quiet.", dek: "Same line.", keyMoment: "Same line." } })), ["Same line."], "nested story does not repeat itself");
+eq(tendencyLines({
+  knownFor: "big claims",
+  bluffLine: "2 of 6 bluff bids were caught",
+  raiseLine: "Average bid increase 1 over 6 raises",
+  edgeLine: null,
+}), [
+  "From the matches: big claims.",
+  "2 of 6 bluff bids were caught.",
+  "Average bid increase 1 over 6 raises.",
+], "profile quotes stored tendencies");
+eq(tendencyLines({}), [], "empty profile adds nothing");
+assert(!tendencyLines({ line: "Caesar remembers the last bid" }).some((line) => /remembers/i.test(line)), "persona copy is not a tendency");
 assert(app.includes("arena-shell") && app.includes("dice-tray") && app.includes("thought-orbit") && app.includes("liar-overlay"), "broadcast arena markup");
 assert(app.includes("scrollHold") && !app.includes("scrollIntoView"), "live updates do not pull the viewport");
 assert(css.includes("cupLift") && css.includes("thinkOrbit") && css.includes("translateX(-50%)"), "cups, orbit, and floating nav");

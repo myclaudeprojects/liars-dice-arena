@@ -25,7 +25,11 @@
     const cues = [];
     const same = prev.matchId === live.matchId;
     if (live.phase === "pick" && (!same || prev.phase !== "pick")) cues.push("pick-open");
-    if (same && prev.phase === "pick" && live.phase === "live") cues.push("pick-locked");
+    if (same && prev.phase === "pick" && live.phase === "live") {
+      cues.push("pick-locked");
+      cues.push("ambience");
+    }
+    if (same && live.phase === "live" && live.actionStage === "roll" && prev.actionStage !== "roll") cues.push("roll");
     const nextBid = bidKey(live);
     if (same && live.phase === "live" && nextBid && nextBid !== bidKey(prev) && head(live) !== "LIAR.") cues.push("bid");
     if (same && head(live) === "LIAR." && head(prev) !== "LIAR.") cues.push("call");

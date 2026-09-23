@@ -89,19 +89,32 @@ function req(method, url, body) {
     const me = await req("POST", base + "/api/show/predictors", { id: "httpfan01" });
     assert(me.status === 200 && me.json.predictor.credits === 1000, "test credits");
     const seat = snap.live.seats[0];
+    assert(snap.live.market && snap.live.market.props && snap.live.market.props.length >= 4, "live book lists props");
+    const duration = snap.live.market.props.find((p) => p.type === "duration_under");
+    assert(duration && duration.yesPrice > 0 && duration.noPrice > 0, "duration price is public");
     const buy = await req("POST", base + "/api/show/markets/" + snap.live.matchId + "/buy", {
       predictorId: "httpfan01", agentId: seat.id, side: "yes", stake: 50,
     });
     assert(buy.status === 200 && buy.json.position.stake === 50, "bought yes");
+    const propBuy = await req("POST", base + "/api/show/markets/" + snap.live.matchId + "/props/" + encodeURIComponent(duration.id) + "/buy", {
+      predictorId: "httpfan01", side: "yes", stake: 25,
+    });
+    assert(propBuy.status === 200 && propBuy.json.position.stake === 25, "bought a prop over HTTP");
+    assert(propBuy.json.credits === 925, "winner stake and prop stake both leave the balance");
     const lockedOut = await req("POST", base + "/api/show/test/play");
     assert(lockedOut.status === 200 && lockedOut.json.match.oracle.resultHash, "played and hashed");
     assert(lockedOut.json.match.oracle.realMoney === false, "oracle is not a cashier");
     assert(lockedOut.json.match.winnerId, "winner");
     const after = await req("GET", base + "/api/show/predictors/httpfan01");
-    assert(after.json.predictor.picks === 1, "pick recorded");
-    const won = lockedOut.json.match.winnerId === seat.id;
-    if (won) assert(after.json.predictor.credits > 950, "settled win pays the book");
-    else assert(after.json.predictor.credits === 950, "settled loss keeps the stake");
+    assert(after.json.predictor.picks === 2, "winner and prop both recorded");
+    const viewed = await req("GET", base + "/api/show?predictor=httpfan01");
+    const settledBook = viewed.json.live.market;
+    const settledProp = settledBook.props.find((p) => p.id === duration.id);
+    assert(settledBook.props.every((p) => p.status === "settled"), "props settle with the match");
+    assert(settledProp.result === "yes" && settledProp.you && settledProp.you.won, "duration prop resolves from the match");
+    assert(settledBook.you && settledBook.you.settled, "winner position is settled");
+    const expected = Math.round((925 + (settledBook.you.payout || 0) + settledProp.you.payout) * 10000) / 10000;
+    assert(Math.abs(after.json.predictor.credits - expected) < 0.02, "winner and prop payouts both hit the ledger");
     const replay = await req("GET", base + "/api/show/matches/" + snap.live.matchId + "/replay");
     assert(replay.json.events.length > 0 && replay.json.oracle.resultHash === lockedOut.json.match.oracle.resultHash, "replay is the same result");
     assert(replay.json.share && replay.json.share.text, "replay carries the share card");

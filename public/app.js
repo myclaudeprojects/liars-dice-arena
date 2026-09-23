@@ -47,6 +47,7 @@ let soundMem = null;
 let showState = { snap: null, link: "boot", holdUntil: 0 };
 let listsReady = false;
 let listsError = "";
+let tradeSheet = null;
 
 function presence() {
   return window.ldaPresence || {
@@ -433,8 +434,8 @@ function arenaIdle() {
   if (dropped) {
     return emptyState("Reconnecting", "The arena will be right back", "Still reaching the show. When a match was already up, that frame stays on Watch.");
   }
-  const body = fresh
-    ? "The next pairing opens in a moment. You haven't picked a winner yet. One tap when the window opens. Test credits only."
+    const body = fresh
+    ? "The next pairing opens in a moment. You haven't taken a test position yet. Confirm a trade on Watch. Arena Credits only."
     : "The next pairing opens in a moment. You can wait here or look through Agents.";
   return emptyState("Between matches", "Nothing is live right now", body) + upcomingBlock();
 }
@@ -496,20 +497,48 @@ function testBadge() {
   return ui() ? ui().marketBadge(TEST_BADGE) : `<p class="test-badge">${esc(TEST_BADGE)}</p>`;
 }
 
-function choiceButtons(yes, no, matchId, detailYes, detailNo, blocked) {
+function tradeAttrs(data) {
+  return Object.keys(data || {}).map((key) => {
+    const val = data[key];
+    if (val == null || val === false) return "";
+    return ` data-${key}="${esc(val)}"`;
+  }).join("");
+}
+
+function choiceButtons(yes, no, matchId, detailYes, detailNo, blocked, trade) {
   const busy = !!tradeBusy;
   const disabled = busy || !!blocked;
+  const yesTrade = (trade && trade.yes) || {};
+  const noTrade = (trade && trade.no) || {};
   if (!ui()) {
     const dis = disabled ? " disabled" : "";
     const id = matchId ? ` data-match="${esc(matchId)}"` : "";
-    return `<button class="giant" type="button" data-pick-side="yes"${id}${dis}>YES ${esc(yes)}</button><button class="giant" type="button" data-pick-side="no"${id}${dis}>NO ${esc(no)}</button>`;
+    return `<button class="giant" type="button" data-pick-side="yes"${id}${tradeAttrs(yesTrade)}${dis}>YES ${esc(yes)}</button><button class="giant" type="button" data-pick-side="no"${id}${tradeAttrs(noTrade)}${dis}>NO ${esc(no)}</button>`;
   }
-  const data = { "pick-side": "yes" };
-  const dataNo = { "pick-side": "no" };
+  const data = Object.assign({ "pick-side": "yes" }, yesTrade);
+  const dataNo = Object.assign({ "pick-side": "no" }, noTrade);
   if (matchId) { data.match = matchId; dataNo.match = matchId; }
   const extra = matchId ? "lda-choice-compact" : "giant";
   return ui().choice({ side: "yes", price: yes, detail: detailYes || "", extra, loading: busy, disabled, data, ariaLabel: `YES ${yes}. ${detailYes || ""}`.trim() })
     + ui().choice({ side: "no", price: no, detail: detailNo || "", extra, loading: busy, disabled, data: dataNo, ariaLabel: `NO ${no}. ${detailNo || ""}`.trim() });
+}
+
+function upcomingPropButtons(u) {
+  return (u.props || []).map((prop) => {
+    const held = !!prop.you;
+    const yesData = { "trade-prop": prop.id, side: "yes", match: u.matchId, "trade-price": prop.yesPrice, "trade-title": prop.title };
+    const noData = { "trade-prop": prop.id, side: "no", match: u.matchId, "trade-price": prop.noPrice, "trade-title": prop.title };
+    if (!ui()) {
+      return `<div class="ahead prop-ahead"><span class="fine">${esc(prop.title)}</span>
+        <button type="button" data-trade-prop="${esc(prop.id)}" data-side="yes" data-match="${esc(u.matchId)}" data-trade-price="${prop.yesPrice}" data-trade-title="${esc(prop.title)}" ${held ? "disabled" : ""}>YES ${centsLabel(prop.yesPrice)}</button>
+        <button type="button" data-trade-prop="${esc(prop.id)}" data-side="no" data-match="${esc(u.matchId)}" data-trade-price="${prop.noPrice}" data-trade-title="${esc(prop.title)}" ${held ? "disabled" : ""}>NO ${centsLabel(prop.noPrice)}</button>
+      </div>`;
+    }
+    return `<div class="ahead prop-ahead"><span class="fine">${esc(prop.title)}</span>
+      ${ui().choice({ side: "yes", price: centsLabel(prop.yesPrice), extra: "lda-choice-compact", disabled: held, selected: held && prop.you.side === "yes", data: yesData })}
+      ${ui().choice({ side: "no", price: centsLabel(prop.noPrice), extra: "lda-choice-compact", disabled: held, selected: held && prop.you.side === "no", data: noData })}
+    </div>`;
+  }).join("");
 }
 
 function upcomingBlock() {
@@ -522,11 +551,17 @@ function upcomingBlock() {
     const yes = u.yesCents != null ? `${u.yesCents}¢` : centsLabel(u.yesPrice != null ? u.yesPrice : (u.price && u.price[target.id]));
     const no = u.noCents != null ? `${u.noCents}¢` : centsLabel(u.noPrice != null ? u.noPrice : (u.yesPrice != null ? 1 - u.yesPrice : null));
     const picked = you ? `You hold ${esc(you.outcome || (you.side === "no" ? "NO" : "YES"))}. Test position, not cash.` : (u.question || "Pick ahead.");
+    const question = u.question || `Will ${target.name} win?`;
+    const trade = {
+      yes: { agent: target.id, "trade-price": u.yesPrice != null ? u.yesPrice : "", "trade-title": question },
+      no: { agent: target.id, "trade-price": u.noPrice != null ? u.noPrice : "", "trade-title": question },
+    };
     const buttons = you || snap.testMarkets === false ? "" : `
       ${testBadge()}
       <div class="ahead">
-        ${choiceButtons(yes, no, u.matchId, `${target.name} wins`, `${target.name} does not win`)}
-      </div>`;
+        ${choiceButtons(yes, no, u.matchId, `${target.name} wins`, `${target.name} does not win`, false, trade)}
+      </div>
+      ${upcomingPropButtons(u)}`;
     const card = ui() ? ui().cardClass("match") : "lda-card lda-match";
     return `
       <article class="upcard ${card}">
@@ -548,12 +583,163 @@ function seatNameFrom(card, id) {
   return s ? s.name : id;
 }
 
+function marketPositionLine(pos) {
+  if (!pos) return "";
+  const contracts = Math.round(pos.contracts || pos.shares || 0);
+  const side = String(pos.side || (pos.outcome === "NO" ? "no" : "yes")).toUpperCase();
+  if (pos.settled) {
+    const pnl = pos.testPnl != null ? pos.testPnl : pos.pnl;
+    return `<div class="market-position ${pos.won ? "won" : "lost"}"><b>${pos.won ? "WON" : "LOST"}</b><span>${side} · ${contracts} contracts · Test P&L ${money(pnl)} AC</span></div>`;
+  }
+  const pnl = pos.testPnl != null ? pos.testPnl : pos.unrealized;
+  return `<div class="market-position"><b>YOUR POSITION</b><span>${side} @ ${centsLabel(pos.price)} · ${contracts} contracts · Test P&L ${money(pnl)} AC</span></div>`;
+}
+
+function outcomeButton({ label, price, attrs = "", disabled = false, picked = false }) {
+  return `<button type="button" class="outcome-btn${picked ? " picked" : ""}" ${attrs}${disabled ? " disabled" : ""}><span>${esc(label)}</span><b>${centsLabel(price)}</b></button>`;
+}
+
+function outcomePair(yesPrice, noPrice, yesData, noData, state) {
+  const disabled = !!(state && state.disabled);
+  const yesPicked = !!(state && state.yesPicked);
+  const noPicked = !!(state && state.noPicked);
+  if (!ui()) {
+    return `${outcomeButton({ label: "YES", price: yesPrice, attrs: tradeAttrs(yesData), disabled, picked: yesPicked })}${outcomeButton({ label: "NO", price: noPrice, attrs: tradeAttrs(noData), disabled, picked: noPicked })}`;
+  }
+  return ui().choice({
+    side: "yes",
+    price: centsLabel(yesPrice),
+    extra: "lda-choice-compact",
+    disabled,
+    selected: yesPicked,
+    data: yesData,
+  }) + ui().choice({
+    side: "no",
+    price: centsLabel(noPrice),
+    extra: "lda-choice-compact",
+    disabled,
+    selected: noPicked,
+    data: noData,
+  });
+}
+
+function marketPanel(m, opts = {}) {
+  if (!m || !m.market || !m.seats || m.seats.length < 2) return "";
+  if (snap && snap.testMarkets === false) return "";
+  const market = m.market;
+  const open = market.status === "open";
+  const [a, b] = m.seats;
+  const target = (m.seats || []).find((s) => s.id === market.targetAgentId) || a;
+  const winnerYou = market.you || null;
+  const question = market.question || `Will ${target.name} win?`;
+  const yes = market.yesPrice;
+  const no = market.noPrice;
+  const shell = ui() ? ui().cardClass() : "lda-card";
+  const winnerButtons = outcomePair(yes, no, {
+    "pick-side": "yes", match: m.matchId, agent: target.id, "trade-price": yes, "trade-title": question,
+  }, {
+    "pick-side": "no", match: m.matchId, agent: target.id, "trade-price": no, "trade-title": question,
+  }, {
+    disabled: !open || !!winnerYou,
+    yesPicked: !!winnerYou && winnerYou.side !== "no" && winnerYou.outcome !== "NO",
+    noPicked: !!winnerYou && (winnerYou.side === "no" || winnerYou.outcome === "NO"),
+  });
+  const props = (market.props || []).map((prop) => {
+    const settled = prop.status === "settled";
+    const canTrade = open && prop.status === "open" && !prop.you;
+    const result = settled
+      ? `<span class="prop-result ${prop.result === "yes" ? "yes" : "no"}">${String(prop.result || "").toUpperCase()}</span>`
+      : prop.status === "locked"
+        ? `<span class="prop-result">LOCKED</span>`
+        : "";
+    const buttons = outcomePair(prop.yesPrice, prop.noPrice, {
+      "trade-prop": prop.id, side: "yes", match: m.matchId, "trade-price": prop.yesPrice, "trade-title": prop.title,
+    }, {
+      "trade-prop": prop.id, side: "no", match: m.matchId, "trade-price": prop.noPrice, "trade-title": prop.title,
+    }, {
+      disabled: !canTrade,
+      yesPicked: !!prop.you && prop.you.side === "yes",
+      noPicked: !!prop.you && prop.you.side === "no",
+    });
+    return `<article class="prop-card ${shell}${settled ? " settled" : ""}">
+      <div class="prop-head"><span>${esc(prop.eyebrow || "Match prop")}</span>${result}</div>
+      <h3>${esc(prop.title)}</h3>
+      <div class="outcomes">${buttons}</div>
+      ${marketPositionLine(prop.you)}
+    </article>`;
+  }).join("");
+  const stateCopy = open ? "Markets lock when the match starts" : market.status === "settled" ? "Settled from the official match result" : market.status === "voided" ? "Voided. Open stakes were returned" : "Markets locked · watch the match";
+  const winnerResult = market.status === "settled" && market.winningOutcome
+    ? `<span class="prop-result ${market.winningOutcome === "YES" ? "yes" : "no"}">${esc(market.winningOutcome)}</span>`
+    : market.status === "locked" || market.status === "awaiting_result"
+      ? `<span class="prop-result">LOCKED</span>`
+      : "";
+  const sell = open && winnerYou && winnerYou.shares > 0
+    ? (ui()
+      ? ui().button({ variant: "ghost", text: "Sell shares", data: { sell: true }, extra: "market-sell" })
+      : `<button class="ghost lda-btn lda-btn-ghost" type="button" data-sell>Sell shares</button>`)
+    : "";
+  return `<section class="market-zone ${shell} ${opts.compact ? "compact" : ""}">
+    <div class="market-zone-head">
+      <div>${testBadge()}<h2>Prediction markets</h2></div>
+      <div class="market-balance"><span>Balance</span><b>${Math.round(bankroll())} AC</b></div>
+    </div>
+    <p class="market-disclosure">Arena Credits only · no cash value · ${esc(stateCopy)}</p>
+    <article class="winner-market ${shell}">
+      <div class="prop-head"><span>Match winner</span>${winnerResult}</div>
+      <h3>${esc(question)}</h3>
+      <div class="outcomes winner-outcomes">${winnerButtons}</div>
+      ${marketPositionLine(winnerYou)}
+      ${sell}
+    </article>
+    <div class="props-grid">${props}</div>
+  </section>`;
+}
+
+function tradeSheetMarkup() {
+  if (!tradeSheet) return "";
+  const stake = Number(tradeSheet.stake) || 50;
+  const price = Number(tradeSheet.price) || 0;
+  const contracts = price > 0 ? stake / price : 0;
+  const payout = contracts;
+  const stakes = [10, 25, 50, 100, 250];
+  const chips = stakes.map((n) => {
+    if (!ui()) return `<button type="button" data-trade-stake="${n}" class="${stake === n ? "on" : ""}">${n}</button>`;
+    return ui().button({
+      variant: stake === n ? "primary" : "ghost",
+      text: String(n),
+      selected: stake === n,
+      block: false,
+      data: { "trade-stake": String(n) },
+      extra: "stake-chip",
+    });
+  }).join("");
+  const close = ui()
+    ? ui().button({ variant: "ghost", text: "×", block: false, data: { "close-trade": "1" }, extra: "trade-x", ariaLabel: "Close" })
+    : `<button type="button" class="trade-x" data-close-trade="1" aria-label="Close">×</button>`;
+  const confirm = ui()
+    ? ui().button({ variant: "primary", text: `Open ${tradeSheet.outcome} position`, data: { "confirm-trade": "1" }, extra: "confirm-trade" })
+    : `<button type="button" class="confirm-trade lda-btn lda-btn-primary" data-confirm-trade="1">Open ${esc(tradeSheet.outcome)} position</button>`;
+  const tone = tradeSheet.side === "no" ? "is-no" : "is-yes";
+  return `<div class="trade-backdrop" data-close-trade="1">
+    <section class="trade-sheet lda-card" role="dialog" aria-modal="true" aria-label="Test market trade" data-trade-dialog="1">
+      <div class="trade-grab" aria-hidden="true"></div>
+      <div class="prop-head"><span>TEST MARKET</span>${close}</div>
+      <h2>${esc(tradeSheet.title)}</h2>
+      <div class="trade-side ${tone}"><span>${esc(tradeSheet.outcome)}</span><b>${centsLabel(price)}</b></div>
+      <div class="trade-summary"><div><span>Stake</span><b>${stake} AC</b></div><div><span>Est. contracts</span><b>${contracts.toFixed(1)}</b></div><div><span>Max payout</span><b>${payout.toFixed(1)} AC</b></div></div>
+      <div class="stake-grid">${chips}</div>
+      ${confirm}
+      <p class="market-disclosure">Simulated Arena Credits. No deposits, withdrawals, prizes, or cash value.</p>
+    </section>
+  </div>`;
+}
+
 function picker() {
   const m = live();
   const book = m.market || {};
   const target = (m.seats || []).find((s) => s.id === book.targetAgentId) || m.seats[0];
   const intro = frameBeats.some((beat) => beat.type === "intro") ? " intro" : "";
-  const bal = me ? Math.round(me.credits).toLocaleString("en-US") : "—";
   if (snap && snap.testMarkets === false) {
     return `
       <div class="picker${intro}">
@@ -562,22 +748,12 @@ function picker() {
         <p class="fine">Test markets are off. The match still runs.</p>
       </div>`;
   }
-  const yes = book.yesCents != null ? `${book.yesCents}¢` : centsLabel(book.yesPrice);
-  const no = book.noCents != null ? `${book.noCents}¢` : centsLabel(book.noPrice);
-  const stake = snap.defaultStake || 50;
-  const broke = !!(me && Number(me.credits) < Number(stake));
-  const yesDetail = `${target.name} wins this match`;
-  const noDetail = `${target.name} does not win`;
   return `
-    <div class="picker${intro}">
-      <div class="kicker lda-kicker-predict">Who wins?</div>
-      ${testBadge()}
-      <h1>${esc(book.question || `Will ${target.name} win?`)}</h1>
-      <p class="fine">Balance AC ${esc(String(bal))}. Arena Credits are play money.</p>
-      ${choiceButtons(yes, no, "", yesDetail, noDetail, broke)}
-      <p class="fine">${broke ? `Not enough Arena Credits for about ${stake} shares.` : `A tap buys about ${stake} Arena Credits of shares. They are not cash.`}</p>
-      <div class="err lda-error" role="alert">${esc(err)}</div>
-    </div>`;
+    <div class="picker market-picker${intro}">
+      <div class="kicker lda-kicker-predict">Test market</div>
+      <h1>What happens next?</h1>
+      <p class="fine">Trade the winner or a match prop before the dice hit the table. Every position uses Arena Credits. They are not cash.</p>
+    </div>${marketPanel(m)}`;
 }
 
 function bidderOf(bid) {
@@ -896,9 +1072,9 @@ function watch() {
     return emptyState("Between matches", "Nothing on the table", "The next match opens in a moment. Arena lists what's coming.");
   }
   if (flash) return `<div class="flash lda-success" role="status"><div class="kicker">Locked in</div><h1>You picked ${esc(flash)}</h1><p class="fine">Dice are coming.</p></div>`;
-  if (m.phase === "settled") return payoff();
-  if (m.phase === "pick" && !position) return picker();
-  return watchTable();
+  if (m.phase === "settled") return payoff() + marketPanel(m, { compact: true });
+  if (m.phase === "pick") return picker();
+  return watchTable() + marketPanel(m, { compact: true });
 }
 
 function agentsView() {
@@ -1076,9 +1252,7 @@ function render() {
     : tab === "agents" ? agentsView()
     : tab === "history" ? historyView()
     : profile();
-  const m = live();
-  const errInPicker = tab === "watch" && m && m.phase === "pick" && !position && !flash && snap.testMarkets !== false;
-  const html = linkBanner() + body + (!errInPicker && err ? `<div class="err lda-error" role="alert">${esc(err)}</div>` : "");
+  const html = linkBanner() + body + (err ? `<div class="err lda-error" role="alert">${esc(err)}</div>` : "") + tradeSheetMarkup();
   if (html === painted && !arriving) return;
   painted = html;
   view.classList.toggle("enter", !!arriving);
@@ -1087,7 +1261,75 @@ function render() {
   paintShareCards();
 }
 
+function openWinnerSheet(btn) {
+  const m = live();
+  const matchId = btn.dataset.match || (m && m.matchId);
+  if (!matchId || !me) return;
+  const side = btn.dataset.pickSide === "no" ? "no" : "yes";
+  const agentId = btn.dataset.agent || targetFor(matchId);
+  const title = btn.dataset.tradeTitle || (m && m.market && m.market.question) || "Match winner";
+  tradeSheet = {
+    kind: "winner",
+    matchId,
+    agentId,
+    side,
+    title,
+    outcome: side.toUpperCase(),
+    price: Number(btn.dataset.tradePrice),
+    stake: (snap && snap.defaultStake) || 50,
+  };
+  err = "";
+  render();
+}
+
+function openPropSheet(btn) {
+  const m = live();
+  const matchId = btn.dataset.match || (m && m.matchId);
+  const propId = btn.dataset.tradeProp;
+  if (!matchId || !propId || !me) return;
+  const side = btn.dataset.side === "no" ? "no" : "yes";
+  tradeSheet = {
+    kind: "prop",
+    matchId,
+    propId,
+    side,
+    title: btn.dataset.tradeTitle || "Match prop",
+    outcome: side.toUpperCase(),
+    price: Number(btn.dataset.tradePrice),
+    stake: (snap && snap.defaultStake) || 50,
+  };
+  err = "";
+  render();
+}
+
 view.addEventListener("click", async (e) => {
+  const stakeBtn = e.target.closest("[data-trade-stake]");
+  if (stakeBtn && tradeSheet) {
+    tradeSheet.stake = Number(stakeBtn.dataset.tradeStake) || 50;
+    render();
+    return;
+  }
+  const closeTrade = e.target.closest("[data-close-trade]");
+  if (closeTrade && (!e.target.closest("[data-trade-dialog]") || e.target.closest(".trade-x"))) {
+    tradeSheet = null;
+    render();
+    return;
+  }
+  const confirm = e.target.closest("[data-confirm-trade]");
+  if (confirm && tradeSheet) {
+    await executeTradeSheet();
+    return;
+  }
+  const propTrade = e.target.closest("[data-trade-prop]");
+  if (propTrade) {
+    openPropSheet(propTrade);
+    return;
+  }
+  const sideBtn = e.target.closest("[data-pick-side]");
+  if (sideBtn) {
+    openWinnerSheet(sideBtn);
+    return;
+  }
   const skip = e.target.closest("[data-skip]");
   if (skip) {
     if (director) {
@@ -1102,7 +1344,7 @@ view.addEventListener("click", async (e) => {
   const back = e.target.closest("[data-back]");
   if (back) { focusAgent = null; focusMatch = null; setTab(back.dataset.back); return; }
   const agentBtn = e.target.closest("[data-agent]");
-  if (agentBtn && !e.target.closest("[data-pick]")) {
+  if (agentBtn && !e.target.closest("[data-pick]") && !e.target.closest("[data-pick-side]") && !e.target.closest("[data-trade-prop]")) {
     try {
       const j = await api("/api/show/agents/" + encodeURIComponent(agentBtn.dataset.agent));
       focusAgent = j.agent;
@@ -1112,10 +1354,8 @@ view.addEventListener("click", async (e) => {
     } catch (ex) { err = ex.message; render(); }
     return;
   }
-  const sideBtn = e.target.closest("[data-pick-side]");
-  if (sideBtn) return doPickSide(sideBtn.dataset.pickSide, sideBtn.dataset.match);
   const matchBtn = e.target.closest("[data-match]");
-  if (matchBtn) {
+  if (matchBtn && !matchBtn.closest("[data-pick-side]") && !matchBtn.closest("[data-trade-prop]")) {
     try { await loadReplay(matchBtn.dataset.match); }
     catch (ex) { err = ex.message; render(); }
     return;
@@ -1164,6 +1404,53 @@ function targetFor(matchId) {
   if (!m) return "";
   if (m.market && m.market.targetAgentId) return m.market.targetAgentId;
   return m.seats && m.seats[0] ? m.seats[0].id : "";
+}
+
+async function executeTradeSheet() {
+  const t = tradeSheet;
+  if (!t || !me || tradeBusy) return;
+  tradeBusy = true;
+  err = "";
+  const clientRequestId = `${me.id}-${t.kind}-${t.side}-${Date.now().toString(36)}`;
+  try {
+    let j;
+    if (t.kind === "prop") {
+      j = await api("/api/show/markets/" + encodeURIComponent(t.matchId) + "/props/" + encodeURIComponent(t.propId) + "/buy", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          predictorId: me.id,
+          side: t.side,
+          stake: t.stake,
+          expectedPrice: t.price,
+          clientRequestId,
+        }),
+      });
+    } else {
+      j = await api("/api/show/markets/" + encodeURIComponent(t.matchId) + "/buy", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          predictorId: me.id,
+          agentId: t.agentId,
+          side: t.side,
+          stake: t.stake,
+          expectedPrice: t.price,
+          clientRequestId,
+        }),
+      });
+      if (live() && t.matchId === live().matchId) position = j.position;
+    }
+    me = { ...me, credits: j.credits };
+    tradeSheet = null;
+    await poll();
+  } catch (ex) {
+    err = ex.message;
+    tradeSheet = null;
+    render();
+  } finally {
+    tradeBusy = false;
+  }
 }
 
 async function doPickSide(side, matchId) {

@@ -281,6 +281,9 @@ assert(!/lmsr|credits|marketservice|simmarket/.test(engineSrc), "dice engine doe
 const appSrc = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
 assert(appSrc.includes(TEST_BADGE), "UI carries the test-market badge");
 assert(appSrc.includes("data-pick-side"), "UI offers YES and NO");
+assert(appSrc.includes("data-confirm-trade"), "a trade waits for confirmation");
+assert(appSrc.includes("data-trade-prop"), "props open the trade sheet");
+assert(appSrc.includes("No deposits, withdrawals, prizes, or cash value."), "trade sheet says the credits are not cash");
 assert(appSrc.includes("Test P&L"), "UI labels test P&L");
 assert(appSrc.includes("Not real earnings"), "settled copy is not a cash claim");
 

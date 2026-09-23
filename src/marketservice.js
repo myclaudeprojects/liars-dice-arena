@@ -11,7 +11,11 @@
 //   ROUND_STARTED   Not emitted. Round markets are a later slice.
 //   ROUND_RESOLVED  REVEAL is the engine reveal, not a round-market settlement.
 //
-// V1 trades a binary MATCH_WINNER only, and only while the match is open.
+// The match-winner contract is a binary LMSR. Each match also lists four
+// prop contracts on their own LMSR books: round 1 winner, 2+ round margin,
+// under-90-second duration, and 25+ cumulative dice. Props use Arena Credits
+// only. They lock with the match and settle from the match log before the
+// winner payout in the same ledger transaction.
 // Lock is the start signal. Settlement pays 1 Arena Credit per winning share
 // and 0 for the losing side. A void refunds remaining cost basis once.
 //
@@ -97,6 +101,74 @@ function assertRequestId(id) {
   return s;
 }
 
+function clampPropPrice(x) {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return 0.5;
+  return Math.max(0.12, Math.min(0.88, round4(n)));
+}
+
+function propSpecs(agents, winnerYes) {
+  const a = agents && agents[0];
+  if (!a) return [];
+  const base = clampPropPrice(winnerYes);
+  return [
+    {
+      id: `round-1-${a.id}`,
+      type: "round_winner",
+      title: `Will ${a.name} win Round 1?`,
+      eyebrow: "Round market",
+      targetAgentId: a.id,
+      yesPrice: base,
+    },
+    {
+      id: `margin-2-${a.id}`,
+      type: "winning_margin",
+      title: `Will ${a.name} win by 2+ rounds?`,
+      eyebrow: "Winning margin",
+      targetAgentId: a.id,
+      threshold: 2,
+      yesPrice: clampPropPrice(base - 0.16),
+    },
+    {
+      id: "duration-under-90",
+      type: "duration_under",
+      title: "Will the match end in under 90 seconds?",
+      eyebrow: "Match duration",
+      thresholdMs: 90000,
+      yesPrice: 0.55,
+    },
+    {
+      id: `dice-25-${a.id}`,
+      type: "total_dice",
+      title: `Will ${a.name} roll 25+ total dice?`,
+      eyebrow: "Performance",
+      targetAgentId: a.id,
+      threshold: 25,
+      yesPrice: 0.48,
+    },
+  ];
+}
+
+function resolveProp(prop, metrics = {}) {
+  const roundWinners = metrics.roundWinners || [];
+  const roundWins = metrics.roundWins || {};
+  const totalDiceRolled = metrics.totalDiceRolled || {};
+  if (prop.type === "round_winner") return roundWinners[0] === prop.targetAgentId;
+  if (prop.type === "winning_margin") {
+    const target = Number(roundWins[prop.targetAgentId] || 0);
+    const rest = Object.entries(roundWins)
+      .filter(([id]) => id !== prop.targetAgentId)
+      .map(([, n]) => Number(n) || 0);
+    const other = rest.length ? Math.max(...rest) : 0;
+    return metrics.winnerId === prop.targetAgentId && (target - other) >= Number(prop.threshold || 0);
+  }
+  if (prop.type === "duration_under") return Number(metrics.durationMs) < Number(prop.thresholdMs);
+  if (prop.type === "total_dice") {
+    return Number(totalDiceRolled[prop.targetAgentId] || 0) >= Number(prop.threshold || 0);
+  }
+  return false;
+}
+
 class MarketService {
   constructor(book, opts = {}) {
     this.book = book;
@@ -145,6 +217,91 @@ class MarketService {
     m.price[m.targetAgentId] = yesPx;
     if (others.length === 1) m.price[others[0].id] = round4(1 - yesPx);
     else for (const a of others) m.price[a.id] = round4(no);
+  }
+
+  syncProp(prop) {
+    const q = [prop.outcomes.YES.q, prop.outcomes.NO.q];
+    const [yes, no] = prices(q, prop.b || this.b);
+    prop.yesPrice = yes;
+    prop.noPrice = no;
+    const cents = centsPair(yes);
+    prop.yesCents = cents.yes;
+    prop.noCents = cents.no;
+  }
+
+  makeProp(spec) {
+    const q = seedBinary(clampPropPrice(spec.yesPrice), this.b);
+    return {
+      id: spec.id,
+      type: spec.type,
+      title: spec.title,
+      eyebrow: spec.eyebrow || "Match prop",
+      targetAgentId: spec.targetAgentId || null,
+      threshold: spec.threshold == null ? null : spec.threshold,
+      thresholdMs: spec.thresholdMs == null ? null : spec.thresholdMs,
+      status: "open",
+      b: this.b,
+      outcomes: {
+        YES: { id: "YES", q: q[0] },
+        NO: { id: "NO", q: q[1] },
+      },
+      holdings: {},
+      trades: [],
+      settlements: {},
+      result: null,
+      settledAt: null,
+      cashValue: 0,
+      realMoney: false,
+    };
+  }
+
+  buildProps(agents, winnerYes) {
+    return propSpecs(agents, winnerYes).map((spec) => {
+      const prop = this.makeProp(spec);
+      this.syncProp(prop);
+      return prop;
+    });
+  }
+
+  ensureProps(m) {
+    if (!m) return;
+    if (!Array.isArray(m.props) || !m.props.length) {
+      if (m.status === "settled" || m.status === "voided") {
+        m.props = Array.isArray(m.props) ? m.props : [];
+        return;
+      }
+      m.props = this.buildProps(m.agents || [], m.yesPrice || m.initialProbability || 0.5);
+      if (m.status !== "open") {
+        for (const prop of m.props) prop.status = m.status === "voided" ? "voided" : "locked";
+      }
+      return;
+    }
+    for (const prop of m.props) {
+      prop.holdings = prop.holdings || {};
+      prop.trades = prop.trades || [];
+      prop.settlements = prop.settlements || {};
+      prop.b = prop.b || m.b || this.b;
+      if (!prop.outcomes || !prop.outcomes.YES || !prop.outcomes.NO) {
+        const q = seedBinary(clampPropPrice(prop.yesPrice || 0.5), prop.b);
+        prop.outcomes = {
+          YES: { id: "YES", q: q[0] },
+          NO: { id: "NO", q: q[1] },
+        };
+        for (const pos of prop.positions || []) {
+          const outcome = pos.side === "no" ? "NO" : "YES";
+          const shares = Number(pos.contracts) || 0;
+          prop.holdings[`${pos.predictorId}|${outcome}`] = {
+            userId: pos.predictorId,
+            outcome,
+            shares: prop.status === "settled" ? 0 : shares,
+            netCostBasis: prop.status === "settled" ? 0 : (Number(pos.stake) || 0),
+            realizedPnl: 0,
+            updatedAt: pos.at || Date.now(),
+          };
+        }
+      }
+      if (prop.status !== "settled" && prop.status !== "voided") this.syncProp(prop);
+    }
   }
 
   otherId(m) {
@@ -265,6 +422,7 @@ class MarketService {
     };
     this.syncPrices(market);
     market.initialProbability = market.yesPrice;
+    market.props = this.buildProps(market.agents, market.initialProbability);
     this.markets.set(id, market);
     return this.publicMarket(market);
   }
@@ -306,6 +464,12 @@ class MarketService {
     const agents = Array.isArray(ev.agents) && ev.agents.length
       ? ev.agents
       : m.agents.map((a) => ({ id: a.id, version: "cast-v1" }));
+    for (const prop of m.props || []) {
+      if (prop.status === "open") {
+        prop.status = "locked";
+        prop.lockedAt = m.lockedAt;
+      }
+    }
     m.freeze = {
       marketId: m.matchId,
       lockTimestamp: m.lockedAt,
@@ -320,6 +484,13 @@ class MarketService {
       yesPrice: m.yesPrice,
       noPrice: m.noPrice,
       q: { YES: m.outcomes.YES.q, NO: m.outcomes.NO.q },
+      props: (m.props || []).map((p) => ({
+        id: p.id,
+        type: p.type,
+        yesPrice: p.yesPrice,
+        noPrice: p.noPrice,
+        status: p.status,
+      })),
     };
     m.updatedAt = m.lockedAt;
     return this.publicMarket(m);
@@ -653,7 +824,10 @@ class MarketService {
     if (!resultHash || resultHash.length < 32) fail("bad_result");
     if (!m.agents.some((a) => a.id === winnerId)) fail("winner_not_seated");
     const winning = winnerId === m.targetAgentId ? "YES" : "NO";
-    const users = [...new Set(Object.values(m.holdings).map((h) => h.userId))];
+    const users = [...new Set([
+      ...Object.values(m.holdings).map((h) => h.userId),
+      ...this.propHolderIds(m),
+    ])];
     const marketSnap = clone(m);
     const ledgerSnap = this.ledger.exportState();
     const predSnaps = new Map();
@@ -663,8 +837,16 @@ class MarketService {
     }
     try {
       if (official.integrityStatusSent) m.integrityStatus = official.integrityStatus;
+      if (result.propMetrics) this._applyPropSettlement(m, result.propMetrics);
       m.status = "settling";
-      const rows = users.map((userId) => {
+      const winnerUsers = [...new Set(Object.values(m.holdings).map((h) => h.userId))].filter((userId) => {
+        for (const outcome of ["YES", "NO"]) {
+          const h = this.holding(m, userId, outcome);
+          if (h && (h.shares > 1e-9 || h.netCostBasis > 1e-9 || Math.abs(h.realizedPnl) > 1e-9)) return true;
+        }
+        return false;
+      });
+      const rows = winnerUsers.map((userId) => {
         const math = this.userPnL(m, userId, winning);
         return {
           userId,
@@ -678,7 +860,7 @@ class MarketService {
       });
       if (rows.length) this.ledger.postAll(rows);
       m.settlements = m.settlements || {};
-      for (const userId of users) {
+      for (const userId of winnerUsers) {
         const math = this.userPnL(m, userId, winning);
         const snap = m.predictions[userId] || this.exposureSnap(m, userId);
         const prediction = snap.prediction || "NO_PREDICTION";
@@ -784,7 +966,10 @@ class MarketService {
     const m = this.requireMarket(matchId);
     if (m.status === "settled") return this.publicMarket(m);
     if (m.status === "voided") return this.publicMarket(m);
-    const users = [...new Set(Object.values(m.holdings).map((h) => h.userId))];
+    const users = [...new Set([
+      ...Object.values(m.holdings).map((h) => h.userId),
+      ...this.propHolderIds(m),
+    ])];
     const marketSnap = clone(m);
     const ledgerSnap = this.ledger.exportState();
     const predSnaps = new Map();
@@ -805,6 +990,21 @@ class MarketService {
           referenceId: m.matchId,
           idempotencyKey: `void:${m.matchId}:${h.userId}:${h.outcome}`,
         });
+      }
+      for (const prop of m.props || []) {
+        if (prop.status === "settled") continue;
+        for (const h of Object.values(prop.holdings || {})) {
+          const refund = round4(h.netCostBasis);
+          if (refund <= 0) continue;
+          rows.push({
+            userId: h.userId,
+            amount: refund,
+            type: "MARKET_VOID_REFUND",
+            referenceType: "prop",
+            referenceId: `${m.matchId}:${prop.id}`,
+            idempotencyKey: `voidprop:${m.matchId}:${prop.id}:${h.userId}:${h.outcome}`,
+          });
+        }
       }
       if (rows.length) this.ledger.postAll(rows);
       for (const userId of users) {
@@ -833,6 +1033,15 @@ class MarketService {
           }
           pred.credits = this.ledger.balance(userId);
         }
+      }
+      for (const prop of m.props || []) {
+        if (prop.status === "settled") continue;
+        for (const h of Object.values(prop.holdings || {})) {
+          h.shares = 0;
+          h.netCostBasis = 0;
+        }
+        prop.status = "voided";
+        prop.result = null;
       }
       m.status = "voided";
       m.voidedAt = Date.now();
@@ -926,7 +1135,389 @@ class MarketService {
       testMarket: true,
       badge: TEST_BADGE,
       you,
+      props: (m.props || []).map((prop) => this.publicProp(m, prop, predictorId)),
     };
+  }
+
+  propHolderIds(m) {
+    const ids = [];
+    for (const prop of m.props || []) {
+      for (const h of Object.values(prop.holdings || {})) ids.push(h.userId);
+    }
+    return ids;
+  }
+
+  requireProp(matchId, propId) {
+    const m = this.requireMarket(matchId);
+    const prop = (m.props || []).find((p) => p.id === String(propId || ""));
+    if (!prop) fail("no_prop");
+    return { m, prop };
+  }
+
+  propQ(prop) {
+    return [prop.outcomes.YES.q, prop.outcomes.NO.q];
+  }
+
+  propHolding(prop, userId, outcome, create) {
+    const key = `${userId}|${outcome}`;
+    if (!prop.holdings[key] && create) {
+      prop.holdings[key] = {
+        userId,
+        outcome,
+        shares: 0,
+        netCostBasis: 0,
+        realizedPnl: 0,
+        updatedAt: Date.now(),
+      };
+    }
+    return prop.holdings[key] || null;
+  }
+
+  propExposure(prop, userId) {
+    let n = 0;
+    for (const h of Object.values(prop.holdings || {})) {
+      if (h.userId === userId) n = round4(n + Math.max(0, h.netCostBasis));
+    }
+    return n;
+  }
+
+  propSide(prop, userId) {
+    const yes = this.propHolding(prop, userId, "YES");
+    const no = this.propHolding(prop, userId, "NO");
+    const yesShares = yes ? yes.shares : 0;
+    const noShares = no ? no.shares : 0;
+    let prediction = "NO_PREDICTION";
+    if (yesShares > noShares + 1e-9) prediction = "YES";
+    else if (noShares > yesShares + 1e-9) prediction = "NO";
+    return { prediction, yesShares, noShares };
+  }
+
+  propUserPnL(prop, userId, winning) {
+    let payout = 0;
+    let basis = 0;
+    let realized = 0;
+    let yesShares = 0;
+    let noShares = 0;
+    for (const outcome of ["YES", "NO"]) {
+      const h = this.propHolding(prop, userId, outcome);
+      if (!h) continue;
+      if (outcome === "YES") yesShares = h.shares;
+      else noShares = h.shares;
+      if (outcome === winning) payout = round4(payout + h.shares);
+      basis = round4(basis + h.netCostBasis);
+      realized = round4(realized + h.realizedPnl);
+    }
+    const pnl = round4(payout - basis + realized);
+    return { payout, basis, realized, pnl, yesShares, noShares };
+  }
+
+  openPropView(prop, userId) {
+    const holds = ["YES", "NO"]
+      .map((o) => this.propHolding(prop, userId, o))
+      .filter((h) => h && (h.shares > 1e-9 || h.netCostBasis > 1e-9));
+    if (!holds.length) return null;
+    const primary = holds.slice().sort((a, b) => b.shares - a.shares)[0];
+    const idx = primary.outcome === "YES" ? 0 : 1;
+    const q = this.propQ(prop);
+    const liq = primary.shares > 1e-9 ? sellValue(q, prop.b || this.b, idx, primary.shares) : 0;
+    const spot = primary.outcome === "YES" ? prop.yesPrice : prop.noPrice;
+    return {
+      predictorId: userId,
+      propId: prop.id,
+      side: primary.outcome === "YES" ? "yes" : "no",
+      outcome: primary.outcome,
+      stake: round4(primary.netCostBasis),
+      price: primary.shares ? round4(primary.netCostBasis / primary.shares) : 0,
+      contracts: round4(primary.shares),
+      shares: primary.shares,
+      markPrice: round4(spot),
+      value: round4(liq),
+      unrealized: round4(liq - primary.netCostBasis),
+      testPnl: round4(liq - primary.netCostBasis + primary.realizedPnl),
+      pnlLabel: "Test P&L",
+      settled: false,
+      won: false,
+      cashValue: 0,
+    };
+  }
+
+  settledPropView(prop, userId, math, winning) {
+    const snap = this.propSide(prop, userId);
+    const called = snap.prediction !== "NO_PREDICTION";
+    const won = called && snap.prediction === winning;
+    const primaryOutcome = snap.prediction === "NO" ? "NO" : snap.prediction === "YES" ? "YES" : (math.yesShares >= math.noShares ? "YES" : "NO");
+    const primaryShares = primaryOutcome === "YES" ? math.yesShares : math.noShares;
+    return {
+      predictorId: userId,
+      propId: prop.id,
+      side: primaryOutcome === "NO" ? "no" : "yes",
+      outcome: primaryOutcome,
+      stake: math.basis,
+      price: primaryShares ? round4(math.basis / primaryShares) : 0,
+      contracts: round4(primaryShares),
+      shares: primaryShares,
+      payout: math.payout,
+      pnl: math.pnl,
+      testPnl: math.pnl,
+      pnlLabel: "Test P&L",
+      won: called ? won : false,
+      prediction: snap.prediction,
+      settled: true,
+      markPrice: primaryOutcome === winning ? 1 : 0,
+      value: math.payout,
+      unrealized: math.pnl,
+      cashValue: 0,
+    };
+  }
+
+  propPositionFor(m, prop, predictorId) {
+    const pid = String(predictorId || "");
+    if (!/^[a-z0-9]{8,40}$/.test(pid)) return null;
+    if (prop.status === "settled" && prop.settlements && prop.settlements[pid]) {
+      return { ...prop.settlements[pid], cashValue: 0, pnlLabel: "Test P&L" };
+    }
+    return this.openPropView(prop, pid);
+  }
+
+  publicProp(m, prop, predictorId) {
+    const you = predictorId ? this.propPositionFor(m, prop, predictorId) : undefined;
+    return {
+      id: prop.id,
+      type: prop.type,
+      title: prop.title,
+      eyebrow: prop.eyebrow || "Match prop",
+      targetAgentId: prop.targetAgentId || null,
+      threshold: prop.threshold == null ? null : prop.threshold,
+      thresholdMs: prop.thresholdMs == null ? null : prop.thresholdMs,
+      status: prop.status,
+      yesPrice: prop.yesPrice,
+      noPrice: prop.noPrice,
+      yesCents: prop.yesCents,
+      noCents: prop.noCents,
+      result: prop.result || null,
+      positionCount: Object.values(prop.holdings || {}).filter((h) => h.shares > 1e-9).length,
+      you,
+      cashValue: 0,
+      realMoney: false,
+    };
+  }
+
+  peekProp(userId, propId, clientRequestId) {
+    const id = assertRequestId(clientRequestId);
+    if (!id) return null;
+    const hit = this.requests.get(`${userId}:prop:${propId}:${id}`);
+    if (!hit) return null;
+    const m = this.markets.get(hit.marketId);
+    const prop = m && (m.props || []).find((p) => p.id === propId);
+    const trade = prop ? (prop.trades || []).find((t) => t.id === hit.tradeId) : null;
+    return {
+      ok: true,
+      duplicate: true,
+      trade: trade || { id: hit.tradeId },
+      position: hit.position,
+      credits: hit.credits,
+      prop: prop && m ? this.publicProp(m, prop, userId) : null,
+      market: m ? this.publicMarket(m, userId) : null,
+      cashValue: 0,
+    };
+  }
+
+  buyProp(req) {
+    const { m, prop } = this.requireProp(req.matchId, req.propId);
+    if (m.status !== "open" || prop.status !== "open") fail("market_locked");
+    const userId = String(req.predictorId || "");
+    const requestId = assertRequestId(req.clientRequestId);
+    const dup = this.peekProp(userId, prop.id, requestId);
+    if (dup) return dup;
+    const which = String(req.side || "yes");
+    if (which !== "yes" && which !== "no") fail("bad_side");
+    const outcome = which === "yes" ? "YES" : "NO";
+    const heldYes = this.propHolding(prop, userId, "YES");
+    const heldNo = this.propHolding(prop, userId, "NO");
+    if ((heldYes && heldYes.shares > 1e-9) || (heldNo && heldNo.shares > 1e-9)) fail("already_picked_prop");
+    const idx = outcome === "YES" ? 0 : 1;
+    const q = this.propQ(prop);
+    const spot = prices(q, prop.b || this.b)[idx];
+    if (req.expectedPrice != null && Math.abs(Number(req.expectedPrice) - spot) > 0.03) fail("price_moved");
+    const stake = Number(req.stake);
+    if (!Number.isInteger(stake) || stake < this.minStake || stake > this.maxStake) fail("stake_out_of_range");
+    const shares = sharesForBudget(q, prop.b || this.b, idx, stake);
+    const raw = buyCost(q, prop.b || this.b, idx, shares);
+    const cash = Math.abs(raw - stake) <= 1e-3 ? stake : round4(raw);
+    if (!(shares > 0) || shares > this.maxSharesPerTrade) fail("size_limit");
+    if (cash > this.maxTradeCost + 1e-9) fail("size_limit");
+    if (this.propExposure(prop, userId) + cash > this.maxMarketExposure + 1e-9) fail("exposure_limit");
+    if (this.dailyVolume(userId) + cash > this.maxDailyVolume + 1e-9) fail("daily_limit");
+    if (this.ledger.balance(userId) + 1e-9 < cash) fail("insufficient_credits");
+    const before = prices(q, prop.b || this.b);
+    const nextQ = q.slice();
+    nextQ[idx] += shares;
+    const after = prices(nextQ, prop.b || this.b);
+    const trade = {
+      id: `trd_${++this.seq}`,
+      marketId: m.matchId,
+      propId: prop.id,
+      outcomeId: outcome,
+      userId,
+      side: "BUY",
+      shares,
+      costOrCredit: round4(cash),
+      averagePrice: round4(cash / shares),
+      priceBefore: round4(before[idx]),
+      priceAfter: round4(after[idx]),
+      createdAt: Date.now(),
+      clientRequestId: requestId || null,
+    };
+    const marketSnap = clone(m);
+    const pred = this.book.predictors.get(userId);
+    const predSnap = pred ? clone(pred) : null;
+    const ledgerSnap = this.ledger.exportState();
+    try {
+      this.ledger.post({
+        userId,
+        amount: -round4(cash),
+        type: "TRADE_BUY",
+        referenceType: "prop_trade",
+        referenceId: trade.id,
+        idempotencyKey: requestId ? `prop-trade:${userId}:${prop.id}:${requestId}` : "",
+      });
+      prop.outcomes.YES.q = nextQ[0];
+      prop.outcomes.NO.q = nextQ[1];
+      this.syncProp(prop);
+      const h = this.propHolding(prop, userId, outcome, true);
+      h.shares += shares;
+      h.netCostBasis = round4(h.netCostBasis + round4(cash));
+      h.updatedAt = trade.createdAt;
+      prop.trades.push(trade);
+      m.updatedAt = trade.createdAt;
+      if (pred) pred.credits = this.ledger.balance(userId);
+      const result = {
+        ok: true,
+        duplicate: false,
+        trade,
+        position: this.openPropView(prop, userId),
+        credits: this.ledger.balance(userId),
+        prop: this.publicProp(m, prop, userId),
+        market: this.publicMarket(m, userId),
+        cashValue: 0,
+      };
+      if (requestId) {
+        this.requests.set(`${userId}:prop:${prop.id}:${requestId}`, {
+          tradeId: trade.id,
+          credits: result.credits,
+          position: result.position,
+          marketId: m.matchId,
+        });
+      }
+      return result;
+    } catch (e) {
+      replaceData(m, marketSnap);
+      this.ledger.importState(ledgerSnap);
+      if (pred && predSnap) replaceData(pred, predSnap);
+      throw e;
+    }
+  }
+
+  recordPropPrediction(m, prop, userId, math, winning) {
+    const pred = this.book.predictors.get(userId);
+    const snap = this.propSide(prop, userId);
+    const called = snap.prediction !== "NO_PREDICTION";
+    const won = called && snap.prediction === winning;
+    if (!pred) return { called, won };
+    if (called) {
+      pred.picks += 1;
+      if (won) {
+        pred.correct += 1;
+        pred.streak += 1;
+        pred.bestStreak = Math.max(pred.bestStreak, pred.streak);
+      } else pred.streak = 0;
+      if (prop.targetAgentId) {
+        pred.byAgent = pred.byAgent || {};
+        const bag = pred.byAgent[prop.targetAgentId] || { picks: 0, correct: 0 };
+        bag.picks += 1;
+        if (won) bag.correct += 1;
+        pred.byAgent[prop.targetAgentId] = bag;
+      }
+    }
+    pred.pnl = round4(pred.pnl + math.pnl);
+    pred.settled = pred.settled || [];
+    pred.settled.push({
+      matchId: `${m.matchId}:${prop.id}`,
+      propId: prop.id,
+      agentId: prop.targetAgentId || null,
+      pnl: math.pnl,
+      cum: pred.pnl,
+      won: called ? won : false,
+      prediction: snap.prediction,
+      at: Date.now(),
+    });
+    const cap = this.book.careerCap || 100;
+    if (pred.settled.length > cap) pred.settled.splice(0, pred.settled.length - cap);
+    pred.credits = this.ledger.balance(userId);
+    return { called, won };
+  }
+
+  _applyPropSettlement(m, metrics = {}) {
+    for (const prop of m.props || []) {
+      if (prop.status === "settled" || prop.status === "voided") continue;
+      const yes = resolveProp(prop, metrics);
+      const winning = yes ? "YES" : "NO";
+      const users = [...new Set(Object.values(prop.holdings || {}).map((h) => h.userId))];
+      const rows = users.map((userId) => {
+        const math = this.propUserPnL(prop, userId, winning);
+        return {
+          userId,
+          amount: math.payout,
+          allowZero: true,
+          type: "MARKET_SETTLEMENT",
+          referenceType: "prop",
+          referenceId: `${m.matchId}:${prop.id}`,
+          idempotencyKey: `settleprop:${m.matchId}:${prop.id}:${userId}`,
+        };
+      });
+      if (rows.length) this.ledger.postAll(rows);
+      prop.settlements = prop.settlements || {};
+      for (const userId of users) {
+        const math = this.propUserPnL(prop, userId, winning);
+        this.recordPropPrediction(m, prop, userId, math, winning);
+        prop.settlements[userId] = this.settledPropView(prop, userId, math, winning);
+      }
+      prop.result = yes ? "yes" : "no";
+      prop.status = "settled";
+      prop.settledAt = Date.now();
+      prop.yesPrice = yes ? 1 : 0;
+      prop.noPrice = yes ? 0 : 1;
+      const cents = centsPair(prop.yesPrice);
+      prop.yesCents = cents.yes;
+      prop.noCents = cents.no;
+    }
+  }
+
+  settleProps(matchId, metrics = {}) {
+    const m = this.requireMarket(matchId);
+    if (m.status === "voided") fail("voided");
+    if (m.status !== "locked" && m.status !== "settled") fail("not_locked");
+    const users = [...new Set(this.propHolderIds(m))];
+    const marketSnap = clone(m);
+    const ledgerSnap = this.ledger.exportState();
+    const predSnaps = new Map();
+    for (const userId of users) {
+      const pred = this.book.predictors.get(userId);
+      if (pred) predSnaps.set(userId, clone(pred));
+    }
+    try {
+      this._applyPropSettlement(m, metrics);
+      m.updatedAt = Date.now();
+      return this.publicMarket(m);
+    } catch (e) {
+      replaceData(m, marketSnap);
+      this.ledger.importState(ledgerSnap);
+      for (const [userId, snap] of predSnaps) {
+        const pred = this.book.predictors.get(userId);
+        if (pred) replaceData(pred, snap);
+      }
+      throw e;
+    }
   }
 
   exportFragment() {
@@ -963,6 +1554,7 @@ class MarketService {
       raw.realMoney = false;
       raw.b = raw.b || this.b;
       if (raw.status !== "settled" && raw.status !== "voided") this.syncPrices(raw);
+      this.ensureProps(raw);
       return raw;
     }
     const agents = raw.agents || [];
@@ -1037,10 +1629,12 @@ class MarketService {
       initialProbabilitySource: raw.initialProbabilitySource || "admin_test",
     };
     if (!settled && market.status !== "voided") this.syncPrices(market);
+    this.ensureProps(market);
     return market;
   }
 }
 
 module.exports = {
   MarketService, TEST_BADGE, EVENT_MAP, readAuthoritativeResult, integrityAllowsSettlement,
+  resolveProp, propSpecs,
 };

@@ -120,6 +120,7 @@ const show = new Show({
   pickWindowMs: envNum("PICK_WINDOW_MS", 14000),
   turnDelayMs: paceMs("TURN_DELAY_MS", 2400),
   revealDelayMs: paceMs("REVEAL_DELAY_MS", 3600),
+  thinkDelayMs: envNum("THINK_DELAY_MS", process.env.SHOW_TEST_HOOK === "1" ? 0 : 1500),
   settleHoldMs: envNum("SETTLE_HOLD_MS", 12000),
   bootstrapCount: envNum("SHOW_BOOTSTRAP", 12),
   loopEnabled: process.env.SHOW_LOOP !== "0",

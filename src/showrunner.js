@@ -207,7 +207,25 @@ class Records {
   }
 }
 
-async function playExhibit({ agents, seed, matchId = null, onEvent = async () => {}, sleep = async () => {}, turnDelayMs = 0, revealDelayMs = 0, maxSteps = 900, characterOf = null }) {
+// Presentation only. Aggressive agents hold a shorter thinking beat.
+// Chaos stretches it a little. The factor never changes the chosen action.
+function thinkScale(agentId, characterOf) {
+  let ch = null;
+  try { ch = (characterOf || character)(agentId); } catch { ch = null; }
+  if (!ch || ch.aggression == null || ch.chaos == null) return 1;
+  const raw = 1.18 - Number(ch.aggression) * 0.38 + Number(ch.chaos) * 0.18;
+  return Math.max(0.72, Math.min(1.32, raw));
+}
+
+function countView(players) {
+  return (players || []).map((p) => ({
+    id: p.id,
+    dice: Array.isArray(p.dice) ? p.dice.length : (Number(p.dice) || 0),
+    alive: p.alive !== false,
+  }));
+}
+
+async function playExhibit({ agents, seed, matchId = null, onEvent = async () => {}, sleep = async () => {}, turnDelayMs = 0, revealDelayMs = 0, thinkDelayMs = 0, maxSteps = 900, characterOf = null }) {
   // Numeric seeds keep the pre-commitment mix. A 32-byte hex root uses the
   // committed dice stream and a separate agent stream.
   const seeds = resolvePlaySeeds(seed);
@@ -227,6 +245,9 @@ async function playExhibit({ agents, seed, matchId = null, onEvent = async () =>
     // Opening a hand used to fall straight into a bid. Hold the cups so a
     // spectator can see the roll before the first decision of the round.
     if (!view.currentBid) {
+      const counts = countView(match.players);
+      const rolled = [...match.log].reverse().find((e) => e.kind === "DICE_ROLLED" && e.hand === match.handNumber);
+      // Counts only. publicEvent strips the faces the engine log keeps.
       await onEvent({
         type: "ROLL",
         kind: "CUPS_DOWN",
@@ -234,8 +255,11 @@ async function playExhibit({ agents, seed, matchId = null, onEvent = async () =>
         agentId: actor.id,
         hand: match.handNumber,
         matchId,
-        pace: "normal",
-        intensity: 1,
+        counts,
+        pace: "roll",
+        intensity: 2,
+        hidden: true,
+        contract: rolled ? publicEvent(rolled) : null,
       });
       await sleep(rollDelay(timings));
     }
@@ -246,10 +270,27 @@ async function playExhibit({ agents, seed, matchId = null, onEvent = async () =>
       pace: "normal",
       intensity: intensityFor("normal"),
     });
+    const scale = thinkScale(actor.id, characterOf);
+    await onEvent({
+      type: "THINK",
+      kind: "AGENT_THINKING_STARTED",
+      hand: match.handNumber,
+      agentId: actor.id,
+      name: actor.name,
+      counts: countView(match.players),
+      pace: "thinking",
+      intensity: 2,
+      thinkScale: scale,
+      matchId,
+    });
+    const thinkStarted = Date.now();
     let played;
     try { played = await actor.act(view, rng); }
     catch (e) { played = safeFallback(view, e.message); }
     if (!played || !played.action) played = safeFallback(view, "empty");
+    const minThink = Math.round((Number(thinkDelayMs) || 0) * scale);
+    const thinkElapsed = Date.now() - thinkStarted;
+    if (minThink > thinkElapsed) await sleep(minThink - thinkElapsed);
     let trial = played;
     // Illegal moves are swapped for a legal fallback before the engine sees them.
     // The sleep is presentation. It does not choose the action.
@@ -433,6 +474,8 @@ class Show {
     // count, the verdict, and who lost the die. Zero still means "no wait".
     this.turnDelayMs = opts.turnDelayMs ?? 2400;
     this.revealDelayMs = opts.revealDelayMs ?? 3600;
+    // Extra dwell before the announcement. It does not replace the turn clock.
+    this.thinkDelayMs = opts.thinkDelayMs ?? 1500;
     this.settleHoldMs = opts.settleHoldMs ?? 12000;
     this.bootstrapCount = opts.bootstrapCount ?? 16;
     this.loopEnabled = opts.loopEnabled !== false;
@@ -680,6 +723,8 @@ class Show {
       bid: m.bid,
       narrative: m.narrative,
       thinking: m.thinking ? { agentId: m.thinking.agentId, name: m.thinking.name } : null,
+      actionStage: m.actionStage || null,
+      activeAgentId: m.activeAgentId || null,
       reveal: m.reveal,
       market: m.market ? this.market.publicMarket(m.market, predictorId) : null,
       story: m.story,
@@ -994,6 +1039,7 @@ class Show {
       matchId: m.matchId,
       turnDelayMs: this.turnDelayMs,
       revealDelayMs: this.revealDelayMs,
+      thinkDelayMs: this.thinkDelayMs,
       sleep: this.sleep,
       characterOf: (id) => this.persona(id),
       onEvent: async (ev) => {
@@ -1001,13 +1047,33 @@ class Show {
           m.thinking = null;
           m.bid = null;
           m.reveal = null;
+          m.actionStage = "roll";
+          m.activeAgentId = ev.agentId || null;
           if (ev.hand) m.round = ev.hand;
+          this._syncDice(ev.counts);
           m.narrative = {
             line: "Cups down.",
             aside: null,
             headline: null,
-            pace: "normal",
-            intensity: 1,
+            pace: "roll",
+            intensity: ev.intensity || 2,
+          };
+        } else if (ev.type === "THINK") {
+          if (ev.hand && ev.hand !== m.round) {
+            m.round = ev.hand;
+            m.bid = null;
+            m.reveal = null;
+          } else if (ev.hand) m.round = ev.hand;
+          m.actionStage = "thinking";
+          m.activeAgentId = ev.agentId || null;
+          m.thinking = { agentId: ev.agentId, name: ev.name };
+          this._syncDice(ev.counts);
+          m.narrative = {
+            line: `${ev.name} is thinking.`,
+            aside: null,
+            headline: null,
+            pace: "thinking",
+            intensity: ev.intensity || 2,
           };
         } else if (ev.type === "THINKING") {
           const newHand = ev.hand && ev.hand !== m.round;
@@ -1017,6 +1083,8 @@ class Show {
             m.reveal = null;
           }
           m.thinking = { agentId: ev.agentId, name: ev.name };
+          m.actionStage = "thinking";
+          m.activeAgentId = ev.agentId || null;
           m.narrative = {
             line: `${ev.name} is thinking.`,
             aside: null,
@@ -1026,6 +1094,8 @@ class Show {
           };
         } else if (ev.type === "BID") {
           m.thinking = null;
+          m.actionStage = "announce";
+          m.activeAgentId = ev.agentId || null;
           m.round = ev.hand;
           m.bid = { count: ev.count, face: ev.face, name: ev.name, agentId: ev.agentId, byId: ev.agentId };
           m.reveal = null;
@@ -1048,6 +1118,8 @@ class Show {
           this._markFromDice();
         } else if (ev.type === "CALL") {
           m.thinking = null;
+          m.actionStage = "call";
+          m.activeAgentId = ev.agentId || null;
           m.narrative = {
             line: `${ev.name} calls.`, aside: null, headline: "LIAR.",
             pace: "call", intensity: ev.intensity,
@@ -1064,6 +1136,8 @@ class Show {
           };
         } else if (ev.type === "REVEAL") {
           m.thinking = null;
+          m.actionStage = "reveal";
+          m.activeAgentId = ev.loserId || ev.challengerId || null;
           m.reveal = ev.reveal;
           m.narrative = {
             line: ev.headline,
@@ -1198,6 +1272,9 @@ class Show {
     };
     m.engineLog = exhibit.log;
     m.phase = "settled";
+    m.actionStage = "result";
+    m.activeAgentId = exhibit.winnerId;
+    m.thinking = null;
     this.phase = "settled";
     m.narrative = {
       line: story.title, aside: story.dek, headline: story.title,
@@ -1240,10 +1317,12 @@ class Show {
       sleep: this.sleep,
       turn: this.turnDelayMs,
       reveal: this.revealDelayMs,
+      think: this.thinkDelayMs,
     };
     this.sleep = async () => {};
     this.turnDelayMs = 0;
     this.revealDelayMs = 0;
+    this.thinkDelayMs = 0;
     const count = Math.max(0, n | 0);
     for (let i = 0; i < count; i++) {
       this.openNext({ queue: false });
@@ -1253,6 +1332,7 @@ class Show {
     this.sleep = prev.sleep;
     this.turnDelayMs = prev.turn;
     this.revealDelayMs = prev.reveal;
+    this.thinkDelayMs = prev.think;
     this.current = null;
     this.bootstrapDone = true;
     this.persist();
@@ -1269,15 +1349,17 @@ class Show {
     if (!card) return;
     this.current = card;
     this.phase = "pick";
-    const prev = { sleep: this.sleep, turn: this.turnDelayMs, reveal: this.revealDelayMs };
+    const prev = { sleep: this.sleep, turn: this.turnDelayMs, reveal: this.revealDelayMs, think: this.thinkDelayMs };
     this.sleep = async () => {};
     this.turnDelayMs = 0;
     this.revealDelayMs = 0;
+    this.thinkDelayMs = 0;
     try { await this.playOpen(); }
     finally {
       this.sleep = prev.sleep;
       this.turnDelayMs = prev.turn;
       this.revealDelayMs = prev.reveal;
+      this.thinkDelayMs = prev.think;
       this.current = null;
     }
   }

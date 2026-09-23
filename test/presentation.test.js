@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const {
   presentationOf, reactionsOf, roundCall, transition, commandFor, commandKey,
-  direct, AnimationDirector, bidWords, pressureLabel, nextHint, countFace,
+  direct, AnimationDirector, bidWords, pressureLabel, nextHint, broadcastStage, countFace,
 } = require("../public/presentation");
 const { countShown } = require("../public/motion");
 
@@ -21,6 +21,13 @@ const seats = [
 eq(presentationOf(null).state, "LOADING", "no card yet");
 eq(presentationOf({ phase: "pick", seats }).state, "PREDICTION", "pick window");
 eq(presentationOf({ phase: "live", seats, bid: null, narrative: {} }).state, "ROLLING", "cups down");
+eq(broadcastStage("ROLLING"), "roll", "roll stage");
+eq(broadcastStage("THINKING"), "thinking", "think stage");
+eq(broadcastStage("BIDDING"), "announce", "bid stage");
+eq(broadcastStage("CALL"), "call", "call stage");
+eq(broadcastStage("REVEAL"), "reveal", "reveal stage");
+eq(broadcastStage("ROUND_RESULT"), "reveal", "round result stays on the reveal");
+eq(broadcastStage("MATCH_RESULT"), "result", "match result");
 
 const thinking = {
   phase: "live",
@@ -184,6 +191,7 @@ const rollB = commandFor({ phase: "live", round: 2, seats, bid: null, reveal: nu
 eq(rollA.play, "playRoll", "cups down is a roll");
 assert(commandKey(rollA) !== commandKey(rollB), "the next hand replays the roll");
 assert(direct(rollA).fullDuration >= 1000, "the roll timeline is long enough to watch");
+assert(direct(rollA).labels.includes("cup"), "the roll timeline lifts the cup");
 assert(direct(callCmd).fullDuration >= 2000, "the liar hold is long enough to read");
 assert(direct(revealCmd).fullDuration >= 2400, "settlement outlasts the count");
 eq(direct(callCmd).frameAt(400), direct(callCmd).frameAt(400), "the same instant is the same frame");
@@ -202,5 +210,8 @@ for (const name of [".stage", ".liar-type", ".think-line", ".felt", "thinkPulse"
 assert(css.includes("prefers-reduced-motion") && css.includes("transform: none"), "reduced motion drops camera transforms");
 const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
 assert(app.includes("data-skip") && app.includes("data-state") && app.includes("syncDirector"), "watch stage is wired to the director");
+assert(app.includes("arena-shell") && app.includes("dice-tray") && app.includes("thought-orbit") && app.includes("liar-overlay"), "broadcast arena markup");
+assert(app.includes("scrollHold") && !app.includes("scrollIntoView"), "live updates do not pull the viewport");
+assert(css.includes("cupLift") && css.includes("thinkOrbit") && css.includes("translateX(-50%)"), "cups, orbit, and floating nav");
 
 console.log("presentation ok");

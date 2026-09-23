@@ -18,11 +18,24 @@ function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stri
   assert(!warm.has("athena"), "warm-up schedule holds Athena out");
   assert(CAST.filter((c) => c.id !== "athena").every((c) => warm.has(c.id)), "warm-up schedule covers the rest of the cast");
 
+  const presentationEvents = [];
   const exhibit = await playExhibit({
     agents: [makePlayer("dracula"), makePlayer("caesar")],
     seed: 42,
     sleep: async () => {},
+    onEvent: async (ev) => presentationEvents.push(ev),
   });
+  const rolls = presentationEvents.filter((e) => e.type === "ROLL");
+  assert(rolls.some((e) => Array.isArray(e.counts) && !e.reveal), "round emits a hidden roll presentation event");
+  assert(rolls.every((e) => e.counts.every((c) => typeof c.dice === "number") && !/"dice"\s*:\s*\[/.test(JSON.stringify(e))), "roll exposes counts, not hidden faces");
+  assert(rolls.every((e) => !e.contract || !/"dice"\s*:\s*\[/.test(JSON.stringify(e.contract))), "public roll contract drops faces");
+  assert(presentationEvents.some((e) => e.type === "THINK" && e.agentId), "agent emits a thinking beat before announcing");
+  const firstThink = presentationEvents.findIndex((e) => e.type === "THINK");
+  const firstDecision = presentationEvents.findIndex((e) => e.type === "BID" || e.type === "CALL");
+  assert(firstThink >= 0 && firstDecision > firstThink, "thinking precedes the first announced decision");
+  const draculaThink = presentationEvents.find((e) => e.type === "THINK" && e.agentId === "dracula");
+  const caesarThink = presentationEvents.find((e) => e.type === "THINK" && e.agentId === "caesar");
+  assert(draculaThink && caesarThink && draculaThink.thinkScale < caesarThink.thinkScale, "aggression shortens the thinking beat");
   assert(exhibit.winnerId === "dracula" || exhibit.winnerId === "caesar", "someone wins");
   assert(exhibit.log.some((e) => e.type === "challenge" || e.type === "bid" || e.type === "hand_start"), "engine log");
   const hash = resultHash({ matchId: "mx", winnerId: exhibit.winnerId, seed: 42, log: exhibit.log });

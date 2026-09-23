@@ -207,6 +207,17 @@
     return NEXT_HINT[state] || "";
   }
 
+  // CSS stage token for the broadcast arena. The state machine stays the source.
+  function broadcastStage(state) {
+    if (state === "ROLLING" || state === "ROUND_INTRO" || state === "NEXT_ROUND") return "roll";
+    if (state === "THINKING") return "thinking";
+    if (state === "BIDDING") return "announce";
+    if (state === "CALL") return "call";
+    if (state === "REVEAL" || state === "ROUND_RESULT") return "reveal";
+    if (state === "MATCH_RESULT") return "result";
+    return "live";
+  }
+
   function commandFor(match, pres) {
     const view = pres || presentationOf(match);
     const bid = match && match.bid || null;
@@ -315,11 +326,12 @@
     } else if (play === "playThinking") {
       const dur = level >= 3 ? 1100 : level >= 2 ? 900 : 720;
       segments = [
-        { id: "think", at: 0, dur, camera: level >= 2 ? "push" : "wide", primary: "actor", flags: { showThink: true, showBid: true } },
+        { id: "think", at: 0, dur, camera: level >= 2 ? "push" : "wide", primary: "actor", flags: { showThink: true, showBid: true, orbit: true } },
       ];
     } else if (play === "playRoll") {
       segments = [
-        { id: "roll", at: 0, dur: 1100, camera: "wide", primary: "dice", flags: { roll: true, showDice: true } },
+        { id: "cup", at: 0, dur: 1080, camera: "wide", primary: "dice", flags: { roll: true, showDice: true, cup: true } },
+        { id: "roll", at: 200, dur: 900, camera: "wide", primary: "dice", flags: { roll: true, showDice: true, cup: true } },
       ];
     } else if (play === "playRoundResult") {
       segments = [
@@ -409,6 +421,7 @@
     roundCall,
     pressureLabel,
     nextHint,
+    broadcastStage,
     commandFor,
     commandKey,
     direct,

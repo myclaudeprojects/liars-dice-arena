@@ -164,6 +164,15 @@
   --z-nav: 6;
   --z-toast: 8;
 
+  /* Broadcast arena. Composed from the palette so cinematic layout stays token-only. */
+  --lda-shell: var(--lda-chrome);
+  --lda-strip-bg: rgba(0, 0, 0, 0.2);
+  --lda-highlight: rgba(244, 239, 230, 0.08);
+  --lda-liar-wash: rgba(163, 50, 40, 0.28);
+  --lda-shadow-broadcast: 0 28px 80px rgba(0, 0, 0, 0.38);
+  --lda-shadow-inset: inset 0 1px 0 rgba(244, 239, 230, 0.035);
+  --lda-table-inset: inset 0 0 0 12px rgba(0, 0, 0, 0.12);
+
   /* Targets. */
   --tap: 44px;
   --tap-lg: 52px;

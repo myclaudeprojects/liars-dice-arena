@@ -36,7 +36,7 @@
   function frameKey(m) {
     if (!m) return "";
     const seats = (m.seats || []).map((s) => [s.id, s.dice || 0, s.alive === false ? 0 : 1].join(":")).join(",");
-    return [m.matchId, m.phase, m.round || 0, bidKey(m), revealKey(m), head(m), seats, priceKey(m), thinkingKey(m)].join("~");
+    return [m.matchId, m.phase, m.round || 0, m.actionStage || "", m.activeAgentId || "", bidKey(m), revealKey(m), head(m), seats, priceKey(m), thinkingKey(m)].join("~");
   }
 
   // Ones are wild for every face except ones, matching the show rules.
@@ -93,6 +93,10 @@
     }
 
     if (live.phase === "live") {
+      if (live.actionStage === "roll" && prev.actionStage !== "roll" && !rolled) {
+        beats.push({ type: "roll", agentId: live.activeAgentId || "" });
+        rolled = true;
+      }
       beats.push(...seatLosses(prev.seats, live.seats));
       const prevReveal = revealKey(prev);
       const nextReveal = revealKey(live);

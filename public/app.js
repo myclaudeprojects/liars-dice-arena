@@ -8,6 +8,10 @@ const PIPS = {
   6: [[28, 28], [72, 28], [28, 50], [72, 50], [28, 72], [72, 72]],
 };
 const view = document.querySelector("#view");
+const matchEl = document.querySelector("#match");
+const marketEl = document.querySelector("#market");
+const sheetEl = document.querySelector("#sheet");
+const liveLineEl = document.querySelector("#live-line");
 const creditsEl = document.querySelector("#credits");
 let tab = "arena";
 let snap = null;
@@ -39,7 +43,10 @@ let feedMatch = "";
 let feedLines = [];
 let enterView = true;
 let seenSnap = false;
-let painted = "";
+let pinScroll = true;
+let paintedMatch = "";
+let paintedMarket = "";
+let paintedSheet = "";
 let tallySeen = "";
 let replay = null;
 
@@ -242,13 +249,14 @@ function reducedMotion() {
 }
 
 function beatHold(beats) {
-  if (beats.some((b) => b.type === "reveal")) return 1700;
-  if (beats.some((b) => b.type === "settle")) return 1500;
-  if (beats.some((b) => b.type === "lose-die")) return 980;
-  if (beats.some((b) => b.type === "call")) return 880;
-  if (beats.some((b) => b.type === "start") || beats.some((b) => b.type === "roll")) return 820;
-  if (beats.some((b) => b.type === "bid")) return 720;
-  return 640;
+  if (beats.some((b) => b.type === "reveal")) return 2800;
+  if (beats.some((b) => b.type === "settle")) return 2200;
+  if (beats.some((b) => b.type === "lose-die")) return 1400;
+  if (beats.some((b) => b.type === "call")) return 1600;
+  if (beats.some((b) => b.type === "start") || beats.some((b) => b.type === "roll")) return 1200;
+  if (beats.some((b) => b.type === "bid")) return 1100;
+  if (beats.some((b) => b.type === "thinking")) return 900;
+  return 800;
 }
 
 function applyMotion(prev, live) {
@@ -418,9 +426,12 @@ function setTab(next) {
   clearReplay();
   clearReplayHash();
   enterView = true;
-  painted = "";
+  clearPainted();
   paintTabs();
+  pinScroll = false;
   render();
+  window.scrollTo(0, 0);
+  pinScroll = true;
   if (next === "agents" || next === "history" || next === "profile") {
     refreshLists().then(() => {
       if (tab !== next || focusAgent || focusMatch) return;
@@ -788,7 +799,7 @@ function tradeSheetMarkup() {
     : `<button type="button" class="confirm-trade lda-btn lda-btn-primary" data-confirm-trade="1">Open ${esc(tradeSheet.outcome)} position</button>`;
   const tone = tradeSheet.side === "no" ? "is-no" : "is-yes";
   return `<div class="trade-backdrop" data-close-trade="1">
-    <section class="trade-sheet lda-card" role="dialog" aria-modal="true" aria-label="Test market trade" data-trade-dialog="1">
+      <section class="trade-sheet lda-card" role="dialog" aria-modal="true" aria-label="Test market trade" data-trade-dialog="1" tabindex="-1">
       <div class="trade-grab" aria-hidden="true"></div>
       <div class="prop-head"><span>TEST MARKET</span>${close}</div>
       <h2>${esc(tradeSheet.title)}</h2>
@@ -819,7 +830,7 @@ function picker() {
       <div class="kicker lda-kicker-predict">Test market</div>
       <h1>What happens next?</h1>
       <p class="fine">Trade the winner or a match prop before the dice hit the table. Every position uses Arena Credits. They are not cash.</p>
-    </div>${marketPanel(m)}`;
+    </div>`;
 }
 
 function bidderOf(bid) {
@@ -1082,7 +1093,7 @@ function tableView(m, beats, opts) {
       </div>
       ${seatBlock(b, m, beats, frame)}
       ${hint ? `<div class="next-hint">${esc(hint)}</div>` : ""}
-      <div class="line sr" aria-live="polite">${esc(n.line || "")}</div>
+      <div class="line sr">${esc(n.line || "")}</div>
       ${feed ? `<ol class="feed">${feed}</ol>` : ""}
       ${bookBar(m, beats)}
       ${showYou ? youBlock(m, beats) : ""}
@@ -1133,7 +1144,7 @@ function seatName(id) {
   return s ? s.name : id;
 }
 
-function watch() {
+function watchStage() {
   const m = live();
   if (!m) {
     if (showState.link === "boot") return emptyState("Connecting", "Taking you to the table", "The dice show up here as soon as the show answers.");
@@ -1141,9 +1152,17 @@ function watch() {
     return emptyState("Between matches", "Nothing on the table", "The next match opens in a moment. Arena lists what's coming.");
   }
   if (flash) return `<div class="flash lda-success" role="status"><div class="kicker">Locked in</div><h1>You picked ${esc(flash)}</h1><p class="fine">Dice are coming.</p></div>`;
-  if (m.phase === "settled") return payoff() + marketPanel(m, { compact: true });
+  if (m.phase === "settled") return payoff();
   if (m.phase === "pick") return picker();
-  return watchTable() + marketPanel(m, { compact: true });
+  return watchTable();
+}
+
+function watchMarket() {
+  const m = live();
+  if (!m || flash) return "";
+  if (snap && snap.testMarkets === false) return "";
+  if (m.phase === "pick" || m.phase === "live" || m.phase === "settled") return marketPanel(m, { compact: m.phase !== "pick" });
+  return "";
 }
 
 const CREATOR_ARCHETYPES = [
@@ -1473,7 +1492,7 @@ function historyView() {
     </button>`).join("");
 }
 
-const REPLAY_HOLD = { roll: 780, bid: 860, call: 820, reveal: 1680, out: 980, settle: 2200 };
+const REPLAY_HOLD = { roll: 1200, bid: 1500, call: 2000, reveal: 2800, out: 1400, settle: 2600 };
 
 function armReplay() {
   if (!replay || !presence().replayPlays(reducedMotion())) return;
@@ -1565,7 +1584,7 @@ function kickTally() {
   }
   tallySeen = key;
   const t0 = performance.now();
-  const dur = 720;
+  const dur = 1100;
   const step = (now) => {
     if (!num.isConnected) return;
     const p = Math.min(1, (now - t0) / dur);
@@ -1575,6 +1594,91 @@ function kickTally() {
     else num.textContent = String(target);
   };
   requestAnimationFrame(step);
+}
+
+function clearPainted() {
+  paintedMatch = "";
+  paintedMarket = "";
+  paintedSheet = "";
+}
+
+function focusKey(el) {
+  const node = el && el.closest ? el.closest("[data-pick-side], [data-trade-prop], [data-sell], [data-trade-stake], [data-tag], [data-confirm-trade]") : null;
+  if (!node) return "";
+  return [
+    node.getAttribute("data-pick-side") || "",
+    node.getAttribute("data-agent") || "",
+    node.getAttribute("data-trade-prop") || "",
+    node.getAttribute("data-side") || "",
+    node.getAttribute("data-trade-stake") || "",
+    node.getAttribute("data-tag") || "",
+    node.hasAttribute("data-sell") ? "sell" : "",
+    node.hasAttribute("data-confirm-trade") ? "confirm" : "",
+  ].join("|");
+}
+
+function focusSelector(key) {
+  if (!key) return "";
+  const [side, agent, prop, propSide, stake, tag, sell, confirm] = key.split("|");
+  if (side) return `[data-pick-side="${side}"]${agent ? `[data-agent="${agent}"]` : ""}`;
+  if (prop) return `[data-trade-prop="${prop}"]${propSide ? `[data-side="${propSide}"]` : ""}`;
+  if (stake) return `[data-trade-stake="${stake}"]`;
+  if (tag) return `[data-tag="${tag}"]`;
+  if (sell) return "[data-sell]";
+  if (confirm) return "[data-confirm-trade]";
+  return "";
+}
+
+function releaseFocus(root) {
+  const active = document.activeElement;
+  if (!active || !root || !root.contains(active) || active === document.body) return "";
+  const key = focusKey(active);
+  if (active.blur) active.blur();
+  return key;
+}
+
+function restoreFocus(key) {
+  const sel = focusSelector(key);
+  if (!sel) return;
+  const next = view.querySelector(sel);
+  if (next && next.focus) next.focus({ preventScroll: true });
+}
+
+function captureScroll() {
+  const y = window.scrollY || document.documentElement.scrollTop || 0;
+  const zone = marketEl.querySelector(".market-zone");
+  const marketTop = zone ? zone.getBoundingClientRect().top : null;
+  const decision = presence().scrollHold(y, marketTop, window.innerHeight || 0);
+  return { ...decision, marketTop };
+}
+
+function restoreScroll(saved) {
+  if (!saved || !saved.hold) return;
+  const apply = () => {
+    const zone = saved.pinMarket ? marketEl.querySelector(".market-zone") : null;
+    if (zone && saved.marketTop != null) {
+      const delta = zone.getBoundingClientRect().top - saved.marketTop;
+      if (Math.abs(delta) > 1) window.scrollBy(0, delta);
+      return;
+    }
+    const y = window.scrollY || 0;
+    if (Math.abs(y - saved.y) > 1) window.scrollTo(0, saved.y);
+  };
+  apply();
+  requestAnimationFrame(apply);
+}
+
+function announceLine(text) {
+  if (!liveLineEl) return;
+  const line = text || "";
+  if (liveLineEl.textContent === line) return;
+  liveLineEl.textContent = line;
+}
+
+function paintSlot(el, html, prev) {
+  if (html === prev) return prev;
+  el.innerHTML = html;
+  return html;
 }
 
 function render() {
@@ -1592,16 +1696,36 @@ function render() {
   const arriving = enterView || (!seenSnap && !!snap);
   if (snap) seenSnap = true;
   enterView = false;
-  const body = tab === "arena" ? arena()
-    : tab === "watch" ? watch()
-    : tab === "agents" ? agentsView()
-    : tab === "history" ? historyView()
-    : profile();
-  const html = linkBanner() + body + (err ? `<div class="err lda-error" role="alert">${esc(err)}</div>` : "") + tradeSheetMarkup();
-  if (html === painted && !arriving) return;
-  painted = html;
+  const errHtml = err ? `<div class="err lda-error" role="alert">${esc(err)}</div>` : "";
+  const matchHtml = tab === "watch"
+    ? linkBanner() + watchStage() + errHtml
+    : linkBanner() + (tab === "arena" ? arena()
+      : tab === "agents" ? agentsView()
+      : tab === "history" ? historyView()
+      : profile()) + errHtml;
+  const marketHtml = tab === "watch" ? watchMarket() : "";
+  const sheetHtml = tradeSheetMarkup();
+  if (matchHtml === paintedMatch && marketHtml === paintedMarket && sheetHtml === paintedSheet && !arriving) {
+    announceLine(watching && watching.narrative && watching.narrative.line);
+    return;
+  }
+  const saved = pinScroll ? captureScroll() : null;
+  const sheetOpened = !paintedSheet && !!sheetHtml;
+  const focus = [
+    matchHtml === paintedMatch ? "" : releaseFocus(matchEl),
+    marketHtml === paintedMarket ? "" : releaseFocus(marketEl),
+    sheetHtml === paintedSheet ? "" : releaseFocus(sheetEl),
+  ].find(Boolean) || "";
   view.classList.toggle("enter", !!arriving);
-  view.innerHTML = html;
+  paintedMatch = paintSlot(matchEl, matchHtml, arriving ? "" : paintedMatch);
+  paintedMarket = paintSlot(marketEl, marketHtml, arriving ? "" : paintedMarket);
+  paintedSheet = paintSlot(sheetEl, sheetHtml, arriving ? "" : paintedSheet);
+  if (saved) restoreScroll(saved);
+  if (sheetOpened) {
+    const dialog = sheetEl.querySelector("[data-trade-dialog]");
+    if (dialog && dialog.focus) dialog.focus({ preventScroll: true });
+  } else restoreFocus(focus);
+  announceLine(watching && watching.narrative && watching.narrative.line);
   kickTally();
   paintShareCards();
 }
@@ -1763,7 +1887,10 @@ view.addEventListener("click", async (e) => {
       focusAgent = j.agent;
       tab = "agents";
       paintTabs();
+      pinScroll = false;
       render();
+      window.scrollTo(0, 0);
+      pinScroll = true;
     } catch (ex) { err = ex.message; render(); }
     return;
   }
@@ -2167,13 +2294,16 @@ async function loadReplay(id) {
   replay = { id: j.matchId || id, frames, index: presence().replayIndex(frames.length, reducedMotion()), timer: 0 };
   tab = "history";
   enterView = true;
-  painted = "";
+  clearPainted();
   tallySeen = "";
   paintTabs();
   const href = cardHref({ ...j.share, matchId: j.matchId || id });
   const next = location.pathname + href;
   if (location.pathname + location.search + location.hash !== next) window.history.replaceState(null, "", next);
+  pinScroll = false;
   render();
+  window.scrollTo(0, 0);
+  pinScroll = true;
   armReplay();
 }
 

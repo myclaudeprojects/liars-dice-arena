@@ -1,4 +1,4 @@
-const { soundOn, replayIndex, replayPlays, statusCopy, foldShow, HOLD_MS } = require("../public/presence");
+const { soundOn, replayIndex, replayPlays, statusCopy, foldShow, scrollHold, HOLD_MS } = require("../public/presence");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) {
@@ -70,5 +70,14 @@ eq(resumed.snap.live.matchId, "m2", "the new match id is the one on stage");
 
 const restart = foldShow(up, { starting: true }, 4000);
 assert(restart.apply === false && restart.snap.live.matchId === "m1" && restart.link === "down", "a restarting show keeps the last frame");
+
+const parked = scrollHold(0, 900, 700);
+assert(parked.hold === false && parked.pinMarket === false, "the top of the stage is not pinned");
+const reading = scrollHold(640, 120, 700);
+assert(reading.hold === true && reading.pinMarket === true, "a market in view keeps its place");
+const mid = scrollHold(180, 820, 700);
+assert(mid.hold === true && mid.pinMarket === true, "a scrolled table still anchors to the market");
+const noMarket = scrollHold(20, null, 700);
+assert(noMarket.hold === false, "a short page with no market does not fight the top");
 
 console.log("presence ok");

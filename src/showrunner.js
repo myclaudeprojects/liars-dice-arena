@@ -12,7 +12,7 @@ const { CAST, character, pairSchedule } = require("./characters");
 const { SimMarket, pricesFromRecords, DEFAULT_STAKE } = require("./simmarket");
 const { EVENT_MAP } = require("./marketservice");
 const { classifyPace, bidAside, revealHeadline, matchStory, shareCard } = require("./narrative");
-const { intensityFor, paceDelay, splitHold, publicEvent } = require("./contract");
+const { intensityFor, paceDelay, rollDelay, splitHold, publicEvent } = require("./contract");
 const { ShowStore } = require("./showstore");
 const { resolvePlaySeeds } = require("./randomness");
 const { MatchIntegrity } = require("./integrity");
@@ -224,6 +224,21 @@ async function playExhibit({ agents, seed, matchId = null, onEvent = async () =>
   while (!match.winnerId && steps++ < maxSteps) {
     const actor = byId[match.currentPlayer.id];
     const view = match.viewFor(actor.id);
+    // Opening a hand used to fall straight into a bid. Hold the cups so a
+    // spectator can see the roll before the first decision of the round.
+    if (!view.currentBid) {
+      await onEvent({
+        type: "ROLL",
+        kind: "CUPS_DOWN",
+        name: actor.name,
+        agentId: actor.id,
+        hand: match.handNumber,
+        matchId,
+        pace: "normal",
+        intensity: 1,
+      });
+      await sleep(rollDelay(timings));
+    }
     match.record("thinking", {
       actorId: actor.id,
       name: actor.name,
@@ -414,8 +429,10 @@ class Show {
     this.records = new Records(CAST.map((c) => c.id));
     this.sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.pickWindowMs = opts.pickWindowMs ?? 14000;
-    this.turnDelayMs = opts.turnDelayMs ?? 900;
-    this.revealDelayMs = opts.revealDelayMs ?? 1500;
+    // Spectator sport. A normal bid is readable, and a reveal outlasts the
+    // count, the verdict, and who lost the die. Zero still means "no wait".
+    this.turnDelayMs = opts.turnDelayMs ?? 2400;
+    this.revealDelayMs = opts.revealDelayMs ?? 3600;
     this.settleHoldMs = opts.settleHoldMs ?? 12000;
     this.bootstrapCount = opts.bootstrapCount ?? 16;
     this.loopEnabled = opts.loopEnabled !== false;
@@ -980,7 +997,19 @@ class Show {
       sleep: this.sleep,
       characterOf: (id) => this.persona(id),
       onEvent: async (ev) => {
-        if (ev.type === "THINKING") {
+        if (ev.type === "ROLL") {
+          m.thinking = null;
+          m.bid = null;
+          m.reveal = null;
+          if (ev.hand) m.round = ev.hand;
+          m.narrative = {
+            line: "Cups down.",
+            aside: null,
+            headline: null,
+            pace: "normal",
+            intensity: 1,
+          };
+        } else if (ev.type === "THINKING") {
           const newHand = ev.hand && ev.hand !== m.round;
           if (newHand) {
             m.round = ev.hand;

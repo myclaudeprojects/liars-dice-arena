@@ -100,6 +100,8 @@ assert(ui.cardClass("result") === "lda-card lda-result", "result banner classes"
 assert(ui.liveBadge("Live", {}).includes("lda-badge-live") && ui.liveBadge("Final", { final: true }).includes("lda-badge-final"), "live and final badges");
 assert(ui.marketBadge("TEST MARKET").includes("test-badge") && ui.marketBadge("TEST MARKET").includes("lda-badge-market"), "test market badge");
 
+assert(html.includes('id="match"') && html.includes('id="market"') && html.includes('id="sheet"'), "watch paints the table, market, and sheet apart");
+assert(html.includes('id="live-line"'), "match lines announce from a stable node");
 assert(html.includes("tokens.css"), "page loads tokens");
 assert(html.includes("primitives.css"), "page loads primitives");
 assert(html.indexOf("ui.js") < html.indexOf("app.js"), "helpers load before the app");
@@ -109,6 +111,8 @@ assert(appJs.includes("brand-title") && appJs.includes("market-identity"), "bran
 assert(appJs.includes("data-motion"), "motion language reaches the seat");
 assert(primitives.includes(".lda-emblem") && primitives.includes(".lda-palette"), "emblem and palette primitives");
 assert(primitives.includes("lda-choice-yes"), "market controls stay on the prediction treatment");
+assert(appJs.includes("scrollHold") && !appJs.includes("scrollIntoView"), "live updates do not pull the viewport");
+assert(appJs.includes("preventScroll"), "restored focus does not scroll");
 
 assert(!/#[0-9a-fA-F]{3,8}/.test(appCss), "app.css has no one-off hex");
 assert(!appCss.includes("rgba("), "app.css has no one-off rgba");

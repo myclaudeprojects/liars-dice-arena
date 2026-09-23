@@ -220,6 +220,7 @@
       name: view.actorId ? seatName(match, view.actorId) : "",
       bidKey,
       revealKey,
+      round: match && match.round || 0,
       winnerId: view.winnerId || (match && match.oracle && match.oracle.winnerId) || "",
     };
     if (match && match.phase === "settled") return { ...base, play: "playMatchResult" };
@@ -236,7 +237,7 @@
 
   function commandKey(cmd) {
     if (!cmd) return "";
-    return [cmd.play, cmd.actorId || "", cmd.intensity, cmd.bidKey || "", cmd.revealKey || "", cmd.winnerId || "", cmd.elimination ? 1 : 0].join("|");
+    return [cmd.play, cmd.actorId || "", cmd.intensity, cmd.bidKey || "", cmd.revealKey || "", cmd.winnerId || "", cmd.elimination ? 1 : 0, cmd.round || 0].join("|");
   }
 
   const MOTION_FLAGS = { tumble: true, roll: true };
@@ -283,42 +284,42 @@
     let segments;
     if (play === "playCall" && level >= 4) {
       segments = [
-        { id: "darken", at: 0, dur: 180, camera: "wide", primary: "call", flags: { dim: true, showBid: true, showLiar: false } },
-        { id: "focus-caller", at: 140, dur: 200, camera: "caller", primary: "call", flags: { dim: true, showBid: true } },
-        { id: "liar", at: 320, dur: 240, camera: "caller", primary: "liar", flags: { dim: true, showBid: true, showLiar: true } },
-        { id: "hold", at: 540, dur: 220, camera: "caller", primary: "liar", flags: { dim: true, showBid: true, showLiar: true } },
+        { id: "darken", at: 0, dur: 240, camera: "wide", primary: "call", flags: { dim: true, showBid: true, showLiar: false } },
+        { id: "focus-caller", at: 160, dur: 280, camera: "caller", primary: "call", flags: { dim: true, showBid: true } },
+        { id: "liar", at: 340, dur: 520, camera: "caller", primary: "liar", flags: { dim: true, showBid: true, showLiar: true } },
+        { id: "hold", at: 820, dur: 1400, camera: "caller", primary: "liar", flags: { dim: true, showBid: true, showLiar: true } },
       ];
     } else if (play === "playReveal") {
-      const resultDur = level >= 5 ? 420 : 260;
+      const resultDur = level >= 5 ? 1400 : 1000;
       segments = [
-        { id: "dice-focus", at: 0, dur: 180, camera: "dice", primary: "dice", flags: { dim: true, showDice: true, showLiar: false } },
-        { id: "tumble", at: 160, dur: 320, camera: "dice", primary: "dice", flags: { showDice: true, tumble: true, dim: true } },
-        { id: "count", at: 480, dur: 340, camera: "dice", primary: "dice", flags: { showDice: true, showCount: true, dim: false } },
-        { id: "verdict", at: 820, dur: 260, camera: "dice", primary: "result", flags: { showDice: true, showCount: true, showVerdict: true } },
-        { id: "react", at: 1060, dur: 240, camera: level >= 5 ? "pullback" : "dice", primary: "result", flags: { showDice: true, showCount: true, showVerdict: true, showReaction: true } },
-        { id: "result", at: 1280, dur: resultDur, camera: "pullback", primary: "result", flags: { showDice: true, showCount: true, showVerdict: true, showReaction: true, showResult: true } },
+        { id: "dice-focus", at: 0, dur: 200, camera: "dice", primary: "dice", flags: { dim: true, showDice: true, showLiar: false } },
+        { id: "tumble", at: 160, dur: 400, camera: "dice", primary: "dice", flags: { showDice: true, tumble: true, dim: true } },
+        { id: "count", at: 520, dur: 480, camera: "dice", primary: "dice", flags: { showDice: true, showCount: true, dim: false } },
+        { id: "verdict", at: 860, dur: 420, camera: "dice", primary: "result", flags: { showDice: true, showCount: true, showVerdict: true } },
+        { id: "react", at: 1240, dur: 380, camera: level >= 5 ? "pullback" : "dice", primary: "result", flags: { showDice: true, showCount: true, showVerdict: true, showReaction: true } },
+        { id: "result", at: 1580, dur: resultDur, camera: "pullback", primary: "result", flags: { showDice: true, showCount: true, showVerdict: true, showReaction: true, showResult: true } },
       ];
     } else if (play === "playBid" && level >= 3) {
       segments = [
-        { id: "push", at: 0, dur: 160, camera: "push", primary: "bid", flags: { showBid: true, punch: true } },
-        { id: "bid", at: 120, dur: 220, camera: "push", primary: "bid", flags: { showBid: true, punch: true } },
+        { id: "push", at: 0, dur: 280, camera: "push", primary: "bid", flags: { showBid: true, punch: true } },
+        { id: "bid", at: 200, dur: 700, camera: "push", primary: "bid", flags: { showBid: true, punch: true } },
       ];
     } else if (play === "playBid" && level >= 2) {
       segments = [
-        { id: "bid", at: 0, dur: 240, camera: "wide", primary: "bid", flags: { showBid: true, punch: true } },
+        { id: "bid", at: 0, dur: 880, camera: "wide", primary: "bid", flags: { showBid: true, punch: true } },
       ];
     } else if (play === "playBid") {
       segments = [
-        { id: "bid", at: 0, dur: 180, camera: "wide", primary: "bid", flags: { showBid: true } },
+        { id: "bid", at: 0, dur: 640, camera: "wide", primary: "bid", flags: { showBid: true } },
       ];
     } else if (play === "playThinking") {
-      const dur = level >= 3 ? 360 : level >= 2 ? 280 : 180;
+      const dur = level >= 3 ? 1100 : level >= 2 ? 900 : 720;
       segments = [
         { id: "think", at: 0, dur, camera: level >= 2 ? "push" : "wide", primary: "actor", flags: { showThink: true, showBid: true } },
       ];
     } else if (play === "playRoll") {
       segments = [
-        { id: "roll", at: 0, dur: 420, camera: "wide", primary: "dice", flags: { roll: true, showDice: true } },
+        { id: "roll", at: 0, dur: 1100, camera: "wide", primary: "dice", flags: { roll: true, showDice: true } },
       ];
     } else if (play === "playRoundResult") {
       segments = [

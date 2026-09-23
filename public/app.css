@@ -1,6 +1,11 @@
 /* Tokens live in tokens.css. This file is layout, type roles, and match motion. */
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--lda-bg); color: var(--lda-text); font-family: var(--lda-font-sans); }
+html {
+  scroll-padding-top: calc(64px + env(safe-area-inset-top));
+  scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  overflow-anchor: none;
+}
 body { min-height: 100dvh; overflow-x: clip; }
 button, input { font: inherit; color: inherit; }
 button { cursor: pointer; touch-action: manipulation; }
@@ -30,6 +35,8 @@ button { cursor: pointer; touch-action: manipulation; }
   white-space: nowrap;
 }
 #view { max-width: 480px; margin: 0 auto; padding: 16px 16px 108px; }
+#match, #market { overflow-anchor: none; }
+#market:empty, #sheet:empty { display: none; }
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-nav);
   display: grid; grid-template-columns: repeat(5, 1fr);
@@ -161,6 +168,7 @@ button { cursor: pointer; touch-action: manipulation; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+#live-line.sr { position: fixed; top: 0; left: 0; }
 .slate { display: flex; flex-direction: column; gap: 8px; }
 .upcard {
   background: var(--lda-surface); border: 1px solid var(--lda-line); border-radius: var(--radius-md); padding: 12px;
@@ -246,7 +254,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 .table .seat.marked .mark { box-shadow: inset 0 0 0 2px var(--lda-live); }
 .table .seat.cool { opacity: .48; }
 .table .seat.out { opacity: .38; }
-.table .seat.hit { animation: seatHit .4s ease; }
+.table .seat.hit { animation: seatHit .6s ease; }
 @keyframes seatHit {
   0%, 100% { transform: none; }
   30% { transform: translateX(-3px); }
@@ -254,7 +262,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 }
 .dice-row { position: relative; flex-wrap: nowrap; min-height: 28px; }
 .die { transform: translateZ(0); }
-.dice-row.shake { animation: cupRow .62s ease-in-out both; }
+.dice-row.shake { animation: cupRow 1.05s ease-in-out both; }
 @keyframes cupRow {
   0%, 100% { transform: translateX(0) rotate(0); }
   18% { transform: translateX(-7px) rotate(-7deg); }
@@ -262,7 +270,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   54% { transform: translateX(-5px) rotate(-4deg); }
   72% { transform: translateX(4px) rotate(3deg); }
 }
-.die.shake { animation: cup .62s ease-in-out both; animation-delay: var(--d, 0ms); }
+.die.shake { animation: cup 1.05s ease-in-out both; animation-delay: var(--d, 0ms); }
 @keyframes cup {
   0%, 100% { transform: translateX(0) rotate(0); }
   20% { transform: translateX(-2px) rotate(-16deg); }
@@ -270,7 +278,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   60% { transform: translateX(-1px) rotate(-8deg); }
   80% { transform: translateX(1px) rotate(6deg); }
 }
-.die.tumble { animation: tumble .48s var(--ease-standard) both; animation-delay: var(--d, 0ms); }
+.die.tumble { animation: tumble .72s var(--ease-standard) both; animation-delay: var(--d, 0ms); }
 @keyframes tumble {
   0% { opacity: 0; transform: translateY(-16px) rotate(-150deg); }
   60% { opacity: 1; transform: translateY(2px) rotate(10deg); }
@@ -279,8 +287,8 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 .die.out { animation: shatter .5s ease forwards; }
 .die.back.out { position: absolute; right: 0; top: 0; }
 .die.tumble.out {
-  animation: tumble .42s var(--ease-standard) both, shatter .45s ease forwards;
-  animation-delay: var(--d, 0ms), calc(var(--d, 0ms) + 860ms);
+  animation: tumble .64s var(--ease-standard) both, shatter .55s ease forwards;
+  animation-delay: var(--d, 0ms), calc(var(--d, 0ms) + 1100ms);
 }
 @keyframes shatter {
   0% { opacity: 1; transform: none; }
@@ -304,7 +312,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 .bidchip .face { font-size: 16px; }
 .bidchip .by { font-family: var(--lda-font-sans); font-size: 12px; letter-spacing: 0; color: var(--lda-ink-muted); }
 .bidchip .prev { font-family: var(--lda-font-sans); font-size: 13px; color: var(--lda-ink-faint); text-decoration: line-through; }
-.bidchip.pop { animation: pop .38s var(--ease-emphasis) both; }
+.bidchip.pop { animation: pop .55s var(--ease-emphasis) both; }
 @keyframes pop {
   0% { opacity: 0; transform: scale(.84); }
   62% { opacity: 1; transform: scale(1.06); }
@@ -312,7 +320,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 }
 .bidchip.liar { background: var(--lda-live-fill); color: var(--lda-text); }
 .bidchip.liar .by, .bidchip.liar .prev { color: var(--lda-on-live); }
-.bidchip.slam { animation: slam .42s ease-out both; }
+.bidchip.slam { animation: slam .7s ease-out both; }
 @keyframes slam {
   0% { transform: scale(1.16) rotate(-2deg); }
   45% { transform: scale(.96) rotate(0deg); }
@@ -320,7 +328,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 }
 .slam-flash {
   position: absolute; inset: -6px; border-radius: var(--radius-lg); pointer-events: none;
-  background: var(--lda-live-flash); animation: flash .42s ease-out both;
+  background: var(--lda-live-flash); animation: flash .7s ease-out both;
 }
 @keyframes flash {
   0% { opacity: 0; }
@@ -492,7 +500,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 .arena-seat[data-react="victory"] { box-shadow: inset 0 0 0 1px var(--lda-gold-line-strong); }
 @keyframes thinkPulse { 50% { transform: translateY(-2px); } }
 .felt {
-  position: relative; min-height: 168px; border-radius: var(--radius-xl); padding: 16px 12px 12px;
+  position: relative; min-height: 248px; border-radius: var(--radius-xl); padding: 16px 12px 12px;
   background:
     radial-gradient(ellipse at 50% 32%, var(--lda-gold-wash), transparent 62%),
     var(--lda-felt);
@@ -514,7 +522,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   margin-top: 4px; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--lda-gold);
 }
 .bid-banner.quiet .bid-words { font-size: clamp(18px, 5.4vw, 26px); color: var(--lda-text-muted); }
-.bid-banner.pop { animation: pop 0.38s var(--ease-emphasis) both; }
+.bid-banner.pop { animation: pop 0.55s var(--ease-emphasis) both; }
 .think-line {
   font-family: var(--lda-font-display); font-weight: 680; letter-spacing: -0.03em; line-height: 1;
   font-size: var(--type-display-md); margin-bottom: 6px;
@@ -547,7 +555,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 .result-seats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 8px 0 4px; }
 .result-seats .arena-seat { display: flex; gap: 8px; align-items: center; text-align: left; padding: 8px; border-radius: var(--radius-md); background: var(--lda-surface); border: 1px solid var(--lda-line); }
 @media (max-height: 700px) {
-  .felt { min-height: 128px; padding: 12px 10px 10px; }
+  .felt { min-height: 188px; padding: 12px 10px 10px; }
   .liar-type { font-size: clamp(56px, 18vw, 80px); }
   .bid-words { font-size: clamp(28px, 8vw, 40px); }
 }
@@ -556,6 +564,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   margin-top: var(--space-3);
   padding: var(--space-4);
   background: var(--lda-chrome);
+  scroll-margin-top: calc(64px + env(safe-area-inset-top));
 }
 .market-zone-head {
   display: flex;

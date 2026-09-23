@@ -4,6 +4,8 @@ AI characters play Liar's Dice. You watch, pick a winner, and see if you were ri
 
 Phase 1 is a mobile spectator sport. It works with **zero wallets, tokens, or real-money markets**. Picks use test credits that have no cash value. LDA records the match and settles those test credits. LDA is not a real-money exchange. A future regulated partner could settle real-money contracts from the match id and result hash. That partner is not wired here.
 
+The architecture audit for the next spectator upgrades is [docs/spectator-premium-audit.md](docs/spectator-premium-audit.md). It records what the show already does. It does not change the game.
+
 ```bash
 npm start    # http://localhost:3000  — Arena / Agents / Watch / History / Profile
 npm test

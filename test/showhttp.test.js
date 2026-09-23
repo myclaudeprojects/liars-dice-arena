@@ -142,11 +142,14 @@ function req(method, url, body) {
     assert(created.json.identity.visualIdentity && created.json.identity.visualIdentity.primaryColor, "create returns visual DNA");
     const concepts = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/concepts", { count: 4 });
     assert(concepts.status === 200 && concepts.json.concepts.length >= 3 && concepts.json.concepts.length <= 5, "concepts are 3 to 5");
-    assert(concepts.json.concepts.every((c) => c.emblemSvg && c.title && c.tagline && c.visualIdentity), "concept cards carry emblem, title, and palette");
-    const locked = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/select", {
-      conceptId: concepts.json.concepts[0].id,
+    assert(concepts.json.concepts.every((c) => c.emblemSvg && c.pfpSvg && c.pfpSvg.includes("viewBox=\"0 0 1024 1024\"") && c.title && c.tagline && c.visualIdentity), "concept cards carry a square pfp, title, and palette");
+    const portraits = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/pfp-concepts", { count: 4, vary: "all" });
+    assert(portraits.status === 200 && portraits.json.concepts.length >= 3 && portraits.json.concepts.length <= 5, "pfp concepts are 3 to 5");
+    const locked = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/pfp-select", {
+      conceptId: portraits.json.concepts[0].id,
     });
     assert(locked.status === 200 && locked.json.brand.brandVersion === "v1" && locked.json.brand.generation.status === "READY", "select locks brand v1");
+    assert(locked.json.brand.primaryPfpAssetId && locked.json.brand.assets.pfpPortrait && locked.json.brand.pfpStyleVersion === "lda-pfp-v1", "canonical pfp is stored");
     const castAfter = await req("GET", base + "/api/show/agents");
     const made = castAfter.json.agents.find((a) => a.id === created.json.agent.id);
     assert(made && made.roster === "user" && made.brand && made.brand.title && made.playable, "agents list exposes the new competitor");
@@ -154,7 +157,17 @@ function req(method, url, body) {
     const emblem = await req("GET", base + "/api/show/agents/" + created.json.agent.id + "/emblem.svg");
     assert(emblem.status === 200 && emblem.body.includes("<svg"), "emblem is an svg, not an image model");
     const assets = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/assets", {});
-    assert(assets.status === 501 && assets.json.status === "DRAFT", "portrait pack stays deferred");
+    assert(assets.status === 200 && assets.json.assetType === "PFP_PORTRAIT" && assets.json.assets.avatar48.includes("size=48") && assets.json.assets.avatar96.includes("size=96"), "assets derives avatar sizes");
+    assert(assets.json.assets.heroPortrait == null && assets.json.deferred.includes("HERO_ART"), "hero cards stay deferred");
+    const face = await req("GET", base + "/api/show/agents/" + created.json.agent.id + "/pfp.svg?size=96");
+    const faceSmall = await req("GET", base + "/api/show/agents/" + created.json.agent.id + "/pfp.svg?size=48");
+    assert(face.status === 200 && face.body.includes("viewBox=\"0 0 1024 1024\"") && face.body.includes("width=\"96\""), "pfp route is square svg");
+    const paths = (svg) => [...svg.matchAll(/\sd="([^"]+)"/g)].map((m) => m[1]).join("|");
+    assert(paths(face.body) === paths(faceSmall.body), "48 and 96 are the same drawing");
+    const houseFace = await req("GET", base + "/api/show/agents/dracula/pfp.svg?size=48");
+    assert(houseFace.status === 200 && houseFace.body.includes("data-asset=\"PFP_PORTRAIT\""), "house cast can render a pfp");
+    const brandDoc = await req("GET", base + "/api/show/agents/" + created.json.agent.id + "/brand");
+    assert(brandDoc.json.brand.primaryPfpAssetId && brandDoc.json.brand.assets.avatar320.includes("size=320"), "brand document names the pfp and avatar sizes");
     const appJs = await req("GET", base + "/static/app.js");
     assert(appJs.status === 200 && appJs.body.includes("Create agent") && appJs.body.includes("/api/show/agents/brand/create"), "agents UI exposes create");
     assert(!/usdc|wallet|\$/i.test(replay.json.share.text), "share text is not a cash pitch");

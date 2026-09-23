@@ -59,6 +59,10 @@ function signatures(concepts) {
   eq(new Set(titles).size, titles.length, "concepts use different titles");
   for (const concept of conceptsA.concepts) {
     assert(concept.emblemSvg.includes("<svg"), "svg emblem");
+    assert(concept.assetType === "PFP_PORTRAIT", "concept is a pfp");
+    assert(concept.pfpSvg.includes('viewBox="0 0 1024 1024"'), "square pfp");
+    assert(!/<text[\s>]/.test(concept.pfpSvg), "portrait has no baked text");
+    assert(concept.pfp && concept.pfp.quality && concept.pfp.quality.ok, "portrait passes the quality filter");
     assert(!SEED_BRANDS.some((seed) => titlesTooClose(seed.title, concept.title)), "title misses the house");
     assert(!SEED_BRANDS.some((seed) => seed.visualIdentity.emblem === concept.emblem), "emblem misses the house");
     assert(!SEED_BRANDS.some((seed) => paletteNear(seed, { visualIdentity: concept.visualIdentity })), "palette misses the house");
@@ -81,6 +85,21 @@ function signatures(concepts) {
   eq(locked.brand.generation.status, "READY", "ready");
   eq(locked.brand.title, picked.title, "selected title is canonical");
   eq(locked.brand.assets.emblem, "/api/show/agents/" + a.agent.id + "/emblem.svg", "emblem url");
+  eq(locked.brand.primaryPfpAssetId, "pfp_" + a.agent.id + "_" + picked.id, "canonical pfp id");
+  eq(locked.brand.pfpStyleVersion, "lda-pfp-v1", "pfp style version");
+  eq(locked.brand.assets.pfpPortrait, "/api/show/agents/" + a.agent.id + "/pfp.svg", "pfp url");
+  eq(locked.brand.assets.avatar48, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=48", "48 derived");
+  eq(locked.brand.assets.avatar96, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=96", "96 derived");
+  eq(locked.brand.assets.heroPortrait, null, "hero art stays deferred");
+  assert(locked.brand.avatarCrop.method === "uniform-scale", "avatars scale the master");
+  const { pathData, renderPfp } = require("../src/pfp");
+  const served = showA.pfpSvgFor(a.agent.id, 48);
+  const master = showA.pfpSvgFor(a.agent.id, 512);
+  eq(pathData(served), pathData(master), "48 and 512 share the face");
+  eq(pathData(served), pathData(renderPfp(locked.brand.pfpRecipe, { size: 48, nonce: "x" })), "served portrait is the locked recipe");
+  const touched = showB.generateConcepts(b.agent.id, { vary: "expression" });
+  eq(touched.concepts[0].title, conceptsB.concepts[0].title, "expression keeps the identity");
+  assert(pathData(touched.concepts[0].pfpSvg) !== pathData(conceptsB.concepts[0].pfpSvg), "expression changes the face");
   assert(locked.seated, "guest enters the slate");
   assert(showA.upcoming.some((m) => m.seats.some((s) => s.id === a.agent.id)), "upcoming card");
   assert(showA.agentList().some((row) => row.id === a.agent.id && row.roster === "user" && row.brand.title === picked.title), "list");
@@ -112,8 +131,10 @@ function signatures(concepts) {
   assert(app.includes("Create agent"), "agents tab labels the action");
   assert(app.includes("data-create-agent"), "empty and list states can open the wizard");
   assert(app.includes("/api/show/agents/brand/create"), "wizard calls create");
-  assert(app.includes("/brand/concepts"), "wizard calls concepts");
-  assert(app.includes("/brand/select"), "wizard calls select");
+  assert(app.includes("/brand/pfp-concepts"), "wizard calls pfp concepts");
+  assert(app.includes("/brand/pfp-select"), "wizard calls pfp select");
+  assert(app.includes("Regenerate all"), "wizard can regenerate portraits");
+  assert(app.includes("pfp-frame"), "wizard shows square portraits");
 
   console.log("brandcreate ok");
 })().catch((e) => {

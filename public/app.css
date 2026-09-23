@@ -764,8 +764,51 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 }
 .concept-card.is-selected { box-shadow: inset 0 0 0 1px var(--lda-gold); }
 .concept-top { display: flex; align-items: center; gap: var(--space-3); }
-.concept-emblem { width: 48px; height: 48px; flex: 0 0 auto; }
-.concept-emblem svg { width: 48px; height: 48px; display: block; }
+.concept-name { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.concept-tag { display: block; color: var(--lda-text-secondary); font-size: var(--type-ui); line-height: 1.35; }
+.concept-emblem { width: 28px; height: 28px; flex: 0 0 auto; }
+.concept-emblem svg { width: 28px; height: 28px; display: block; }
+.pfp-frame {
+  display: block;
+  width: min(100%, 440px);
+  aspect-ratio: 1;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--lda-avatar-bg);
+  box-shadow: inset 0 0 0 1px var(--lda-line);
+}
+.pfp-frame svg { width: 100%; height: 100%; display: block; }
+.pfp-select {
+  font-size: var(--type-meta);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lda-gold);
+}
+.pfp-sizes { display: flex; align-items: flex-end; gap: var(--space-3); }
+.pfp-mini {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--lda-avatar-bg);
+  border: 1px solid var(--lda-line);
+  overflow: hidden;
+}
+.pfp-mini svg { width: 100%; height: 100%; display: block; }
+.pfp-mini.is-96 { width: 96px; height: 96px; }
+.agent-pfp {
+  width: min(100%, 280px);
+  height: auto;
+  aspect-ratio: 1;
+  display: block;
+  margin: 0 auto var(--space-3);
+  border-radius: 18px;
+  object-fit: cover;
+  background: var(--lda-avatar-bg);
+  border: 1px solid var(--lda-line);
+  box-shadow: var(--lda-shadow-2);
+}
+.agent-hero .pfp-sizes { justify-content: center; margin-bottom: var(--space-3); }
 .swatches { display: flex; gap: var(--space-1); }
 .swatch {
   width: 14px;

@@ -85,6 +85,11 @@ assert(dracula.includes("lda-avatar"), "avatar shell class");
 assert(!dracula.includes("data-agent"), "avatar does not steal agent clicks");
 const guest = ui.avatar("Guest", 12);
 assert(guest.includes("--agent-accent:hsl(12 42% 58%)"), "unknown hue still paints a shell");
+assert(guest.includes("lda-avatar-glyph"), "missing pfp falls back to the letter shell");
+const photo = ui.avatar("Vesper", 200, "u_vesper", { src: "/api/show/agents/u_vesper/pfp.svg?size=96", size: 96 });
+assert(photo.includes("lda-pfp") && photo.includes("width=\"96\"") && !photo.includes("lda-avatar-glyph"), "pfp url replaces the letter");
+const bogus = ui.avatar("Vesper", 200, "u_vesper", { src: "https://example.com/face.png" });
+assert(bogus.includes("lda-avatar-glyph"), "outside portrait urls stay on the letter");
 
 const yes = ui.choice({ side: "yes", price: "62¢", detail: "Dracula wins this match", data: { "pick-side": "yes" } });
 assert(yes.includes("lda-choice-yes") && yes.includes(">YES<") && yes.includes("data-pick-side=\"yes\""), "yes choice");

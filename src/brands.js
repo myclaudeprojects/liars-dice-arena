@@ -4,10 +4,12 @@
 // and never replaces an earlier version, so a settled match can still render
 // the brand that was active when it was played.
 //
-// Portrait generation is deferred. Emblems are monochrome SVG marks.
+// Emblems are monochrome SVG marks. PFP portraits are procedural squares
+// (src/pfp.js), derived into avatar sizes. Hero cards stay pending.
 // Similarity embeddings are not computed; palette and title checks are local.
 
 const { CAST } = require("./characters");
+const { assetUrls, PFP_STYLE_VERSION, ASSET_TYPE } = require("./pfp");
 
 const HOUSE_STYLE_VERSION = "lda-house-v1";
 const PROMPT_VERSION = "agent-brand-prompt-v1";
@@ -97,7 +99,7 @@ function titlesTooClose(a, b) {
   return na.includes(nb) || nb.includes(na);
 }
 
-function generationStamp({ status = "READY", at = null, modelVersion = "seed-canonical-v1" } = {}) {
+function generationStamp({ status = "READY", at = null, modelVersion = "seed-canonical-v1", assetStatus = null } = {}) {
   const stamp = at || new Date().toISOString();
   return {
     houseStyleVersion: HOUSE_STYLE_VERSION,
@@ -114,6 +116,7 @@ function generationStamp({ status = "READY", at = null, modelVersion = "seed-can
       victoryCard: "PENDING",
       defeatCard: "PENDING",
       shareTemplate: "PENDING",
+      ...(assetStatus || {}),
     },
   };
 }
@@ -585,7 +588,7 @@ class BrandBook {
   publicBrand(brand) {
     if (!brand) return null;
     const visual = brand.visualIdentity;
-    return {
+    const view = {
       agentId: brand.agentId,
       brandVersion: brand.brandVersion,
       name: brand.name,
@@ -601,7 +604,29 @@ class BrandBook {
       facialAttitude: visual.facialAttitude,
       motionLanguage: visual.motionLanguage,
       status: brand.generation.status,
+      pfpUrl: null,
+      pfpAssetType: null,
+      primaryPfpAssetId: brand.primaryPfpAssetId || null,
+      pfpStyleVersion: brand.pfpStyleVersion || null,
+      avatarUrl: null,
+      avatarSizes: null,
     };
+    if (visual.primaryColor) {
+      const urls = assetUrls(brand.agentId);
+      view.pfpUrl = (brand.assets && brand.assets.pfpPortrait) || urls.master;
+      view.pfpAssetType = ASSET_TYPE;
+      view.primaryPfpAssetId = brand.primaryPfpAssetId || `pfp_${brand.agentId}_canonical`;
+      view.pfpStyleVersion = brand.pfpStyleVersion || PFP_STYLE_VERSION;
+      view.avatarUrl = (brand.assets && brand.assets.avatar) || urls.avatar;
+      view.avatarSizes = {
+        48: (brand.assets && brand.assets.avatar48) || urls.sizes["48"],
+        96: (brand.assets && brand.assets.avatar96) || urls.sizes["96"],
+        160: (brand.assets && brand.assets.avatar160) || urls.sizes["160"],
+        320: (brand.assets && brand.assets.avatar320) || urls.sizes["320"],
+        512: (brand.assets && brand.assets.avatar512) || urls.sizes["512"],
+      };
+    }
+    return view;
   }
 
   publicOf(agentId, brandVersion) {

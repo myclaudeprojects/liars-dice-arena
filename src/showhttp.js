@@ -65,6 +65,18 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ok: true, brand: show.brandView(decodeURIComponent(brandGet[1])) });
       return true;
     }
+    const pfpGet = path.match(/^\/agents\/([^/]+)\/pfp\.svg$/);
+    if (req.method === "GET" && pfpGet) {
+      const size = query && query.get ? query.get("size") : "";
+      const svg = show.pfpSvgFor(decodeURIComponent(pfpGet[1]), size);
+      if (!svg) { send(res, 404, { ok: false, error: "No portrait for that agent.", code: "unknown_agent" }); return true; }
+      res.writeHead(200, {
+        "content-type": "image/svg+xml; charset=utf-8",
+        "cache-control": "no-cache",
+      });
+      res.end(svg);
+      return true;
+    }
     const emblemGet = path.match(/^\/agents\/([^/]+)\/emblem\.svg$/);
     if (req.method === "GET" && emblemGet) {
       const svg = show.emblemSvgFor(decodeURIComponent(emblemGet[1]));
@@ -91,13 +103,24 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ok: true, ...show.generateConcepts(decodeURIComponent(concepts[1]), body) });
       return true;
     }
-    const select = path.match(/^\/agents\/([^/]+)\/brand\/select$/);
+    const select = path.match(/^\/agents\/([^/]+)\/brand\/(?:pfp-)?select$/);
     if (req.method === "POST" && select) {
       const body = await readBody(req);
       send(res, 200, { ok: true, ...show.selectConcept(decodeURIComponent(select[1]), body.conceptId) });
       return true;
     }
-    if (req.method === "POST" && /^\/agents\/([^/]+)\/brand\/(assets|rebrand)$/.test(path)) {
+    const pfpConcepts = path.match(/^\/agents\/([^/]+)\/brand\/pfp-concepts$/);
+    if (req.method === "POST" && pfpConcepts) {
+      const body = await readBody(req);
+      send(res, 200, { ok: true, ...show.generateConcepts(decodeURIComponent(pfpConcepts[1]), body) });
+      return true;
+    }
+    const derive = path.match(/^\/agents\/([^/]+)\/brand\/(?:assets|derive-assets)$/);
+    if (req.method === "POST" && derive) {
+      send(res, 200, { ok: true, ...show.deriveAssets(decodeURIComponent(derive[1])) });
+      return true;
+    }
+    if (req.method === "POST" && /^\/agents\/([^/]+)\/brand\/rebrand$/.test(path)) {
       send(res, 501, { ok: false, error: "not_implemented", status: "DRAFT" });
       return true;
     }

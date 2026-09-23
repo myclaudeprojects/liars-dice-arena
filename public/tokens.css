@@ -1,0 +1,145 @@
+/* LDA visual tokens. CSS custom properties for the vanilla spectator app.
+   Branded broadcast palette. Not a stock component-library theme.
+   Legacy names (--bg, --gold, …) alias these so older rules keep resolving. */
+
+:root {
+  /* Surfaces. Dark room, lifted cards, inset felt. */
+  --lda-bg: #0e0d0b;
+  --lda-chrome: #12110e;
+  --lda-surface: #171511;
+  --lda-surface-2: #14120f;
+  --lda-surface-3: #2a261f;
+  --lda-avatar-bg: #100e0c;
+  --lda-felt: #1a1612;
+  --lda-felt-dim: #0c0b09;
+  --lda-stale-bg: #221c14;
+  --lda-chip: #f4efe6;
+  --lda-chrome-bg: rgba(14, 13, 11, 0.92);
+
+  /* Text hierarchy. */
+  --lda-text: #f4efe6;
+  --lda-text-secondary: #d5cdc0;
+  --lda-text-muted: #b7ad9f;
+  --lda-ink: #1a140c;
+  --lda-ink-muted: #5c5348;
+  --lda-ink-faint: #6a6358;
+
+  /* Broadcast gold. Bids, primary actions, focus. Not the prediction color. */
+  --lda-gold: #e4c27a;
+  --lda-gold-bright: #f0d48a;
+  --lda-gold-line: rgba(228, 194, 122, 0.35);
+  --lda-gold-line-strong: rgba(228, 194, 122, 0.75);
+  --lda-gold-glow: rgba(228, 194, 122, 0.45);
+  --lda-gold-wash: rgba(228, 194, 122, 0.12);
+  --lda-focus: #e4c27a;
+
+  /* Semantic. Live, critical, win, loss, prediction each have one job. */
+  --lda-live: #f07a64;
+  --lda-live-fill: #a33228;
+  --lda-live-glow: rgba(240, 122, 100, 0.55);
+  --lda-live-glow-off: rgba(240, 122, 100, 0);
+  --lda-live-flash: rgba(240, 122, 100, 0.42);
+  --lda-on-live: #f6d9d4;
+  --lda-critical: #e2b15a;
+  --lda-win: #9ddeaf;
+  --lda-loss: #e3a090;
+  --lda-prediction: #c5d0f5;
+  --lda-prediction-bright: #dce4fb;
+  --lda-prediction-ink: #16192a;
+  --lda-prediction-line: rgba(197, 208, 245, 0.55);
+  --lda-prediction-wash: rgba(197, 208, 245, 0.08);
+
+  /* Hairline borders. Opacity is its own token. */
+  --lda-border-opacity: 0.14;
+  --lda-line: rgba(244, 239, 230, var(--lda-border-opacity));
+  --lda-line-strong: rgba(244, 239, 230, 0.28);
+  --lda-line-soft: rgba(244, 239, 230, 0.2);
+  --lda-rail: rgba(62, 36, 24, 0.55);
+
+  /* Agent accents. Same hues the cast already publishes. */
+  --agent-dracula: hsl(350 42% 58%);
+  --agent-caesar: hsl(38 42% 58%);
+  --agent-reaper: hsl(152 42% 58%);
+  --agent-athena: hsl(208 42% 58%);
+  --agent-shark: hsl(174 42% 58%);
+  --agent-oracle: hsl(262 42% 58%);
+  --agent-fox: hsl(68 42% 58%);
+  --agent-brutus: hsl(332 42% 58%);
+  --agent-monk: hsl(96 42% 58%);
+  --agent-siren: hsl(124 42% 58%);
+  --agent-miser: hsl(236 42% 58%);
+  --agent-jester: hsl(292 42% 58%);
+
+  /* Space. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 22px;
+  --space-6: 28px;
+  --space-7: 36px;
+
+  /* Radius. */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* Elevation. */
+  --lda-shadow-1: 0 1px 0 rgba(0, 0, 0, 0.28);
+  --lda-shadow-2: 0 10px 28px rgba(0, 0, 0, 0.32);
+  --lda-shadow-3: 0 18px 48px rgba(0, 0, 0, 0.42);
+
+  /* Type. Display for names, bids, LIAR, results. Sans for everything read. */
+  --lda-font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --lda-font-sans: "Outfit", "Avenir Next", system-ui, sans-serif;
+  --type-display-xl: clamp(56px, 18vw, 104px);
+  --type-display-lg: clamp(32px, 10vw, 48px);
+  --type-display-md: clamp(28px, 8vw, 40px);
+  --type-display-sm: clamp(20px, 6.2vw, 28px);
+  --type-title: 18px;
+  --type-body: 15px;
+  --type-ui: 14px;
+  --type-meta: 12px;
+  --leading-display: 0.95;
+  --leading-body: 1.45;
+  --tracking-tight: -0.03em;
+  --tracking-kicker: 0.14em;
+
+  /* Motion. */
+  --dur-instant: 100ms;
+  --dur-micro: 160ms;
+  --dur-ui: 220ms;
+  --dur-enter: 320ms;
+  --dur-cinematic: 450ms;
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-emphasis: cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  --ease-out: ease-out;
+
+  /* Layers. */
+  --z-base: 0;
+  --z-stage: 1;
+  --z-overlay: 4;
+  --z-chrome: 5;
+  --z-nav: 6;
+  --z-toast: 8;
+
+  /* Targets. */
+  --tap: 44px;
+  --tap-lg: 52px;
+  --tap-choice: 112px;
+
+  /* Legacy aliases used by rules that still say var(--bg) and friends. */
+  --bg: var(--lda-bg);
+  --bg-2: var(--lda-surface);
+  --ink: var(--lda-text);
+  --muted: var(--lda-text-muted);
+  --line: var(--lda-line);
+  --gold: var(--lda-gold);
+  --good: var(--lda-win);
+  --bad: var(--lda-loss);
+  --serif: var(--lda-font-display);
+  --sans: var(--lda-font-sans);
+}

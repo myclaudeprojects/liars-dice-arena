@@ -18,7 +18,7 @@ const llm = require("./src/llm");
 const { Stats } = require("./src/stats");
 const { Show } = require("./src/showrunner");
 const { defaultShowPath } = require("./src/showstore");
-const { handleShow } = require("./src/showhttp");
+const { handleShow, handleVerifyMatch } = require("./src/showhttp");
 const stats = new Stats();
 const TABLE_SIZE = Math.max(2, Math.min(4, Math.round(Number(process.env.TABLE_SIZE) || 3)));
 const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "1" || !process.env.RENDER });
@@ -241,6 +241,9 @@ const server = http.createServer(async (req, res) => {
   const url = u.pathname;
   if (!LEGACY_USDC && (url === "/api/show" || url.startsWith("/api/show/"))) {
     return handleShow(req, res, url, u.searchParams, show);
+  }
+  if (!LEGACY_USDC && url.startsWith("/api/verify-match/")) {
+    return handleVerifyMatch(req, res, url, show);
   }
   // The show owns "/". Legacy mode keeps the old landing page and the table at /arena.
   if (LEGACY_USDC && url === "/") return sendFile(res, "landing.html");

@@ -6,7 +6,7 @@
 // A regulated partner would settle real money. This process does not.
 
 const crypto = require("crypto");
-const { Match } = require("./engine");
+const { Match, makeRng } = require("./engine");
 const { safeFallback, bidFacts, decisionRng } = require("./agents");
 const { CAST, character, makePlayer, pairSchedule } = require("./characters");
 const { SimMarket, pricesFromRecords, DEFAULT_STAKE } = require("./simmarket");
@@ -14,6 +14,11 @@ const { EVENT_MAP } = require("./marketservice");
 const { classifyPace, bidAside, revealHeadline, matchStory, shareCard } = require("./narrative");
 const { intensityFor, paceDelay, publicEvent } = require("./contract");
 const { ShowStore } = require("./showstore");
+const { resolvePlaySeeds } = require("./randomness");
+const { MatchIntegrity } = require("./integrity");
+const { OracleService } = require("./oracle");
+const { OracleKeyStore } = require("./oraclekeys");
+const { SettlementGate } = require("./settlementgate");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
 const SAMPLE_FLOOR = 6;
@@ -153,13 +158,16 @@ class Records {
 }
 
 async function playExhibit({ agents, seed, matchId = null, onEvent = async () => {}, sleep = async () => {}, turnDelayMs = 0, revealDelayMs = 0, maxSteps = 900 }) {
+  // Numeric seeds keep the pre-commitment mix. A 32-byte hex root uses the
+  // committed dice stream and a separate agent stream.
+  const seeds = resolvePlaySeeds(seed);
   const match = new Match({
     seats: agents.map((a) => ({ id: a.id, name: a.name })),
-    seed,
+    seed: seeds.diceSeed,
     diceCount: 5,
   });
   const timings = { turnDelayMs, revealDelayMs, settleHoldMs: 0 };
-  const rng = decisionRng(seed);
+  const rng = seeds.legacy ? decisionRng(seed) : makeRng(seeds.agentSeed);
   const byId = Object.fromEntries(agents.map((a) => [a.id, a]));
   if (matchId) for (const ev of match.log) ev.matchId = matchId;
   let steps = 0;
@@ -310,6 +318,13 @@ class Show {
   constructor(opts = {}) {
     this.store = opts.dataPath ? new ShowStore(opts.dataPath) : null;
     this._hydrating = false;
+    this.oracleKeys = opts.oracleKeys || new OracleKeyStore({ env: opts.env || process.env });
+    this.oracleService = opts.oracle || new OracleService(this.oracleKeys);
+    this.integrity = opts.integrity || new MatchIntegrity({
+      oracle: this.oracleService,
+      env: opts.env || process.env,
+    });
+    this.settlementGate = opts.settlementGate || new SettlementGate();
     this.market = opts.market || new SimMarket({ onChange: () => this.persist() });
     // TEST_MARKETS=0 runs the same matches with the book closed.
     // Default is on. The dice loop does not read this flag.
@@ -364,6 +379,7 @@ class Show {
       current: this.slimCard(this.current),
       upcoming: this.upcoming.map((m) => this.slimCard(m)),
       interrupted: this._interrupted || null,
+      integrity: this.integrity.exportState(),
       cashValue: 0,
       custody: false,
       realMoney: false,
@@ -376,7 +392,11 @@ class Show {
       matchId: m.matchId,
       phase: m.phase,
       round: m.round || 0,
-      seed: m.seed,
+      // The root seed stays sealed until the match is finalized.
+      seed: m.rngCommitment && !m.integrityRevealed ? null : m.seed,
+      rngCommitment: m.rngCommitment || null,
+      configurationHash: m.configurationHash || null,
+      integrityStatus: m.integrityStatus || null,
       seats: (m.seats || []).map((s) => ({ id: s.id, name: s.name })),
       prior: m.prior || null,
     };
@@ -395,7 +415,11 @@ class Show {
       matchId: raw.matchId,
       phase,
       round: 0,
-      seed: raw.seed,
+      seed: raw.seed != null ? raw.seed : this.integrity.exportSeed(raw.matchId),
+      rngCommitment: raw.rngCommitment || null,
+      configurationHash: raw.configurationHash || null,
+      integrityStatus: raw.integrityStatus || null,
+      integrityRevealed: raw.integrityStatus === "VALID" || raw.integrityStatus === "INVALID" || raw.integrityStatus === "VOID",
       seats,
       bid: null,
       narrative: { line: phase === "upcoming" ? "Up next." : "Who's got this?", aside: null, headline: null, pace: "normal" },
@@ -412,6 +436,7 @@ class Show {
     if (!data) return;
     this._hydrating = true;
     try {
+      if (data.integrity) this.integrity.importState(data.integrity);
       this.seq = data.seq || 0;
       this.pairIdx = data.pairIdx || 0;
       this.bootstrapDone = !!data.bootstrapDone;
@@ -457,7 +482,7 @@ class Show {
       partner: {
         status: "not_contracted",
         realMoney: false,
-        handoff: ["matchId", "participants", "rules", "engineLog", "seed", "resultHash", "winnerId"],
+        handoff: ["matchId", "participants", "rules", "engineLog", "seed", "resultHash", "winnerId", "configurationHash", "rngCommitment", "eventLogHash", "signature"],
       },
     };
   }
@@ -541,7 +566,10 @@ class Show {
       matchId: m.matchId,
       phase: m.phase,
       round: m.round,
-      seed: m.seed,
+      seed: m.integrityRevealed ? m.seed : null,
+      rngCommitment: m.rngCommitment || null,
+      configurationHash: m.configurationHash || null,
+      integrityStatus: m.integrityStatus || null,
       seats,
       bid: m.bid,
       narrative: m.narrative,
@@ -630,6 +658,12 @@ class Show {
     });
     this.seq++;
     const matchId = `m${this.seq.toString(36)}`;
+    const prepared = this.integrity.prepare({
+      matchId,
+      seats,
+      frozenBy: "show",
+      scheduledAt: new Date().toISOString(),
+    });
     const prices = pricesFromRecords(seats.map((s) => s.id), (id) => this.records.get(id));
     const played = seats.some((s) => (this.records.get(s.id).played || 0) > 0);
     let book = null;
@@ -643,12 +677,18 @@ class Show {
         initialProbabilitySource: played ? "historical_model" : "equal_prior",
       });
       book = this.market.requireMarket(matchId);
+      book.configurationHash = prepared.configurationHash;
+      book.rngCommitment = prepared.rngCommitment;
     }
     return {
       matchId,
       phase,
       round: 0,
-      seed: (Date.now() ^ (this.seq * 997)) >>> 0,
+      seed: prepared.rootSeed,
+      rngCommitment: prepared.rngCommitment,
+      configurationHash: prepared.configurationHash,
+      integrityStatus: "PENDING",
+      integrityRevealed: false,
       seats,
       bid: null,
       narrative: { line: phase === "upcoming" ? "Up next." : "Who's got this?", aside: null, headline: null, pace: "normal" },
@@ -803,6 +843,7 @@ class Show {
   async _playLocked(m, markSettled) {
     const startedAt = Date.now();
     m.startedAt = m.startedAt || startedAt;
+    if (m.configurationHash) this.integrity.assertCanStart(m.matchId);
     if (this.marketsEnabled && m.market) {
       this.market.onGameEvent({
         type: "MATCH_STARTED",
@@ -899,27 +940,58 @@ class Show {
       },
     });
     if (!exhibit.winnerId) throw new Error("no_winner");
+    const endedAt = Date.now();
     const story = matchStory({ seats: m.seats, winnerId: exhibit.winnerId, log: exhibit.log });
     const hash = resultHash({ matchId: m.matchId, winnerId: exhibit.winnerId, seed: m.seed, log: exhibit.log });
-    const endedAt = Date.now();
+    let record = null;
+    let gate = null;
+    if (m.configurationHash) {
+      record = this.integrity.finalize({
+        matchId: m.matchId,
+        log: exhibit.log,
+        winnerId: exhibit.winnerId,
+        startedAt: m.startedAt,
+        endedAt,
+      });
+      m.integrityStatus = record.status;
+      m.integrityRevealed = !!record.revealedSeed;
+      const marketStatus = this.marketsEnabled && m.market
+        ? this.market.requireMarket(m.matchId).status
+        : "locked";
+      const signatureCheck = record.oracle
+        ? this.oracleService.verify(record.oracle)
+        : { ok: false, code: "RESULT_SIGNATURE_FAILED" };
+      gate = this.settlementGate.commit({
+        integrity: record,
+        oracle: record.oracle,
+        marketStatus,
+        signatureCheck,
+      });
+      m.settlementGate = { action: gate.action, errorCode: gate.errorCode, duplicate: !!gate.duplicate };
+    }
     const resultEventId = `MATCH_RESOLVED:${m.matchId}:${hash}`;
-    // One result object. Settlement uses winnerId + resultHash only.
-    // Story and share text stay on the spectator card and are not copied here.
-    // integrityStatus is left unset until the integrity service attaches it.
-    // MarketService settles when that field is absent or "VALID".
-    const authoritativeResult = {
-      type: "MATCH_RESOLVED",
-      eventId: resultEventId,
-      matchId: m.matchId,
-      winnerId: exhibit.winnerId,
-      resultHash: hash,
-      endedAt,
-      startedAt: m.startedAt || null,
-      rounds: exhibit.hands,
-      participants: m.seats.map((s) => s.id),
-    };
-    if (this.marketsEnabled && m.market) this.market.onGameEvent(authoritativeResult);
-    if (markSettled) markSettled(true);
+    // Credits move only after the settlement gate accepts a signed VALID result.
+    // The market still sees integrityStatus, but that string is not the decision.
+    if (this.marketsEnabled && m.market && gate) {
+      this.market.onGameEvent({
+        type: "MATCH_RESOLVED",
+        eventId: resultEventId,
+        matchId: m.matchId,
+        winnerId: exhibit.winnerId,
+        resultHash: hash,
+        endedAt,
+        startedAt: m.startedAt || null,
+        rounds: exhibit.hands,
+        participants: m.seats.map((s) => s.id),
+        integrityStatus: gate.action === "settle" ? "VALID" : record.status,
+        signature: record.oracle ? record.oracle.signature : null,
+        signedResultHash: record.oracle ? record.oracle.resultHash : null,
+        signingKeyId: record.oracle ? record.oracle.signingKeyId : null,
+      });
+      if (gate.action === "settle" && markSettled) markSettled(true);
+    } else if (markSettled) {
+      markSettled(true);
+    }
     const winner = character(exhibit.winnerId);
     const loser = m.seats.find((s) => s.id !== exhibit.winnerId);
     this.records.applyMatch({ seats: m.seats, winnerId: exhibit.winnerId, story, edges: this._handEdges });
@@ -944,14 +1016,24 @@ class Show {
       endTimestamp: endedAt,
       durationMs: m.startedAt ? endedAt - m.startedAt : null,
       resultEventId,
-      eventLogHash: `sha256:${hash}`,
       agentVersions,
-      seed: m.seed,
+      seed: m.integrityRevealed ? m.seed : null,
       resultHash: hash,
       eventCount: exhibit.log.length,
       rules: "liars-dice-common-hand-ones-wild-v1",
       realMoney: false,
-      note: "LDA result only. Arena Credits settle here. They have no monetary value. A regulated partner would settle real-money contracts from this oracle.",
+      cashValue: 0,
+      integrityStatus: m.integrityStatus || null,
+      configurationHash: m.configurationHash || null,
+      rngCommitment: m.rngCommitment || null,
+      eventLogHash: record && record.eventLogHash,
+      finalStateHash: record && record.finalStateHash,
+      signedResultHash: record && record.oracle ? record.oracle.resultHash : null,
+      signature: record && record.oracle ? record.oracle.signature : null,
+      signingKeyId: record && record.oracle ? record.oracle.signingKeyId : null,
+      algorithm: record && record.oracle ? record.oracle.algorithm : null,
+      settlement: m.settlementGate || null,
+      note: "LDA result only. Arena Credits settle here only after integrity is VALID and the oracle signature verifies. They have no monetary value.",
     };
     m.engineLog = exhibit.log;
     m.phase = "settled";
@@ -1148,6 +1230,23 @@ class Show {
     if (h) return h;
     if (this.current && this.current.matchId === id) return this.publicMatch(this.current);
     return null;
+  }
+
+  // Public verification record. No sealed seed and no private key.
+  verification(matchId, opts = {}) {
+    const id = String(matchId || "");
+    const known = this.integrity.publicView(id);
+    if (!known) return null;
+    if (!opts.replay) return known;
+    const row = this.history.find((h) => h.matchId === id)
+      || (this.current && this.current.matchId === id ? this.current : null);
+    const log = row && (row.engineLog || null);
+    if (!log) return { ...known, replay: null };
+    return this.integrity.reverify({
+      matchId: id,
+      log,
+      winnerId: (row && row.winnerId) || known.winnerId,
+    });
   }
 }
 

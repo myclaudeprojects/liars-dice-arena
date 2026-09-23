@@ -431,7 +431,9 @@ function bidderOf(bid) {
 
 function challengerOf(m) {
   const bid = m && m.bid;
-  if (!bid || !bid.name) return "";
+  if (!bid) return "";
+  if (bid.callerId) return bid.callerId;
+  if (!bid.name) return "";
   const bidder = bidderOf(bid);
   const seat = (m.seats || []).find((s) => s.name === bid.name && s.id !== bidder);
   return seat ? seat.id : "";
@@ -548,7 +550,8 @@ function tableView(m, beats, opts) {
   const n = m.narrative || {};
   const showYou = !opts || opts.you !== false;
   const sting = beats.some((b) => b.type === "reveal" || b.type === "call" || b.type === "settle");
-  const headCls = ["headline", n.pace === "critical" ? "critical" : "", sting && n.headline ? "stinger" : ""].filter(Boolean).join(" ");
+  const emph = n.pace === "critical" || n.pace === "call" || n.pace === "reveal" || n.pace === "result";
+  const headCls = ["headline", emph ? "critical" : "", sting && n.headline ? "stinger" : ""].filter(Boolean).join(" ");
   const head = n.headline ? `<div class="${headCls}">${esc(n.headline)}</div>` : "";
   const flash = beats.some((b) => b.type === "call") ? `<div class="slam-flash" aria-hidden="true"></div>` : "";
   const liveSting = beats.some((b) => b.type === "start") ? `<div class="live-sting">LIVE</div>` : "";
@@ -647,7 +650,7 @@ function agentDetail(a) {
       <div><b>${a.winRate || 0}%</b><span>Win rate</span></div>
       <div><b>${a.played || 0}</b><span>Played</span></div>
     </div>
-    <section class="section"><h2>Style</h2><p>${esc(a.line)}</p><p class="fine">Strength: ${esc(a.strength)} Weakness: ${esc(a.weakness)}</p>${a.knownFor ? `<p class="fine">From the matches: ${esc(a.knownFor)}.</p>` : ""}</section>
+    <section class="section"><h2>Style</h2><p>${esc(a.line)}</p><p class="fine">Strength: ${esc(a.strength)} Weakness: ${esc(a.weakness)}</p>${a.knownFor ? `<p class="fine">From the matches: ${esc(a.knownFor)}.</p>` : ""}${a.bluffLine ? `<p class="fine">${esc(a.bluffLine)}.</p>` : ""}${a.callLine ? `<p class="fine">${esc(a.callLine)}.</p>` : ""}</section>
     <section class="section"><h2>Recent form</h2><div class="form">${(a.form || []).map((x) => `<i class="${x === "W" ? "w" : "l"}">${esc(x)}</i>`).join("") || "—"}</div></section>
     ${rivals ? `<section class="section"><h2>Rivals</h2>${rivals}</section>` : ""}
     ${moments ? `<section class="section"><h2>Recent moments</h2>${moments}</section>` : ""}

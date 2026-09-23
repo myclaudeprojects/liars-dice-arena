@@ -15,6 +15,8 @@
 //  - The loser drops one die. A player with 0 dice is eliminated.
 //  - Last player standing wins the hand/match.
 
+const { kindOf } = require("./contract");
+
 const DICE_SIDES = 6;
 
 function rollDie(rng) {
@@ -70,15 +72,36 @@ class Match {
     this.turnIdx = 0;
     this.currentBid = null;      // { count, face, byId }
     this.handNumber = 0;
-    this.log = [];               // structured event log
+    this.log = [];               // structured event log — the only match record
     this.winnerId = null;
+    this._emit("match_started", {
+      seed: this.seed,
+      diceCount: this.diceCount,
+      onesWild: this.onesWild,
+      seats: this.players.map((p) => ({ id: p.id, name: p.name })),
+    });
     this._startHand();
   }
 
   _emit(type, data) {
-    const ev = { type, hand: this.handNumber, ...data };
+    const body = { ...(data || {}) };
+    delete body.type;
+    delete body.seq;
+    delete body.kind;
+    const ev = {
+      ...body,
+      type,
+      kind: kindOf(type),
+      seq: this.log.length,
+      hand: this.handNumber,
+    };
     this.log.push(ev);
     return ev;
+  }
+
+  // Show-path notes (who is about to move) live in the same log.
+  record(type, data) {
+    return this._emit(type, data);
   }
 
   _alivePlayers() {
@@ -98,6 +121,12 @@ class Match {
     if (!this._alivePlayers().includes(this.players[this.turnIdx])) {
       this._advanceTurn();
     }
+    this._emit("dice_rolled", {
+      hidden: true,
+      hands: this.players.map((p) => ({
+        id: p.id, name: p.name, dice: [...p.dice], alive: p.alive,
+      })),
+    });
     this._emit("hand_start", {
       counts: this.players.map((p) => ({ id: p.id, dice: p.dice.length })),
     });
@@ -154,7 +183,9 @@ class Match {
         return { ok: false, error: "bid_not_higher" };
       }
       this.currentBid = bid;
-      this._emit("bid", { byId: actor.id, name: actor.name, count: bid.count, face: bid.face });
+      this._emit("bid", {
+        byId: actor.id, actorId: actor.id, name: actor.name, count: bid.count, face: bid.face,
+      });
       this._advanceTurn();
       return { ok: true };
     }
@@ -171,6 +202,16 @@ class Match {
         id: p.id, name: p.name, dice: [...p.dice],
       }));
 
+      const countsAfter = this.players.map((p) => {
+        const shown = reveal.find((r) => r.id === p.id);
+        if (!shown) return { id: p.id, dice: 0, alive: false };
+        if (p.id === loser.id) {
+          const dice = Math.max(0, shown.dice.length - 1);
+          return { id: p.id, dice, alive: dice > 0 };
+        }
+        return { id: p.id, dice: shown.dice.length, alive: true };
+      });
+      const elimination = (reveal.find((r) => r.id === loser.id) || { dice: [] }).dice.length <= 1;
       const resolved = {
         challengerId: actor.id,
         bidderId: bidder.id,
@@ -179,22 +220,62 @@ class Match {
         bidWasTrue,
         loserId: loser.id,
         reveal,
+        countsAfter,
+        elimination,
       };
+      this._emit("call", {
+        actorId: actor.id,
+        challengerId: actor.id,
+        name: actor.name,
+        bidderId: bidder.id,
+        bid: { count: bid.count, face: bid.face, byId: bidder.id },
+        pace: "call",
+        intensity: 4,
+      });
+      this._emit("reveal_started", {
+        actorId: actor.id,
+        challengerId: actor.id,
+        bidderId: bidder.id,
+        bid: { count: bid.count, face: bid.face },
+        pace: "reveal",
+        intensity: elimination ? 5 : 4,
+        elimination,
+      });
+      this._emit("dice_revealed", {
+        reveal,
+        actual,
+        bid: { count: bid.count, face: bid.face },
+        bidWasTrue,
+        challengerId: actor.id,
+        bidderId: bidder.id,
+        loserId: loser.id,
+        pace: "reveal",
+        intensity: elimination ? 5 : 4,
+        elimination,
+        hidden: false,
+      });
       this._emit("challenge", resolved);
+      const bidderOutcome = bidWasTrue ? "bid_stood" : "bid_caught";
+      const callerOutcome = bidWasTrue ? "call_wrong" : "call_right";
+      this._emit("reacted", { actorId: bidder.id, name: bidder.name, outcome: bidderOutcome, bidWasTrue });
+      this._emit("reacted", { actorId: actor.id, name: actor.name, outcome: callerOutcome, bidWasTrue });
 
       // Loser drops a die.
       loser.diceLeft = loser.dice.length - 1;
       if (loser.diceLeft <= 0) {
         loser.alive = false;
         loser.diceLeft = 0;
-        this._emit("eliminated", { id: loser.id, name: loser.name });
+        this._emit("eliminated", { id: loser.id, actorId: loser.id, name: loser.name, intensity: 5, pace: "result" });
       }
 
       // Winner of a hand?
       const alive = this._alivePlayers();
       if (alive.length === 1) {
         this.winnerId = alive[0].id;
-        this._emit("match_over", { winnerId: this.winnerId, name: alive[0].name });
+        this._emit("match_over", {
+          winnerId: this.winnerId, actorId: this.winnerId, name: alive[0].name,
+          pace: "result", intensity: 5,
+        });
         return { ok: true, resolved, matchOver: true };
       }
 

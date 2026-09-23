@@ -71,7 +71,7 @@ function clearReplayHash() {
   const hasQuery = new URLSearchParams(location.search).has("match");
   const hasHash = /^#replay=/.test(location.hash || "");
   if (!hasQuery && !hasHash) return;
-  history.replaceState(null, "", location.pathname);
+  window.history.replaceState(null, "", location.pathname);
 }
 
 function setTab(next) {
@@ -632,7 +632,7 @@ async function loadReplay(id) {
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === "history"));
   const href = cardHref({ ...j.share, matchId: j.matchId || id });
   const next = location.pathname + href;
-  if (location.pathname + location.search + location.hash !== next) history.replaceState(null, "", next);
+  if (location.pathname + location.search + location.hash !== next) window.history.replaceState(null, "", next);
   render();
 }
 

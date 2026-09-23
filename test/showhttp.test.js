@@ -128,7 +128,35 @@ function req(method, url, body) {
     const dracula = await req("GET", base + "/api/show/agents/dracula/brand");
     assert(dracula.status === 200 && dracula.json.brand.agentId === "dracula" && dracula.json.brand.visualIdentity.emblem === "BAT_CROWN", "brand document");
     const draft = await req("POST", base + "/api/show/agents/brand/create", {});
-    assert(draft.status === 501 && draft.json.status === "DRAFT", "creator pipeline is stubbed");
+    assert(draft.status === 400 && draft.json.ok === false, "create requires a name and description");
+    const created = await req("POST", base + "/api/show/agents/brand/create", {
+      name: "Vesper",
+      shortDescription: "A quiet closer who spends one lie and waits.",
+      archetype: "ASSASSIN",
+      aggression: 0.42,
+      bluffing: 0.66,
+      discipline: 0.8,
+      chaos: 0.2,
+    });
+    assert(created.status === 200 && created.json.agent && created.json.identity && created.json.identity.title, "create returns a first-pass identity");
+    assert(created.json.identity.visualIdentity && created.json.identity.visualIdentity.primaryColor, "create returns visual DNA");
+    const concepts = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/concepts", { count: 4 });
+    assert(concepts.status === 200 && concepts.json.concepts.length >= 3 && concepts.json.concepts.length <= 5, "concepts are 3 to 5");
+    assert(concepts.json.concepts.every((c) => c.emblemSvg && c.title && c.tagline && c.visualIdentity), "concept cards carry emblem, title, and palette");
+    const locked = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/select", {
+      conceptId: concepts.json.concepts[0].id,
+    });
+    assert(locked.status === 200 && locked.json.brand.brandVersion === "v1" && locked.json.brand.generation.status === "READY", "select locks brand v1");
+    const castAfter = await req("GET", base + "/api/show/agents");
+    const made = castAfter.json.agents.find((a) => a.id === created.json.agent.id);
+    assert(made && made.roster === "user" && made.brand && made.brand.title && made.playable, "agents list exposes the new competitor");
+    assert(castAfter.json.agents.filter((a) => a.roster !== "user").length === 12, "house cast stays 12");
+    const emblem = await req("GET", base + "/api/show/agents/" + created.json.agent.id + "/emblem.svg");
+    assert(emblem.status === 200 && emblem.body.includes("<svg"), "emblem is an svg, not an image model");
+    const assets = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/assets", {});
+    assert(assets.status === 501 && assets.json.status === "DRAFT", "portrait pack stays deferred");
+    const appJs = await req("GET", base + "/static/app.js");
+    assert(appJs.status === 200 && appJs.body.includes("Create agent") && appJs.body.includes("/api/show/agents/brand/create"), "agents UI exposes create");
     assert(!/usdc|wallet|\$/i.test(replay.json.share.text), "share text is not a cash pitch");
     const linked = await req("GET", base + "/?match=" + encodeURIComponent(snap.live.matchId));
     assert(linked.status === 200 && /static\/app\.js/.test(linked.body) && /data-tab="history"/.test(linked.body), "match query serves the show app");

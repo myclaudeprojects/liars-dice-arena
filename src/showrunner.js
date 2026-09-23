@@ -7,8 +7,8 @@
 
 const crypto = require("crypto");
 const { Match, makeRng } = require("./engine");
-const { safeFallback, bidFacts, decisionRng } = require("./agents");
-const { CAST, character, makePlayer, pairSchedule } = require("./characters");
+const { MockAgent, safeFallback, bidFacts, decisionRng } = require("./agents");
+const { CAST, character, pairSchedule } = require("./characters");
 const { SimMarket, pricesFromRecords, DEFAULT_STAKE } = require("./simmarket");
 const { EVENT_MAP } = require("./marketservice");
 const { classifyPace, bidAside, revealHeadline, matchStory, shareCard } = require("./narrative");
@@ -20,6 +20,18 @@ const { OracleService } = require("./oracle");
 const { OracleKeyStore } = require("./oraclekeys");
 const { SettlementGate } = require("./settlementgate");
 const { BrandBook } = require("./brands");
+const {
+  ARCHETYPE_IDS,
+  SLIDER_KEYS,
+  OPTIONAL_SLIDERS,
+  createDraft,
+  buildConcepts,
+  lockBrand,
+  publicDraft,
+  emblemSvg,
+  creatorError,
+  humanize,
+} = require("./brandcreate");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
 const SAMPLE_FLOOR = 6;
@@ -175,18 +187,27 @@ class Records {
     if (r.challenges >= 6 && r.correctCalls / r.challenges >= 0.55) return "calling thin bids";
     return null;
   }
+  ensure(id) {
+    if (!this.agents[id]) this.agents[id] = emptyRecord(id);
+    return this.agents[id];
+  }
   static load(raw, ids) {
     const records = new Records(ids);
-    if (!raw) return records;
+    if (!raw || typeof raw !== "object") return records;
+    const known = new Set(ids);
     for (const id of ids) {
       if (!raw[id]) continue;
+      records.agents[id] = { ...emptyRecord(id), ...raw[id], id };
+    }
+    for (const id of Object.keys(raw)) {
+      if (known.has(id) || !raw[id] || typeof raw[id] !== "object") continue;
       records.agents[id] = { ...emptyRecord(id), ...raw[id], id };
     }
     return records;
   }
 }
 
-async function playExhibit({ agents, seed, matchId = null, onEvent = async () => {}, sleep = async () => {}, turnDelayMs = 0, revealDelayMs = 0, maxSteps = 900 }) {
+async function playExhibit({ agents, seed, matchId = null, onEvent = async () => {}, sleep = async () => {}, turnDelayMs = 0, revealDelayMs = 0, maxSteps = 900, characterOf = null }) {
   // Numeric seeds keep the pre-commitment mix. A 32-byte hex root uses the
   // committed dice stream and a separate agent stream.
   const seeds = resolvePlaySeeds(seed);
@@ -227,7 +248,7 @@ async function playExhibit({ agents, seed, matchId = null, onEvent = async () =>
     }
     const pace = classifyPace(view, trial.action);
     let ch = null;
-    try { ch = character(actor.id); } catch { ch = null; }
+    try { ch = (characterOf || character)(actor.id); } catch { ch = null; }
     if (trial.action.type === "challenge") {
       const bidder = (view.table || []).find((t) => t.id === view.currentBid.byId);
       await onEvent({
@@ -366,14 +387,24 @@ class Show {
     this._hydrating = false;
     this.oracleKeys = opts.oracleKeys || new OracleKeyStore({ env: opts.env || process.env });
     this.oracleService = opts.oracle || new OracleService(this.oracleKeys);
+    const self = this;
+    const agentLookup = (id) => self.persona(id);
     this.integrity = opts.integrity || new MatchIntegrity({
       oracle: this.oracleService,
       env: opts.env || process.env,
+      agentLookup,
     });
+    if (this.integrity && this.integrity.configs && !this.integrity.agentLookup) {
+      this.integrity.agentLookup = agentLookup;
+      this.integrity.configs.lookup = agentLookup;
+    }
     this.settlementGate = opts.settlementGate || new SettlementGate();
     this.market = opts.market || new SimMarket({ onChange: () => this.persist() });
     // Brands ride the same show.json writer. Missing versions fall back to seed v1.
     this.brands = opts.brands || new BrandBook({ seeds: false });
+    // Spectator-created competitors. The house CAST stays 12. Ready guests
+    // are seated against that cast; drafts stay off the slate until select.
+    this.userAgents = new Map();
     // TEST_MARKETS=0 runs the same matches with the book closed.
     // Default is on. The dice loop does not read this flag.
     this.marketsEnabled = opts.marketsEnabled != null
@@ -430,6 +461,7 @@ class Show {
       interrupted: this._interrupted || null,
       integrity: this.integrity.exportState(),
       brands: this.brands.exportState(),
+      userAgents: this.exportUserAgents(),
       cashValue: 0,
       custody: false,
       realMoney: false,
@@ -456,10 +488,13 @@ class Show {
     if (!raw || !raw.matchId) return null;
     const market = this.market.markets.get(raw.matchId);
     if (!market) return null;
-    const seats = (raw.seats || []).map((s) => {
-      const c = character(s.id);
-      return { id: c.id, name: c.name, dice: 5, alive: true, brandVersion: s.brandVersion || this.brands.activeVersion(c.id) };
-    });
+    const seats = [];
+    for (const s of raw.seats || []) {
+      let c;
+      try { c = this.persona(s.id); }
+      catch { return null; }
+      seats.push({ id: c.id, name: c.name, dice: 5, alive: true, brandVersion: s.brandVersion || this.brands.activeVersion(c.id) });
+    }
     if (seats.length < 2) return null;
     return {
       matchId: raw.matchId,
@@ -488,11 +523,12 @@ class Show {
     try {
       if (data.integrity) this.integrity.importState(data.integrity);
       if (data.brands) this.brands.importState(data.brands);
+      this.importUserAgents(data.userAgents);
       this.seq = data.seq || 0;
       this.pairIdx = data.pairIdx || 0;
       this.bootstrapDone = !!data.bootstrapDone;
       this.history = Array.isArray(data.history) ? data.history : [];
-      this.records = Records.load(data.records, CAST.map((c) => c.id));
+      this.records = Records.load(data.records, this.recordIds());
       this.market.importState(data.market || {});
       this.upcoming = (data.upcoming || []).map((raw) => this.cardFromSaved(raw, "upcoming")).filter(Boolean);
       this.current = null;
@@ -559,7 +595,7 @@ class Show {
       .sort((a, b) => b[1].picks - a[1].picks)
       .slice(0, 3)
       .map(([id, b]) => {
-        const c = character(id);
+        const c = this.named(id);
         return { id, name: c.name, picks: b.picks, correct: b.correct, brand: this.brands.publicOf(id) };
       });
   }
@@ -569,7 +605,7 @@ class Show {
       .sort((a, b) => b.streak - a.streak);
     if (!ranked.length) return null;
     const r = ranked[0];
-    const c = character(r.id);
+    const c = this.named(r.id);
     return { agentId: r.id, name: c.name, streak: r.streak, text: `${c.name} has won ${r.streak} straight.`, brand: this.brands.publicOf(r.id) };
   }
 
@@ -582,7 +618,7 @@ class Show {
         const key = [c.id, oid].sort().join(":");
         if (seen.has(key) || riv.meetings < 2) continue;
         seen.add(key);
-        const o = character(oid);
+        const o = this.named(oid);
         rows.push({
           a: { id: c.id, name: c.name, brand: this.brands.publicOf(c.id) },
           b: { id: o.id, name: o.name, brand: this.brands.publicOf(o.id) },
@@ -598,7 +634,7 @@ class Show {
 
   publicMatch(m, predictorId) {
     const seats = m.seats.map((s) => {
-      const c = character(s.id);
+      const c = this.named(s.id);
       const rec = this.records.get(s.id);
       return {
         id: s.id,
@@ -673,8 +709,19 @@ class Show {
   nextPair() {
     const busy = this.busyIds();
     const free = (id) => id && !busy.has(id);
-    const unplayed = CAST.filter((c) => this.records.get(c.id).played === 0 && free(c.id));
-    const debut = unplayed.find((c) => c.id === this.debutId) || unplayed[0];
+    // Athena's debut stays ahead of guest seats so the house premiere
+    // still happens. After that, a ready user agent takes the next open card.
+    if (this.bootstrapDone && free(this.debutId) && this.records.get(this.debutId).played === 0) {
+      const foe = CAST.find((c) => free(c.id) && c.id !== this.debutId);
+      if (foe) return [this.debutId, foe.id];
+    }
+    const guest = this.freeGuest(free);
+    if (guest) {
+      const pair = this.pairForGuest(guest.id);
+      if (pair) return pair;
+    }
+    const unplayed = CAST.filter((c) => c.id !== this.debutId && this.records.get(c.id).played === 0 && free(c.id));
+    const debut = unplayed[0];
     if (debut && this.bootstrapDone) {
       const foe = CAST.find((c) => free(c.id) && c.id !== debut.id);
       if (foe) return [debut.id, foe.id];
@@ -702,12 +749,12 @@ class Show {
     return null;
   }
 
-  makeCard(phase) {
-    const pair = this.nextPair();
+  makeCard(phase, forcedPair) {
+    const pair = forcedPair || this.nextPair();
     if (!pair) return null;
     const [a, b] = pair;
     const seats = [a, b].map((id) => {
-      const c = character(id);
+      const c = this.persona(id);
       return { id: c.id, name: c.name, dice: 5, alive: true, brandVersion: this.brands.activeVersion(c.id) };
     });
     this.seq++;
@@ -770,7 +817,7 @@ class Show {
       matchId: m.matchId,
       phase: "upcoming",
       seats: m.seats.map((s) => {
-        const c = character(s.id);
+        const c = this.named(s.id);
         return {
           id: s.id, name: c.name, archetype: c.archetype, hue: c.hue,
           record: this.records.line(s.id),
@@ -845,10 +892,11 @@ class Show {
 
   _matchAgents(m) {
     return m.seats.map((s) => {
-      const c = character(s.id);
+      const c = this.persona(s.id);
+      const guest = this.userAgents.has(s.id);
       return {
         id: c.id,
-        version: "cast-v1",
+        version: guest ? "user-v1" : "cast-v1",
         aggression: c.aggression,
         chaos: c.chaos,
         archetype: c.archetype,
@@ -921,7 +969,7 @@ class Show {
       legacyType: "LOCK",
     });
     this.emitState();
-    const agents = m.seats.map((s) => makePlayer(s.id));
+    const agents = m.seats.map((s) => this.makeSeatPlayer(s.id));
     this._handEdges = {};
     const exhibit = await playExhibit({
       agents,
@@ -930,6 +978,7 @@ class Show {
       turnDelayMs: this.turnDelayMs,
       revealDelayMs: this.revealDelayMs,
       sleep: this.sleep,
+      characterOf: (id) => this.persona(id),
       onEvent: async (ev) => {
         if (ev.type === "THINKING") {
           const newHand = ev.hand && ev.hand !== m.round;
@@ -1075,7 +1124,7 @@ class Show {
     } else if (markSettled) {
       markSettled(true);
     }
-    const winner = character(exhibit.winnerId);
+    const winner = this.persona(exhibit.winnerId);
     const loser = m.seats.find((s) => s.id !== exhibit.winnerId);
     this.records.applyMatch({ seats: m.seats, winnerId: exhibit.winnerId, story, edges: this._handEdges });
     const streak = this.records.get(exhibit.winnerId).streak;
@@ -1260,23 +1309,265 @@ class Show {
     }
   }
 
-  agentList() {
-    return CAST.map((c) => {
-      const r = this.records.get(c.id);
+  recordIds() {
+    return [...CAST.map((c) => c.id), ...this.userAgents.keys()];
+  }
+
+  exportUserAgents() {
+    return [...this.userAgents.values()].map((row) => JSON.parse(JSON.stringify(row)));
+  }
+
+  importUserAgents(raw) {
+    this.userAgents = new Map();
+    if (!Array.isArray(raw)) return;
+    for (const row of raw) {
+      if (!row || typeof row.id !== "string" || typeof row.name !== "string") continue;
+      if (CAST.some((c) => c.id === row.id)) continue;
+      this.userAgents.set(row.id, JSON.parse(JSON.stringify(row)));
+      this.records.ensure(row.id);
+    }
+  }
+
+  persona(id) {
+    const house = CAST.find((c) => c.id === id);
+    if (house) return house;
+    const row = this.userAgents.get(id);
+    if (!row) {
+      const err = new Error("unknown_character");
+      err.code = "unknown_agent";
+      throw err;
+    }
+    if (row.sheet) return row.sheet;
+    return {
+      id: row.id,
+      name: row.name,
+      archetype: row.archetypeLabel || row.archetype,
+      style: [row.archetypeLabel || "Created"],
+      aggression: row.personality ? row.personality.aggression : 0.5,
+      chaos: row.personality ? row.personality.chaos : 0.2,
+      hue: 40,
+      line: row.playstyleSummary || row.shortDescription || "",
+      weakness: row.weakness || "",
+      strength: row.strength || "",
+      roster: "user",
+      note: row.shortDescription || "",
+    };
+  }
+
+  named(id) {
+    try { return this.persona(id); }
+    catch {
       return {
-        id: c.id, name: c.name, archetype: c.archetype, hue: c.hue, style: c.style, line: c.line,
-        record: this.records.line(c.id), won: r.won, lost: r.lost, streak: r.streak,
-        form: r.form, played: r.played, knownFor: this.records.knownFor(c.id),
-        brand: this.brands.publicOf(c.id),
+        id, name: id, archetype: "", style: [], aggression: 0.5, chaos: 0,
+        hue: 40, line: "", weakness: "", strength: "",
       };
+    }
+  }
+
+  makeSeatPlayer(id) {
+    const row = this.userAgents.get(id);
+    if (row && row.status !== "READY") {
+      throw creatorError("agent_not_ready", "That agent is not in the arena yet.");
+    }
+    const c = this.persona(id);
+    return new MockAgent({ id: c.id, name: c.name, aggression: c.aggression, chaos: c.chaos });
+  }
+
+  readyGuests() {
+    return [...this.userAgents.values()].filter((row) => row.status === "READY" && row.sheet);
+  }
+
+  freeGuest(free) {
+    const ready = this.readyGuests().filter((row) => free(row.id));
+    ready.sort((a, b) => {
+      const played = this.records.get(a.id).played - this.records.get(b.id).played;
+      if (played) return played;
+      return String(a.createdAt).localeCompare(String(b.createdAt));
     });
+    return ready[0] || null;
+  }
+
+  pairForGuest(id) {
+    if (this.busyIds().has(id)) return null;
+    const busy = this.busyIds();
+    const foe = CAST.find((c) => !busy.has(c.id))
+      || this.readyGuests().find((row) => row.id !== id && !busy.has(row.id));
+    if (!foe) return null;
+    return [id, foe.id];
+  }
+
+  // Puts a ready guest on the upcoming slate without touching the house
+  // round-robin index. They sit against a free house character.
+  seatGuest(id) {
+    const row = this.userAgents.get(id);
+    if (!row || row.status !== "READY") return false;
+    if (this.busyIds().has(id)) return true;
+    const pair = this.pairForGuest(id);
+    if (!pair) return false;
+    const card = this.makeCard("upcoming", pair);
+    if (!card) return false;
+    this.upcoming.unshift(card);
+    return true;
+  }
+
+  brandPool() {
+    return this.brands.activeBrands();
+  }
+
+  takenNames() {
+    return [
+      ...CAST.map((c) => c.name),
+      ...[...this.userAgents.values()].map((row) => row.name),
+    ];
+  }
+
+  takenIds() {
+    return new Set([...CAST.map((c) => c.id), ...this.userAgents.keys()]);
+  }
+
+  createAgent(input) {
+    const body = input && typeof input === "object" ? input : {};
+    const name = String(body.name || "").replace(/\s+/g, " ").trim();
+    const existing = [...this.userAgents.values()].find((row) => row.name.toLowerCase() === name.toLowerCase());
+    if (existing && existing.status !== "READY") {
+      return { agent: this.agentSummary(existing), identity: existing.identity, resumed: true };
+    }
+    const draft = createDraft(body, {
+      names: this.takenNames(),
+      takenIds: this.takenIds(),
+      brands: this.brandPool(),
+      count: this.userAgents.size,
+    });
+    this.userAgents.set(draft.id, draft);
+    this.records.ensure(draft.id);
+    this.persist();
+    return { agent: this.agentSummary(draft), identity: draft.identity, resumed: false };
+  }
+
+  generateConcepts(agentId, opts = {}) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
+    if (draft.status === "READY") {
+      throw creatorError("brand_locked", "This brand is already locked.", 409);
+    }
+    const vary = ["all", "colors", "emblem", "like"].includes(opts.vary) ? opts.vary : "all";
+    if (opts.direction) draft.visualDirection = String(opts.direction).replace(/\s+/g, " ").trim().slice(0, 160);
+    if (opts.refine) {
+      const extra = String(opts.refine).replace(/\s+/g, " ").trim().slice(0, 160);
+      if (extra) draft.visualDirection = [draft.visualDirection, extra].filter(Boolean).join(". ").slice(0, 160);
+    }
+    draft.conceptSalt = (draft.conceptSalt || 0) + 1;
+    const anchor = opts.anchorConceptId
+      ? (draft.concepts || []).find((row) => row.id === opts.anchorConceptId) || null
+      : null;
+    draft.status = "GENERATING_CONCEPTS";
+    const concepts = buildConcepts(draft, {
+      count: opts.count,
+      salt: draft.conceptSalt,
+      vary,
+      anchor,
+      brands: this.brandPool(),
+    });
+    draft.concepts = concepts;
+    draft.status = "AWAITING_SELECTION";
+    draft.updatedAt = new Date().toISOString();
+    this.persist();
+    return { agent: this.agentSummary(draft), concepts, status: draft.status };
+  }
+
+  selectConcept(agentId, conceptId) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
+    if (draft.status === "READY") {
+      throw creatorError("brand_locked", "This brand is already locked.", 409);
+    }
+    const concept = (draft.concepts || []).find((row) => row.id === conceptId);
+    if (!concept) throw creatorError("unknown_concept", "Pick one of the concepts.", 404);
+    const locked = lockBrand(draft, concept);
+    try {
+      this.brands.appendVersion(locked.brand);
+    } catch (e) {
+      if (e.code === "brand_title_collision" || e.code === "brand_emblem_collision" || e.code === "brand_palette_collision") {
+        throw creatorError("uniqueness_exhausted", "That concept is too close to an existing brand. Pick another or regenerate.", 409);
+      }
+      throw e;
+    }
+    draft.sheet = locked.sheet;
+    draft.selectedConceptId = concept.id;
+    draft.status = "READY";
+    draft.identity = {
+      ...draft.identity,
+      title: concept.title,
+      tagline: concept.tagline,
+      visualIdentity: concept.visualIdentity,
+    };
+    draft.updatedAt = locked.brand.generation.approvedAt;
+    this.records.ensure(draft.id);
+    this.seatGuest(draft.id);
+    this.persist();
+    this.emitState();
+    return {
+      agent: this.agentSummary(draft),
+      brand: this.brands.full(draft.id),
+      seated: this.busyIds().has(draft.id),
+    };
+  }
+
+  agentSummary(draft) {
+    return {
+      id: draft.id,
+      name: draft.name,
+      status: draft.status,
+      roster: "user",
+      archetype: draft.archetype,
+      archetypeLabel: draft.archetypeLabel,
+    };
+  }
+
+  emblemSvgFor(agentId) {
+    const brand = this.brands.full(agentId);
+    const emblem = brand && brand.visualIdentity && brand.visualIdentity.emblem;
+    return emblem ? emblemSvg(emblem) : null;
+  }
+
+  creatorOptions() {
+    return {
+      archetypes: ARCHETYPE_IDS.map((id) => ({ id, label: humanize(id) })),
+      sliders: SLIDER_KEYS,
+      optionalSliders: OPTIONAL_SLIDERS,
+      roster: "user",
+      houseCast: CAST.length,
+    };
+  }
+
+  agentList() {
+    const house = CAST.map((c) => this.listRow(c, "house"));
+    const guests = [...this.userAgents.values()]
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+      .map((row) => this.listRow(this.named(row.id), "user", row));
+    return [...house, ...guests];
+  }
+
+  listRow(c, roster, draft) {
+    const r = this.records.get(c.id);
+    const ready = !draft || draft.status === "READY";
+    return {
+      id: c.id, name: c.name, archetype: c.archetype, hue: c.hue, style: c.style, line: c.line,
+      record: this.records.line(c.id), won: r.won, lost: r.lost, streak: r.streak,
+      form: r.form, played: r.played, knownFor: this.records.knownFor(c.id),
+      brand: ready ? this.brands.publicOf(c.id) : null,
+      roster,
+      status: draft ? draft.status : "READY",
+      playable: roster === "house" || ready,
+    };
   }
 
   agentDetail(id) {
-    const c = character(id);
+    const draft = this.userAgents.get(id) || null;
+    const c = this.persona(id);
     const r = this.records.get(c.id);
     const rivals = Object.entries(r.rivals).map(([oid, riv]) => ({
-      id: oid, name: character(oid).name, series: `${riv.wins}–${riv.losses}`, meetings: riv.meetings,
+      id: oid, name: this.named(oid).name, series: `${riv.wins}–${riv.losses}`, meetings: riv.meetings,
     })).sort((a, b) => b.meetings - a.meetings);
     return {
       ...c,
@@ -1293,6 +1584,18 @@ class Show {
       rivals, moments: r.moments,
       brand: this.brands.publicOf(c.id),
       brandRecord: this.brands.full(c.id),
+      roster: draft ? "user" : "house",
+      archetypeId: draft ? draft.archetype : null,
+      shortDescription: draft ? draft.shortDescription : null,
+      status: draft ? draft.status : "READY",
+      playable: !draft || draft.status === "READY",
+      seated: this.busyIds().has(c.id),
+      identity: draft ? draft.identity : null,
+      concepts: draft && draft.status !== "READY" ? draft.concepts : undefined,
+      selectedConceptId: draft ? draft.selectedConceptId : null,
+      personality: draft ? draft.personality : null,
+      personalitySummary: draft ? draft.personalitySummary : null,
+      visualDirection: draft ? draft.visualDirection : null,
     };
   }
 

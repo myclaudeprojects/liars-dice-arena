@@ -14,6 +14,7 @@ let snap = null;
 let me = null;
 let position = null;
 let focusAgent = null;
+let creator = null;
 let focusMatch = null;
 let agents = [];
 let history = [];
@@ -349,6 +350,34 @@ function paletteLine(person) {
   const brand = brandFor(person);
   if (!brand || !ui()) return "";
   return ui().palette(brand.agentId || person.id);
+}
+const HOUSE_CAST = new Set([
+  "dracula", "caesar", "reaper", "athena", "shark", "oracle",
+  "fox", "brutus", "monk", "siren", "miser", "jester",
+]);
+function hexColor(value) {
+  return /^#[0-9a-fA-F]{6}$/.test(String(value || "")) ? String(value) : "";
+}
+function emblemPath(url) {
+  const text = String(url || "");
+  if (/^\/static\/emblems\/[a-z0-9_-]+\.svg$/i.test(text)) return text;
+  if (/^\/api\/show\/agents\/[a-z0-9_%.-]+\/emblem\.svg$/i.test(text)) return text;
+  return "";
+}
+function brandStyle(person) {
+  const brand = brandFor(person);
+  if (!brand || !person || HOUSE_CAST.has(person.id)) return "";
+  const primary = hexColor(brand.primaryColor);
+  const secondary = hexColor(brand.secondaryColor);
+  const accent = hexColor(brand.accentColor);
+  const emblem = emblemPath(brand.emblemUrl);
+  const bits = [];
+  if (accent) bits.push("--agent-accent:" + accent);
+  if (primary) bits.push("--swatch-primary:" + primary);
+  if (secondary) bits.push("--swatch-secondary:" + secondary);
+  if (accent) bits.push("--swatch-accent:" + accent);
+  if (emblem) bits.push('--emblem-url:url("' + emblem + '")');
+  return bits.length ? ` style="${bits.join(";")}"` : "";
 }
 function marketIdentity(person) {
   if (!person) return "";
@@ -1117,18 +1146,291 @@ function watch() {
   return watchTable() + marketPanel(m, { compact: true });
 }
 
+const CREATOR_ARCHETYPES = [
+  "GAMBLER", "STRATEGIST", "EMPEROR", "TRICKSTER", "REAPER", "ORACLE",
+  "BEAST", "MACHINE", "DUELIST", "WARLORD", "NOBLE", "MADMAN", "JUDGE",
+  "PHANTOM", "ALCHEMIST", "ASSASSIN", "MONK", "PIRATE", "SORCERER", "COMMANDER",
+];
+
+function archetypeLabel(id) {
+  const text = String(id || "").toLowerCase();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : "";
+}
+
+function blankCreator() {
+  return {
+    step: 1,
+    busy: false,
+    error: "",
+    moreTraits: false,
+    archetypes: CREATOR_ARCHETYPES.map((id) => ({ id, label: archetypeLabel(id) })),
+    form: {
+      name: "",
+      shortDescription: "",
+      archetype: "GAMBLER",
+      aggression: 0.55,
+      bluffing: 0.5,
+      discipline: 0.5,
+      chaos: 0.35,
+      confidence: 0.6,
+      patience: 0.5,
+      showmanship: 0.5,
+      calculation: 0.55,
+      riskTolerance: 0.5,
+      adaptability: 0.5,
+      visualDirection: "",
+      refine: "",
+    },
+    draft: null,
+    concepts: [],
+    selectedId: null,
+  };
+}
+
+function createAgentButton() {
+  return `<button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-create-agent="1">Create agent</button>`;
+}
+
+function sliderField(key, label) {
+  const value = Math.round(Number(creator.form[key] || 0) * 100);
+  return `<label>${esc(label)} <output>${value}</output><input type="range" name="${esc(key)}" min="0" max="100" value="${value}"></label>`;
+}
+
+function safeSvg(svg) {
+  const text = String(svg || "");
+  if (!/^<svg\b/i.test(text) || /script|foreignObject|on\w+=/i.test(text)) return "";
+  return text;
+}
+
+function creatorPayload() {
+  const f = creator.form;
+  return {
+    name: f.name,
+    shortDescription: f.shortDescription,
+    archetype: f.archetype,
+    visualDirection: f.visualDirection,
+    personality: {
+      aggression: f.aggression,
+      bluffing: f.bluffing,
+      discipline: f.discipline,
+      chaos: f.chaos,
+      confidence: f.confidence,
+      patience: f.patience,
+      showmanship: f.showmanship,
+      calculation: f.calculation,
+      riskTolerance: f.riskTolerance,
+      adaptability: f.adaptability,
+    },
+  };
+}
+
+function selectedConcept() {
+  return (creator.concepts || []).find((c) => c.id === creator.selectedId) || creator.concepts[0] || null;
+}
+
+function creatorView() {
+  const step = creator.step;
+  const f = creator.form;
+  const titles = ["Name", "Personality", "Visual direction", "Concepts", "Confirm"];
+  const kicker = `Step ${step} of 5 · ${titles[step - 1] || "Create"}`;
+  let body = "";
+  if (step === 1) {
+    const options = creator.archetypes.map((row) => `<option value="${esc(row.id)}"${row.id === f.archetype ? " selected" : ""}>${esc(row.label || archetypeLabel(row.id))}</option>`).join("");
+    body = `
+      <label>Name<input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off"></label>
+      <label>Short description<textarea name="shortDescription" maxlength="240">${esc(f.shortDescription)}</textarea></label>
+      <label>Archetype<select name="archetype">${options}</select></label>`;
+  } else if (step === 2) {
+    body = `
+      ${sliderField("aggression", "Aggression")}
+      ${sliderField("bluffing", "Bluffing")}
+      ${sliderField("discipline", "Discipline")}
+      ${sliderField("chaos", "Chaos")}
+      <button class="ghost" type="button" data-more-traits="1">${creator.moreTraits ? "Hide extra traits" : "More traits"}</button>
+      ${creator.moreTraits ? `
+        ${sliderField("confidence", "Confidence")}
+        ${sliderField("patience", "Patience")}
+        ${sliderField("showmanship", "Showmanship")}
+        ${sliderField("calculation", "Calculation")}
+        ${sliderField("riskTolerance", "Risk")}
+        ${sliderField("adaptability", "Adaptability")}
+      ` : ""}`;
+  } else if (step === 3) {
+    body = `<label>Optional visual direction<textarea name="visualDirection" maxlength="160" placeholder="Cold steel, moonlit, no text in the mark.">${esc(f.visualDirection)}</textarea></label><p class="fine">This shifts the palette and motif. Portraits stay as emblems for now.</p>`;
+  } else if (step === 4) {
+    const cards = (creator.concepts || []).map((c) => {
+      const on = c.id === creator.selectedId;
+      const visual = c.visualIdentity || {};
+      return `<button class="concept-card lda-card${on ? " is-selected" : ""}" type="button" data-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}">
+        <span class="concept-top"><span class="concept-emblem" style="color:${esc(hexColor(visual.accentColor) || "#e4c27a")}">${safeSvg(c.emblemSvg)}</span><span><b>${esc(c.title)}</b><span class="brand-title">${esc(c.tagline)}</span></span></span>
+        <span class="swatches" aria-hidden="true"><i class="swatch" style="background:${esc(hexColor(visual.primaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.secondaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.accentColor))}"></i></span>
+        <span class="fine">${esc(String(visual.silhouette || "").replace(/_/g, " ").toLowerCase())} · ${esc(String(c.emblem || "").replace(/_/g, " ").toLowerCase())}</span>
+      </button>`;
+    }).join("");
+    body = `<div class="concept-grid">${cards}</div>
+      <label>Refine<textarea name="refine" maxlength="160" placeholder="More like the quiet one, different metal.">${esc(f.refine)}</textarea></label>
+      <div class="creator-actions">
+        <button class="ghost" type="button" data-creator-vary="all"${creator.busy ? " disabled" : ""}>Regenerate</button>
+        <button class="ghost" type="button" data-creator-vary="colors"${creator.busy ? " disabled" : ""}>Different colors</button>
+        <button class="ghost" type="button" data-creator-vary="emblem"${creator.busy ? " disabled" : ""}>Different emblem</button>
+        <button class="ghost" type="button" data-creator-vary="like"${creator.busy ? " disabled" : ""}>More like this</button>
+      </div>`;
+  } else {
+    const c = selectedConcept();
+    const visual = (c && c.visualIdentity) || {};
+    body = c ? `<article class="concept-card lda-card">
+      <span class="concept-top"><span class="concept-emblem" style="color:${esc(hexColor(visual.accentColor) || "#e4c27a")}">${safeSvg(c.emblemSvg)}</span><span><b>${esc(creator.form.name)}</b><span class="brand-title">${esc(c.title)}</span></span></span>
+      <p>${esc(c.tagline)}</p>
+      <span class="swatches" aria-hidden="true"><i class="swatch" style="background:${esc(hexColor(visual.primaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.secondaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.accentColor))}"></i></span>
+      <p class="fine">${esc(archetypeLabel(creator.form.archetype))} · ${esc(String(visual.silhouette || "").replace(/_/g, " ").toLowerCase())}</p>
+    </article>` : `<p class="fine">Pick a concept first.</p>`;
+  }
+  const nextLabel = step === 3 ? "Generate concepts" : step === 4 ? "Review this concept" : step === 5 ? "Enter the arena" : "Next";
+  const nextAttr = step === 3 ? "data-creator-generate" : step === 5 ? "data-creator-confirm" : "data-creator-next";
+  return `<div class="creator">
+    <p class="kicker">${esc(kicker)}</p>
+    <h1 class="page">Create agent</h1>
+    ${body}
+    ${creator.error ? `<div class="err lda-error" role="alert">${esc(creator.error)}</div>` : ""}
+    <div class="creator-actions">
+      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" ${nextAttr}="1"${creator.busy ? " disabled" : ""}>${creator.busy ? "Working." : nextLabel}</button>
+      <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-creator-back="1"${creator.busy ? " disabled" : ""}>${step === 1 ? "Back to agents" : "Back"}</button>
+    </div>
+  </div>`;
+}
+
+async function openCreator() {
+  creator = blankCreator();
+  focusAgent = null;
+  focusMatch = null;
+  tab = "agents";
+  err = "";
+  painted = "";
+  paintTabs();
+  render();
+  try {
+    const j = await api("/api/show/agents/brand/options");
+    if (!creator) return;
+    if (Array.isArray(j.archetypes) && j.archetypes.length) creator.archetypes = j.archetypes;
+    painted = "";
+    render();
+  } catch { /* the fallback list still submits */ }
+}
+
+function resumeCreator(agent) {
+  creator = blankCreator();
+  creator.form.name = agent.name || "";
+  creator.form.shortDescription = agent.shortDescription || agent.note || "";
+  creator.form.archetype = agent.archetypeId || "GAMBLER";
+  creator.form.visualDirection = agent.visualDirection || "";
+  const personality = agent.personality || {};
+  for (const key of Object.keys(creator.form)) {
+    if (typeof personality[key] === "number") creator.form[key] = personality[key];
+  }
+  creator.draft = { agent: { id: agent.id, name: agent.name, status: agent.status } };
+  creator.concepts = agent.concepts || [];
+  creator.selectedId = agent.selectedConceptId || (creator.concepts[0] && creator.concepts[0].id) || null;
+  creator.step = creator.concepts.length ? 4 : 1;
+  focusAgent = null;
+  tab = "agents";
+  painted = "";
+  paintTabs();
+  render();
+}
+
+async function runConcepts(vary) {
+  if (!creator || creator.busy) return;
+  creator.busy = true;
+  creator.error = "";
+  painted = "";
+  render();
+  try {
+    if (!creator.draft) {
+      const created = await api("/api/show/agents/brand/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(creatorPayload()),
+      });
+      creator.draft = created;
+    }
+    const id = creator.draft.agent.id;
+    const body = { count: 4, vary: vary || "all" };
+    if (vary && vary !== "all" && creator.selectedId) body.anchorConceptId = creator.selectedId;
+    if (creator.form.refine) body.refine = creator.form.refine;
+    const concepts = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/concepts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    creator.concepts = concepts.concepts || [];
+    creator.selectedId = (creator.concepts[0] && creator.concepts[0].id) || null;
+    creator.form.refine = "";
+    creator.step = 4;
+  } catch (ex) {
+    creator.error = ex.message || "Could not generate concepts.";
+  } finally {
+    if (creator) {
+      creator.busy = false;
+      painted = "";
+      render();
+    }
+  }
+}
+
+async function confirmConcept() {
+  if (!creator || creator.busy) return;
+  const chosen = selectedConcept();
+  if (!creator.draft || !chosen) {
+    creator.error = "Pick a concept first.";
+    painted = "";
+    render();
+    return;
+  }
+  creator.busy = true;
+  creator.error = "";
+  painted = "";
+  render();
+  const id = creator.draft.agent.id;
+  try {
+    await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/select", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ conceptId: chosen.id }),
+    });
+    creator = null;
+    await refreshLists();
+    const j = await api("/api/show/agents/" + encodeURIComponent(id));
+    focusAgent = j.agent;
+    tab = "agents";
+    painted = "";
+    paintTabs();
+    render();
+  } catch (ex) {
+    if (creator) {
+      creator.busy = false;
+      creator.error = ex.message || "Could not lock that brand.";
+      painted = "";
+      render();
+    }
+  }
+}
+
 function agentsView() {
+  if (creator) return creatorView();
   if (focusAgent) return agentDetail(focusAgent);
   if (!agents.length && !listsReady) {
     const title = listsError ? "The cast didn't load" : "The cast is on its way";
     const body = listsError
       ? "The connection blinked. This tab will try again."
       : "Records show up when the show answers.";
-    return `<h1 class="page">Agents</h1>${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
+    return `<h1 class="page">Agents</h1>${createAgentButton()}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
   }
-  if (!agents.length) return `<h1 class="page">Agents</h1>${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
-  return `<h1 class="page">Agents</h1><p class="fine">Characters, not algorithms with a hat on. Records are from matches they actually played.</p>` +
-    agents.map((a) => `<button class="agent-row" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}">${mark(a.name, a.hue, a.id, brandFor(a))}<span><b>${esc(a.name)}</b>${titleLine(a)}</span>${paletteLine(a)}<div class="fine">${esc((brandFor(a) && brandFor(a).tagline) || a.line || a.archetype)} · ${esc(a.record)}${a.streak ? ` · streak ${a.streak}` : ""}${a.knownFor ? ` · known for ${esc(a.knownFor)}` : ""}</div></button>`).join("");
+  if (!agents.length) return `<h1 class="page">Agents</h1>${createAgentButton()}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
+  return `<h1 class="page">Agents</h1><p class="fine">Characters, not algorithms with a hat on. Records are from matches they actually played.</p>${createAgentButton()}` +
+    agents.map((a) => {
+      const roster = a.roster === "user" ? (a.status === "READY" ? " · your competitor" : " · brand in progress") : "";
+      return `<button class="agent-row" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>${mark(a.name, a.hue, a.id, brandFor(a))}<span><b>${esc(a.name)}</b>${titleLine(a)}</span>${paletteLine(a)}<div class="fine">${esc((brandFor(a) && brandFor(a).tagline) || a.line || a.archetype)} · ${esc(a.record)}${a.streak ? ` · streak ${a.streak}` : ""}${roster}${a.knownFor ? ` · known for ${esc(a.knownFor)}` : ""}</div></button>`;
+    }).join("");
 }
 
 function agentDetail(a) {
@@ -1138,7 +1440,9 @@ function agentDetail(a) {
   const moments = (a.moments || []).map((m) => `<div class="rowbtn"><b>${esc(m.title)}</b><div class="fine">${esc(m.dek || "")}</div></div>`).join("");
   return `
     <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="agents">All agents</button>
-    <div class="agent-hero" data-cast="${esc(a.id)}">${mark(a.name, a.hue, a.id, brandFor(a))}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
+    <div class="agent-hero" data-cast="${esc(a.id)}"${brandStyle(a)}>${mark(a.name, a.hue, a.id, brandFor(a))}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
+    ${a.roster === "user" && a.status && a.status !== "READY" ? `<button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-resume-agent="1">Continue branding</button>` : ""}
+    ${a.roster === "user" && a.playable ? `<p class="fine">User roster. The show seats this agent against the house cast when a chair is free${a.seated ? ", and they are on the slate now" : ""}.</p>` : ""}
     <p class="fine">${esc(a.archetype)}</p>
     <div class="statgrid">
       ${ui() ? ui().statPill(a.record, "Record") + ui().statPill(String(a.streak || 0), "Streak") + ui().statPill(`${a.winRate || 0}%`, "Win rate") + ui().statPill(String(a.played || 0), "Played") : `<div><b>${esc(a.record)}</b><span>Record</span></div><div><b>${a.streak || 0}</b><span>Streak</span></div><div><b>${a.winRate || 0}%</b><span>Win rate</span></div><div><b>${a.played || 0}</b><span>Played</span></div>`}
@@ -1343,7 +1647,75 @@ function openPropSheet(btn) {
   render();
 }
 
+view.addEventListener("input", (e) => {
+  if (!creator) return;
+  const el = e.target;
+  if (!el.name || !Object.prototype.hasOwnProperty.call(creator.form, el.name)) return;
+  if (el.type === "range") {
+    creator.form[el.name] = Number(el.value) / 100;
+    const out = el.parentElement && el.parentElement.querySelector("output");
+    if (out) out.textContent = el.value;
+  } else {
+    creator.form[el.name] = el.value;
+  }
+});
+
 view.addEventListener("click", async (e) => {
+  const createBtn = e.target.closest("[data-create-agent]");
+  if (createBtn) { openCreator(); return; }
+  const resumeBtn = e.target.closest("[data-resume-agent]");
+  if (resumeBtn && focusAgent) { resumeCreator(focusAgent); return; }
+  if (creator) {
+    const vary = e.target.closest("[data-creator-vary]");
+    if (vary) { runConcepts(vary.dataset.creatorVary); return; }
+    if (e.target.closest("[data-creator-generate]")) { runConcepts("all"); return; }
+    if (e.target.closest("[data-creator-confirm]")) { confirmConcept(); return; }
+    if (e.target.closest("[data-more-traits]")) {
+      creator.moreTraits = !creator.moreTraits;
+      creator.error = "";
+      painted = "";
+      render();
+      return;
+    }
+    const concept = e.target.closest("[data-concept]");
+    if (concept) {
+      creator.selectedId = concept.dataset.concept;
+      creator.error = "";
+      painted = "";
+      render();
+      return;
+    }
+    if (e.target.closest("[data-creator-next]")) {
+      if (creator.step === 1 && (creator.form.name.trim().length < 2 || creator.form.shortDescription.trim().length < 8)) {
+        creator.error = "Add a name and a short description.";
+        painted = "";
+        render();
+        return;
+      }
+      if (creator.step === 4) {
+        if (!selectedConcept()) {
+          creator.error = "Pick a concept.";
+          painted = "";
+          render();
+          return;
+        }
+        creator.step = 5;
+      } else if (creator.step < 5) {
+        creator.step += 1;
+      }
+      creator.error = "";
+      painted = "";
+      render();
+      return;
+    }
+    if (e.target.closest("[data-creator-back]")) {
+      if (creator.step <= 1) creator = null;
+      else creator.step -= 1;
+      painted = "";
+      render();
+      return;
+    }
+  }
   const stakeBtn = e.target.closest("[data-trade-stake]");
   if (stakeBtn && tradeSheet) {
     tradeSheet.stake = Number(stakeBtn.dataset.tradeStake) || 50;
@@ -1871,8 +2243,12 @@ async function poll() {
   const prevLive = heardLive;
   hear(j.live);
   applyMotion(prevLive, j.live);
-  if (tab === "agents" || tab === "history" || tab === "profile") await refreshLists();
+  if (!(creator && tab === "agents") && (tab === "agents" || tab === "history" || tab === "profile")) await refreshLists();
   if (gen !== pollGen) return;
+  if (creator && tab === "agents") {
+    renderCredits();
+    return;
+  }
   if (!focusAgent && !focusMatch) render();
   else renderCredits();
 }

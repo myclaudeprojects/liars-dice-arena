@@ -97,13 +97,14 @@ function titlesTooClose(a, b) {
   return na.includes(nb) || nb.includes(na);
 }
 
-function generation(status = "READY") {
+function generationStamp({ status = "READY", at = null, modelVersion = "seed-canonical-v1" } = {}) {
+  const stamp = at || new Date().toISOString();
   return {
     houseStyleVersion: HOUSE_STYLE_VERSION,
     promptVersion: PROMPT_VERSION,
-    modelVersion: "seed-canonical-v1",
-    createdAt: SEED_STAMP,
-    approvedAt: status === "READY" ? SEED_STAMP : null,
+    modelVersion,
+    createdAt: stamp,
+    approvedAt: status === "READY" ? stamp : null,
     status,
     assetStatus: {
       heroPortrait: "PENDING",
@@ -115,6 +116,10 @@ function generation(status = "READY") {
       shareTemplate: "PENDING",
     },
   };
+}
+
+function generation(status = "READY") {
+  return generationStamp({ status, at: SEED_STAMP, modelVersion: "seed-canonical-v1" });
 }
 
 function assetRefs(agentId) {
@@ -603,11 +608,20 @@ class BrandBook {
     return this.publicBrand(this.full(agentId, brandVersion));
   }
 
+  activeBrands() {
+    const rows = [];
+    for (const [id, version] of this._active) {
+      const row = this.full(id, version);
+      if (row) rows.push(row);
+    }
+    return rows;
+  }
+
   publicMap() {
     const out = {};
-    for (const c of CAST) {
-      const brand = this.publicOf(c.id);
-      if (brand) out[c.id] = brand;
+    for (const row of this.activeBrands()) {
+      const brand = this.publicBrand(row);
+      if (brand && brand.status === "READY") out[row.agentId] = brand;
     }
     return out;
   }
@@ -764,7 +778,9 @@ module.exports = {
   MOTION_LANGUAGES,
   PALETTE_NEAR,
   HOUSE_STYLE_VERSION,
+  PROMPT_VERSION,
   SEED_BRANDS,
+  generationStamp,
   BrandBook,
   validateBrand,
   paletteNear,

@@ -720,3 +720,43 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
     transform: none !important;
   }
 }
+
+.creator { display: flex; flex-direction: column; gap: var(--space-3); }
+.creator label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--type-ui); color: var(--lda-text-secondary); }
+.creator input[type="text"],
+.creator textarea,
+.creator select {
+  width: 100%;
+  min-height: var(--tap);
+  background: var(--lda-surface);
+  color: var(--lda-text);
+  border: 1px solid var(--lda-line);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+.creator textarea { min-height: 96px; resize: vertical; }
+.creator input[type="range"] { width: 100%; accent-color: var(--lda-gold); }
+.creator output { color: var(--lda-text); font-variant-numeric: tabular-nums; }
+.concept-grid { display: flex; flex-direction: column; gap: var(--space-3); }
+.concept-card {
+  padding: var(--space-3);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--lda-text);
+}
+.concept-card.is-selected { box-shadow: inset 0 0 0 1px var(--lda-gold); }
+.concept-top { display: flex; align-items: center; gap: var(--space-3); }
+.concept-emblem { width: 48px; height: 48px; flex: 0 0 auto; }
+.concept-emblem svg { width: 48px; height: 48px; display: block; }
+.swatches { display: flex; gap: var(--space-1); }
+.swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px var(--lda-line-strong);
+}
+.creator-actions { display: flex; flex-direction: column; gap: var(--space-2); }
+.creator-actions .ghost,
+.creator-actions .cta { margin-top: 0; }

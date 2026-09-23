@@ -548,9 +548,45 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 .feed { list-style: none; padding: 0; margin: 4px 0 0; text-align: left; }
 .feed li { font-size: 13px; color: var(--lda-text-muted); padding: 5px 0; border-bottom: 1px solid var(--lda-line); }
 .feed li:first-child { color: var(--lda-text); }
-.skip {
-  min-height: var(--tap); width: 100%; margin-top: 4px; border-radius: var(--radius-pill);
-  border: 1px solid var(--lda-line); background: transparent; color: var(--lda-text);
+.arena-prompt {
+  font-family: var(--lda-font-display);
+  font-weight: 560;
+  font-size: clamp(28px, 8vw, 44px);
+  line-height: 1.05;
+  letter-spacing: var(--tracking-tight);
+  margin: var(--space-3) 0 0;
+}
+.arena-now {
+  margin: var(--space-3) 0 0;
+  font-family: var(--lda-font-display);
+  font-size: clamp(20px, 5vw, 28px);
+  line-height: 1.15;
+}
+.story-kicker {
+  font-size: var(--type-meta);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--lda-gold);
+}
+.story-card { flex-direction: column; align-items: flex-start; }
+.story-card .history-cast,
+.story-card .fine,
+.story-card b { width: 100%; }
+.broadcast-strip { position: relative; z-index: 12; }
+.arena-shell .skip {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  z-index: 20;
+  width: auto;
+  min-width: 88px;
+  min-height: var(--tap);
+  margin: 0;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--lda-line);
+  background: var(--lda-chrome);
+  color: var(--lda-text);
 }
 .result-seats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 8px 0 4px; }
 .result-seats .arena-seat { display: flex; gap: 8px; align-items: center; text-align: left; padding: 8px; border-radius: var(--radius-md); background: var(--lda-surface); border: 1px solid var(--lda-line); }
@@ -730,9 +766,13 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   .stage-roll .die.back,
   .stage-roll .seat .mark,
   .liar-overlay,
-  .liar-overlay .liar-type {
+  .liar-overlay .liar-type,
+  .stage[data-reduced="1"] .liar-type,
+  .stage[data-reduced="1"] .bid-banner,
+  .stage[data-reduced="1"] .die {
     animation: none !important;
     transform: none !important;
+    opacity: 1;
   }
   .stage-roll .dice-tray::before { opacity: 0; animation: none !important; }
 }
@@ -1122,6 +1162,23 @@ body {
 .arena-shell .book, .arena-shell .you { width: min(100%, 700px); margin-left: auto; margin-right: auto; }
 #match > .payoff.stage-result { max-width: 1040px; overflow: hidden; padding-top: 0; }
 .payoff .broadcast-strip { margin: 0 0 16px; }
+@media (min-width: 980px) {
+  #view:has(#market:not(:empty)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+    column-gap: var(--space-4);
+    align-items: start;
+  }
+  #view:has(#market:not(:empty)) #match { grid-column: 1; }
+  #view:has(#market:not(:empty)) #market {
+    grid-column: 2;
+    position: sticky;
+    top: calc(64px + env(safe-area-inset-top));
+    max-height: calc(100dvh - 168px - env(safe-area-inset-bottom));
+    overflow: auto;
+  }
+  #view:has(#market:not(:empty)) #sheet { grid-column: 1 / -1; }
+}
 @media (min-width: 820px) {
   .tabs {
     left: 50%; right: auto; bottom: 18px; width: min(640px, calc(100% - 40px));

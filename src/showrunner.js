@@ -109,6 +109,24 @@ function storedLine(hits, n, label) {
   return `${hits} of ${n} ${label}`;
 }
 
+function formatStep(sum, n) {
+  const tenths = Math.round((sum / n) * 10) / 10;
+  return Number.isInteger(tenths) ? String(tenths) : tenths.toFixed(1);
+}
+
+function raiseLine(record) {
+  if (!record || !(record.bidSteps >= SAMPLE_FLOOR)) return null;
+  return `Average bid increase ${formatStep(record.bidStepSum, record.bidSteps)} over ${record.bidSteps} raises`;
+}
+
+function edgeLine(record) {
+  if (!record || !(record.played >= SAMPLE_FLOOR)) return null;
+  const ahead = record.winsWhileAhead || 0;
+  const behind = record.winsWhileBehind || 0;
+  if (!ahead && !behind) return null;
+  return `Won ${ahead} while ahead on dice most of the match, and ${behind} while behind.`;
+}
+
 class Records {
   constructor(ids) {
     this.agents = {};
@@ -622,6 +640,7 @@ class Show {
       testMarkets: this.marketsEnabled,
       badge: "TEST MARKET — Arena Credits have no monetary value.",
       live: cur ? this.publicMatch(cur, predictorId) : null,
+      missed: this.missedCard(),
       hot: this.hotLine(),
       rivalries: this.topRivalries(),
       fresh: CAST.filter((c) => this.records.get(c.id).played === 0).map((c) => ({ id: c.id, name: c.name, archetype: c.archetype, brand: this.brands.publicOf(c.id) })),
@@ -1737,6 +1756,8 @@ class Show {
       knownFor: this.records.knownFor(c.id),
       bluffLine: storedLine(r.bluffCaught, r.bluffAttempts, "bluff bids were caught"),
       callLine: storedLine(r.correctCalls, r.challenges, "calls were right"),
+      raiseLine: raiseLine(r),
+      edgeLine: edgeLine(r),
       bidStep: r.bidSteps >= SAMPLE_FLOOR
         ? { sum: r.bidStepSum, n: r.bidSteps }
         : null,
@@ -1806,20 +1827,43 @@ class Show {
     return this.history;
   }
 
-  historyList() {
-    return this.history.map((h) => ({
+  publicStory(h) {
+    const story = (h && h.story) || {};
+    const seats = ((h && h.seats) || []).map((s) => ({
+      ...s,
+      brand: this.brands.publicOf(s.id, s.brandVersion),
+    }));
+    const loser = ((h && h.seats) || []).find((s) => s && s.id && s.id !== h.winnerId);
+    return {
       matchId: h.matchId,
       at: h.at,
-      seats: (h.seats || []).map((s) => ({
-        ...s,
-        brand: this.brands.publicOf(s.id, s.brandVersion),
-      })),
-      winnerId: h.winnerId,
-      winnerName: h.winnerName,
-      title: h.story?.title,
-      dek: h.story?.dek,
-      share: h.share,
-    }));
+      seats,
+      winnerId: h.winnerId || null,
+      winnerName: h.winnerName || null,
+      loserName: loser && loser.name ? loser.name : null,
+      title: story.title || null,
+      dek: story.dek || null,
+      result: story.result || null,
+      keyMoment: story.keyMoment || null,
+      turningPoint: story.turningPoint || null,
+      comeback: story.comeback === true,
+      calledBluff: story.calledBluff === true,
+      toldTruth: story.toldTruth === true,
+      lesson: story.lesson || null,
+      share: h.share || null,
+    };
+  }
+
+  missedCard() {
+    const h = this.history[0];
+    if (!h || !h.story) return null;
+    const row = this.publicStory(h);
+    if (!row.title && !row.dek) return null;
+    return row;
+  }
+
+  historyList() {
+    return this.history.map((h) => this.publicStory(h));
   }
 
   matchDetail(id) {

@@ -408,6 +408,66 @@
     }
   }
 
+  function storySource(row) {
+    const src = row || {};
+    const story = src.story && typeof src.story === "object" ? src.story : {};
+    const pick = (key) => {
+      if (src[key] != null && src[key] !== "") return src[key];
+      if (story[key] != null && story[key] !== "") return story[key];
+      return "";
+    };
+    const flag = (key) => src[key] === true || story[key] === true;
+    return {
+      title: String(pick("title") || ""),
+      dek: String(pick("dek") || ""),
+      result: String(pick("result") || ""),
+      keyMoment: String(pick("keyMoment") || ""),
+      turningPoint: String(pick("turningPoint") || ""),
+      winnerName: String(pick("winnerName") || ""),
+      loserName: String(pick("loserName") || ""),
+      comeback: flag("comeback"),
+      calledBluff: flag("calledBluff"),
+      toldTruth: flag("toldTruth"),
+    };
+  }
+
+  function storyKicker(row) {
+    const src = storySource(row);
+    if (src.comeback) return "Comeback";
+    if (src.calledBluff) return "Called the bluff";
+    if (src.toldTruth) return "Told the truth";
+    return "";
+  }
+
+  function storyLines(row) {
+    const src = storySource(row);
+    const seen = new Set();
+    if (src.title) seen.add(src.title);
+    const out = [];
+    const lines = [src.dek, src.keyMoment, src.turningPoint];
+    if (!src.winnerName) lines.push(src.result);
+    for (const line of lines) {
+      const text = String(line || "").trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      out.push(text);
+    }
+    return out;
+  }
+
+  function tendencyLines(agent) {
+    if (!agent) return [];
+    const lines = [];
+    if (agent.knownFor) lines.push(`From the matches: ${agent.knownFor}.`);
+    for (const key of ["bluffLine", "callLine", "raiseLine", "edgeLine"]) {
+      const text = agent[key];
+      if (!text) continue;
+      const line = String(text).trim();
+      lines.push(line.endsWith(".") ? line : `${line}.`);
+    }
+    return lines;
+  }
+
   return {
     STATES,
     EDGES,
@@ -426,5 +486,9 @@
     commandKey,
     direct,
     AnimationDirector,
+    storySource,
+    storyKicker,
+    storyLines,
+    tendencyLines,
   };
 });

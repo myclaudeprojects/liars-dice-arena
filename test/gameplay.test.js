@@ -206,7 +206,44 @@ function fmt(n) { return n.toFixed(3); }
   book.records.noteBluffCaught("dracula");
   book.records.noteBluffCaught("dracula");
   eq(book.agentDetail("dracula").bluffLine, "2 of 6 bluff bids were caught", "bluff line quotes stored fields");
+  eq(book.agentDetail("dracula").raiseLine, "Average bid increase 1 over 6 raises", "raise line quotes stored steps");
+  eq(book.agentDetail("caesar").raiseLine, null, "raise line hidden under the sample floor");
+  eq(book.agentDetail("dracula").edgeLine, null, "edge line hidden without a sample of matches");
+  book.records.get("dracula").played = 6;
+  book.records.get("dracula").winsWhileAhead = 1;
+  book.records.get("dracula").winsWhileBehind = 2;
+  eq(book.agentDetail("dracula").edgeLine, "Won 1 while ahead on dice most of the match, and 2 while behind.", "edge line quotes stored wins");
+  assert(!/remembers/i.test(JSON.stringify(book.agentDetail("dracula"))), "no invented memory sentence");
   assert(!/remembers/i.test(JSON.stringify(book.agentDetail("caesar"))), "no invented memory sentence");
+  book.history.unshift({
+    matchId: "story-1",
+    at: 1,
+    seats: [
+      { id: "caesar", name: "Caesar" },
+      { id: "dracula", name: "Dracula" },
+    ],
+    winnerId: "caesar",
+    winnerName: "Caesar",
+    story: {
+      title: "Caesar called the bluff.",
+      dek: "6 threes were not on the table.",
+      result: "Caesar wins.",
+      keyMoment: "The call on 6 threes.",
+      turningPoint: null,
+      calledBluff: true,
+      toldTruth: false,
+      comeback: false,
+      lesson: "The bid of 6 threes was a bluff.",
+    },
+  });
+  const listed = book.historyList()[0];
+  eq(listed.keyMoment, "The call on 6 threes.", "history keeps the logged call");
+  eq(listed.loserName, "Dracula", "loser is the other seat");
+  eq(listed.calledBluff, true, "bluff flag is the logged call");
+  eq(listed.comeback, false, "comeback stays false when the log did not record one");
+  eq(listed.lesson, "The bid of 6 threes was a bluff.", "lesson stays the logged bid");
+  eq(book.snapshot().missed.matchId, "story-1", "arena can show the last real story");
+  eq(book.snapshot().missed.title, "Caesar called the bluff.", "missed card uses the stored title");
 
   let caller = null;
   let revealSnap = null;

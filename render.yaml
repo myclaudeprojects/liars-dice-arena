@@ -15,7 +15,9 @@ services:
       - key: BET_WINDOW_MS
         value: "30000"
       - key: TURN_DELAY_MS
-        value: "1600"
+        value: "2400"
+      - key: REVEAL_DELAY_MS
+        value: "3600"
       - key: STATS_PATH
         value: /var/data/stats.json
       - key: SHOW_DATA_PATH

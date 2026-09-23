@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,680&family=Outfit:wght@420;560;650&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/static/tokens.css?v=15" />
-<link rel="stylesheet" href="/static/app.css?v=15" />
+<link rel="stylesheet" href="/static/app.css?v=16" />
 <link rel="stylesheet" href="/static/primitives.css?v=15" />
 </head>
 <body>
@@ -20,7 +20,12 @@
     <div class="chip lda-pill lda-pill-credit" id="credits" aria-live="polite">—</div>
   </div>
 </header>
-<main id="view"></main>
+<main id="view">
+  <div id="match"></div>
+  <div id="market"></div>
+  <div id="sheet"></div>
+</main>
+<div id="live-line" class="sr" aria-live="polite"></div>
 <nav class="tabs lda-tabs" aria-label="Primary">
   <button type="button" class="lda-tab on" data-tab="arena" aria-current="page">Arena</button>
   <button type="button" class="lda-tab" data-tab="agents">Agents</button>
@@ -31,9 +36,9 @@
 <script src="/static/ui.js?v=15"></script>
 <script src="/static/soundcues.js?v=15"></script>
 <script src="/static/motion.js?v=15"></script>
-<script src="/static/presentation.js?v=15"></script>
+<script src="/static/presentation.js?v=16"></script>
 <script src="/static/career.js?v=15"></script>
-<script src="/static/presence.js?v=15"></script>
-<script src="/static/app.js?v=15"></script>
+<script src="/static/presence.js?v=16"></script>
+<script src="/static/app.js?v=16"></script>
 </body>
 </html>

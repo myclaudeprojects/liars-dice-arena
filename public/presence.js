@@ -58,5 +58,19 @@
     return { snap: next, link: "up", holdUntil: 0, apply: true };
   }
 
-  return { HOLD_MS, soundOn, replayIndex, replayPlays, statusCopy, foldShow };
+  // Live updates must not pull a reader back to the stage.
+  // Hold when the market is already in view, or when the page is scrolled
+  // away from the top of the table. A viewer parked on the stage is left alone.
+  function scrollHold(scrollY, marketTop, viewportHeight) {
+    const y = Math.max(0, Number(scrollY) || 0);
+    const vh = Math.max(0, Number(viewportHeight) || 0);
+    const known = marketTop != null && marketTop !== "" && Number.isFinite(Number(marketTop));
+    const top = known ? Number(marketTop) : null;
+    const marketVisible = top != null && vh > 0 && top < vh * 0.9;
+    const awayFromStage = y > 64;
+    const hold = marketVisible || awayFromStage;
+    return { hold, pinMarket: !!(known && hold), y };
+  }
+
+  return { HOLD_MS, soundOn, replayIndex, replayPlays, statusCopy, foldShow, scrollHold };
 });

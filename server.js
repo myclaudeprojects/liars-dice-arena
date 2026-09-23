@@ -25,6 +25,15 @@ const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "
 
 // Env numbers: tolerate "1600ms", " 30000 ", "0.1 USDC" etc.; fall back to the default on garbage.
 function envNum(name, dflt) { const m = String(process.env[name] ?? "").match(/-?\d+(\.\d+)?/); const v = m ? Number(m[0]) : NaN; return Number.isFinite(v) ? v : dflt; }
+// Spectator floor. Explicit 0 disables the wait (tests, bootstrap). Any other
+// value below the floor is an older "faster" tuning and is lifted. Set
+// PACE_FLOOR=0 to honor a shorter delay on purpose.
+function paceMs(name, floor) {
+  const n = envNum(name, floor);
+  if (n === 0) return 0;
+  if (process.env.PACE_FLOOR === "0") return n;
+  return Math.max(n, floor);
+}
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 const LEGACY_USDC = process.env.LEGACY_USDC === "1";
@@ -109,8 +118,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // behind LEGACY_USDC=1 and is not the product.
 const show = new Show({
   pickWindowMs: envNum("PICK_WINDOW_MS", 14000),
-  turnDelayMs: envNum("TURN_DELAY_MS", 900),
-  revealDelayMs: envNum("REVEAL_DELAY_MS", 1400),
+  turnDelayMs: paceMs("TURN_DELAY_MS", 2400),
+  revealDelayMs: paceMs("REVEAL_DELAY_MS", 3600),
   settleHoldMs: envNum("SETTLE_HOLD_MS", 12000),
   bootstrapCount: envNum("SHOW_BOOTSTRAP", 12),
   loopEnabled: process.env.SHOW_LOOP !== "0",

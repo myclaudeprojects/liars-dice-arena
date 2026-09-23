@@ -2,7 +2,7 @@ const { Show, Records, playExhibit, SAMPLE_FLOOR } = require("../src/showrunner"
 const { makePlayer } = require("../src/characters");
 const { callSlackLimit } = require("../src/agents");
 const { classifyPace } = require("../src/narrative");
-const { paceDelay, splitHold, publicEvent, intensityFor } = require("../src/contract");
+const { paceDelay, rollDelay, splitHold, publicEvent, intensityFor } = require("../src/contract");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); }
@@ -112,6 +112,11 @@ function fmt(n) { return n.toFixed(3); }
   eq(paceDelay("call", timings), 1170, "call has its own hold");
   eq(paceDelay("reveal", timings), 1500, "reveal is the reveal delay");
   eq(paceDelay("result", timings), 12000, "result is the settle hold");
+  eq(rollDelay({ turnDelayMs: 0 }), 0, "a zero turn clock does not add a roll wait");
+  eq(rollDelay({ turnDelayMs: 2400 }), 1320, "a hand opens long enough to see the cups");
+  const spectator = new Show({ loopEnabled: false });
+  eq(spectator.turnDelayMs, 2400, "spectator turn dwell");
+  eq(spectator.revealDelayMs, 3600, "spectator reveal dwell");
 
   const view = {
     table: [{ alive: true, diceCount: 5 }, { alive: true, diceCount: 5 }],
@@ -134,6 +139,7 @@ function fmt(n) { return n.toFixed(3); }
   });
   assert(slept.includes(1170), "the match actually waits on call");
   assert(slept.includes(1500), "the match actually waits on reveal");
+  assert(slept.includes(rollDelay({ turnDelayMs: 900 })), "a new hand waits on the roll");
   const bidClock = (pace) => splitHold(paceDelay(pace, { turnDelayMs: 900, revealDelayMs: 1500 }), intensityFor(pace), "bid");
   const bidClocks = ["normal", "interesting", "critical"].map(bidClock);
   assert(bidClocks.every((split) => split.think + split.rest === paceDelay(
@@ -292,8 +298,10 @@ function fmt(n) { return n.toFixed(3); }
   const sums = [100, 125, 180];
   assert(sums.includes(think.ms + next.ms), "thinking plus the bid hold is the existing pace delay");
   assert(seen.filter((row) => row.line && row.line.endsWith("calls.")).every((row) => !row.thinking), "a call is not labeled as thinking");
-  const closed = seen.find((row, i) => i > 0 && row.thinking && seen[i - 1].line && /TRUTH|BLUFFING/.test(seen[i - 1].line));
-  assert(closed && closed.reveal === false, "the next decision closes the revealed cups");
+  const rollAfter = seen.find((row, i) => i > 0 && row.line === "Cups down." && seen[i - 1].line && /TRUTH|BLUFFING/.test(seen[i - 1].line));
+  assert(rollAfter && rollAfter.reveal === false && !rollAfter.thinking, "a new hand shows the roll with the cups closed");
+  const afterRoll = seen[seen.indexOf(rollAfter) + 1];
+  assert(afterRoll && afterRoll.thinking && afterRoll.reveal === false, "thinking starts after the roll");
   const parts = splitHold(900, 1, "bid");
   eq(parts.think + parts.rest, 900, "a routine bid slice adds back up");
   eq(splitHold(1170, 4, "call").think, 0, "the call hold stays whole for the liar sequence");

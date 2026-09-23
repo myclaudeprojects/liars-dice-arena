@@ -179,6 +179,13 @@ director.play(callCmd);
 director.fastForward();
 assert(director.frame().done && director.frame().showLiar, "fast-forward reaches the liar hold");
 eq(commandKey(callCmd), commandKey(commandFor(call)), "command key is stable");
+const rollA = commandFor({ phase: "live", round: 1, seats, bid: null, reveal: null, narrative: {} });
+const rollB = commandFor({ phase: "live", round: 2, seats, bid: null, reveal: null, narrative: {} });
+eq(rollA.play, "playRoll", "cups down is a roll");
+assert(commandKey(rollA) !== commandKey(rollB), "the next hand replays the roll");
+assert(direct(rollA).fullDuration >= 1000, "the roll timeline is long enough to watch");
+assert(direct(callCmd).fullDuration >= 2000, "the liar hold is long enough to read");
+assert(direct(revealCmd).fullDuration >= 2400, "settlement outlasts the count");
 eq(direct(callCmd).frameAt(400), direct(callCmd).frameAt(400), "the same instant is the same frame");
 
 const thinkCmd = commandFor(thinking);

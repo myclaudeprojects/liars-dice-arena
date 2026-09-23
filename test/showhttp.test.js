@@ -82,6 +82,8 @@ function req(method, url, body) {
     const booked = [...snap.live.seats.map((s) => s.id), ...snap.upcoming.flatMap((u) => u.seats.map((s) => s.id))];
     assert(new Set(booked).size === booked.length, "slate does not double-book");
     assert(snap.live.seats.length === 2, "two characters");
+    assert(snap.brands && snap.brands.dracula && snap.brands.dracula.title === "The Gambler", "snapshot publishes the cast brands");
+    assert(snap.live.seats.every((s) => s.brand && s.brand.title && s.brand.emblemUrl && s.brand.brandVersion === "v1"), "live seats carry brand v1");
     assert(!snap.live.seed && snap.live.rngCommitment && snap.live.rngCommitment.indexOf("sha256:") === 0, "commitment is public before the match");
     assert(snap.live.configurationHash && snap.live.integrityStatus === "PENDING", "config is frozen before the match");
     const health = await req("GET", base + "/health");
@@ -120,6 +122,13 @@ function req(method, url, body) {
     assert(replay.json.share && replay.json.share.text, "replay carries the share card");
     assert(replay.json.share.href === "#replay=" + encodeURIComponent(snap.live.matchId), "share href is the replay hash");
     assert(replay.json.matchId === snap.live.matchId, "replay names the match");
+    assert(replay.json.brands && replay.json.seats.every((s) => replay.json.brands[s.id] && replay.json.brands[s.id].title), "replay keeps the brand from the match");
+    const cast = await req("GET", base + "/api/show/agents");
+    assert(cast.json.agents.length === 12 && cast.json.agents.every((a) => a.brand && a.brand.emblem && a.brand.title), "agents list carries brands");
+    const dracula = await req("GET", base + "/api/show/agents/dracula/brand");
+    assert(dracula.status === 200 && dracula.json.brand.agentId === "dracula" && dracula.json.brand.visualIdentity.emblem === "BAT_CROWN", "brand document");
+    const draft = await req("POST", base + "/api/show/agents/brand/create", {});
+    assert(draft.status === 501 && draft.json.status === "DRAFT", "creator pipeline is stubbed");
     assert(!/usdc|wallet|\$/i.test(replay.json.share.text), "share text is not a cash pitch");
     const linked = await req("GET", base + "/?match=" + encodeURIComponent(snap.live.matchId));
     assert(linked.status === 200 && /static\/app\.js/.test(linked.body) && /data-tab="history"/.test(linked.body), "match query serves the show app");

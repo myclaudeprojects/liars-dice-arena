@@ -56,19 +56,56 @@
   --lda-line-soft: rgba(244, 239, 230, 0.2);
   --lda-rail: rgba(62, 36, 24, 0.55);
 
-  /* Agent accents. Same hues the cast already publishes. */
-  --agent-dracula: hsl(350 42% 58%);
-  --agent-caesar: hsl(38 42% 58%);
-  --agent-reaper: hsl(152 42% 58%);
-  --agent-athena: hsl(208 42% 58%);
-  --agent-shark: hsl(174 42% 58%);
-  --agent-oracle: hsl(262 42% 58%);
-  --agent-fox: hsl(68 42% 58%);
-  --agent-brutus: hsl(332 42% 58%);
-  --agent-monk: hsl(96 42% 58%);
-  --agent-siren: hsl(124 42% 58%);
-  --agent-miser: hsl(236 42% 58%);
-  --agent-jester: hsl(292 42% 58%);
+  /* Cast brand palettes. Accents alias the brand accent so seats and chips share one source. */
+  --brand-dracula-primary: #6D0F1F;
+  --brand-dracula-secondary: #111111;
+  --brand-dracula-accent: #E8DDD0;
+  --brand-caesar-primary: #8A6A2F;
+  --brand-caesar-secondary: #3A3834;
+  --brand-caesar-accent: #F3E6C8;
+  --brand-reaper-primary: #141416;
+  --brand-reaper-secondary: #6E6A72;
+  --brand-reaper-accent: #B15CFF;
+  --brand-athena-primary: #163A66;
+  --brand-athena-secondary: #D8DEE8;
+  --brand-athena-accent: #E2B340;
+  --brand-shark-primary: #0B3A32;
+  --brand-shark-secondary: #101820;
+  --brand-shark-accent: #7CFF6A;
+  --brand-oracle-primary: #2C1654;
+  --brand-oracle-secondary: #0C0A12;
+  --brand-oracle-accent: #C9B6F2;
+  --brand-fox-primary: #B45309;
+  --brand-fox-secondary: #1C140C;
+  --brand-fox-accent: #F6C453;
+  --brand-brutus-primary: #D4522A;
+  --brand-brutus-secondary: #241610;
+  --brand-brutus-accent: #F0A07A;
+  --brand-monk-primary: #1F4D32;
+  --brand-monk-secondary: #E6E1D4;
+  --brand-monk-accent: #7DAF6A;
+  --brand-siren-primary: #0C6B62;
+  --brand-siren-secondary: #071018;
+  --brand-siren-accent: #6AE7FF;
+  --brand-miser-primary: #2A3142;
+  --brand-miser-secondary: #0E1016;
+  --brand-miser-accent: #C5A47E;
+  --brand-jester-primary: #7A2E8A;
+  --brand-jester-secondary: #140814;
+  --brand-jester-accent: #F25CA2;
+
+  --agent-dracula: var(--brand-dracula-accent);
+  --agent-caesar: var(--brand-caesar-accent);
+  --agent-reaper: var(--brand-reaper-accent);
+  --agent-athena: var(--brand-athena-accent);
+  --agent-shark: var(--brand-shark-accent);
+  --agent-oracle: var(--brand-oracle-accent);
+  --agent-fox: var(--brand-fox-accent);
+  --agent-brutus: var(--brand-brutus-accent);
+  --agent-monk: var(--brand-monk-accent);
+  --agent-siren: var(--brand-siren-accent);
+  --agent-miser: var(--brand-miser-accent);
+  --agent-jester: var(--brand-jester-accent);
 
   /* Space. */
   --space-1: 4px;

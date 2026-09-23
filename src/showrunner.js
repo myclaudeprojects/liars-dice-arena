@@ -19,6 +19,7 @@ const { MatchIntegrity } = require("./integrity");
 const { OracleService } = require("./oracle");
 const { OracleKeyStore } = require("./oraclekeys");
 const { SettlementGate } = require("./settlementgate");
+const { BrandBook } = require("./brands");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
 const SAMPLE_FLOOR = 6;
@@ -371,6 +372,8 @@ class Show {
     });
     this.settlementGate = opts.settlementGate || new SettlementGate();
     this.market = opts.market || new SimMarket({ onChange: () => this.persist() });
+    // Brands ride the same show.json writer. Missing versions fall back to seed v1.
+    this.brands = opts.brands || new BrandBook({ seeds: false });
     // TEST_MARKETS=0 runs the same matches with the book closed.
     // Default is on. The dice loop does not read this flag.
     this.marketsEnabled = opts.marketsEnabled != null
@@ -404,6 +407,7 @@ class Show {
     this.bootstrapDone = false;
     this._playing = null;
     if (this.store) this.hydrate(this.store.load());
+    this.brands.ensureSeeds();
   }
 
   persist() {
@@ -425,6 +429,7 @@ class Show {
       upcoming: this.upcoming.map((m) => this.slimCard(m)),
       interrupted: this._interrupted || null,
       integrity: this.integrity.exportState(),
+      brands: this.brands.exportState(),
       cashValue: 0,
       custody: false,
       realMoney: false,
@@ -442,7 +447,7 @@ class Show {
       rngCommitment: m.rngCommitment || null,
       configurationHash: m.configurationHash || null,
       integrityStatus: m.integrityStatus || null,
-      seats: (m.seats || []).map((s) => ({ id: s.id, name: s.name })),
+      seats: (m.seats || []).map((s) => ({ id: s.id, name: s.name, brandVersion: s.brandVersion || null })),
       prior: m.prior || null,
     };
   }
@@ -453,7 +458,7 @@ class Show {
     if (!market) return null;
     const seats = (raw.seats || []).map((s) => {
       const c = character(s.id);
-      return { id: c.id, name: c.name, dice: 5, alive: true };
+      return { id: c.id, name: c.name, dice: 5, alive: true, brandVersion: s.brandVersion || this.brands.activeVersion(c.id) };
     });
     if (seats.length < 2) return null;
     return {
@@ -482,6 +487,7 @@ class Show {
     this._hydrating = true;
     try {
       if (data.integrity) this.integrity.importState(data.integrity);
+      if (data.brands) this.brands.importState(data.brands);
       this.seq = data.seq || 0;
       this.pairIdx = data.pairIdx || 0;
       this.bootstrapDone = !!data.bootstrapDone;
@@ -519,7 +525,8 @@ class Show {
       live: cur ? this.publicMatch(cur, predictorId) : null,
       hot: this.hotLine(),
       rivalries: this.topRivalries(),
-      fresh: CAST.filter((c) => this.records.get(c.id).played === 0).map((c) => ({ id: c.id, name: c.name, archetype: c.archetype })),
+      fresh: CAST.filter((c) => this.records.get(c.id).played === 0).map((c) => ({ id: c.id, name: c.name, archetype: c.archetype, brand: this.brands.publicOf(c.id) })),
+      brands: this.brands.publicMap(),
       yourReads: this.readsFor(predictorId),
       you: this.youView(predictorId),
       upcoming: this.upcoming.map((m) => this.upcomingCard(m, predictorId)),
@@ -553,7 +560,7 @@ class Show {
       .slice(0, 3)
       .map(([id, b]) => {
         const c = character(id);
-        return { id, name: c.name, picks: b.picks, correct: b.correct };
+        return { id, name: c.name, picks: b.picks, correct: b.correct, brand: this.brands.publicOf(id) };
       });
   }
 
@@ -563,7 +570,7 @@ class Show {
     if (!ranked.length) return null;
     const r = ranked[0];
     const c = character(r.id);
-    return { agentId: r.id, name: c.name, streak: r.streak, text: `${c.name} has won ${r.streak} straight.` };
+    return { agentId: r.id, name: c.name, streak: r.streak, text: `${c.name} has won ${r.streak} straight.`, brand: this.brands.publicOf(r.id) };
   }
 
   topRivalries() {
@@ -577,8 +584,8 @@ class Show {
         seen.add(key);
         const o = character(oid);
         rows.push({
-          a: { id: c.id, name: c.name },
-          b: { id: o.id, name: o.name },
+          a: { id: c.id, name: c.name, brand: this.brands.publicOf(c.id) },
+          b: { id: o.id, name: o.name, brand: this.brands.publicOf(o.id) },
           meetings: riv.meetings,
           series: `${riv.wins}–${riv.losses}`,
           text: `${c.name} vs ${o.name}`,
@@ -605,6 +612,7 @@ class Show {
         won: rec.won,
         lost: rec.lost,
         streak: rec.streak,
+        brand: this.brands.publicOf(s.id, s.brandVersion),
       };
     });
     return {
@@ -700,7 +708,7 @@ class Show {
     const [a, b] = pair;
     const seats = [a, b].map((id) => {
       const c = character(id);
-      return { id: c.id, name: c.name, dice: 5, alive: true };
+      return { id: c.id, name: c.name, dice: 5, alive: true, brandVersion: this.brands.activeVersion(c.id) };
     });
     this.seq++;
     const matchId = `m${this.seq.toString(36)}`;
@@ -766,6 +774,7 @@ class Show {
         return {
           id: s.id, name: c.name, archetype: c.archetype, hue: c.hue,
           record: this.records.line(s.id),
+          brand: this.brands.publicOf(s.id, s.brandVersion),
         };
       }),
       price: book ? book.price : null,
@@ -1119,7 +1128,11 @@ class Show {
     const archived = {
       matchId: m.matchId,
       at: Date.now(),
-      seats: m.seats.map((s) => ({ id: s.id, name: s.name })),
+      seats: m.seats.map((s) => ({
+        id: s.id,
+        name: s.name,
+        brandVersion: s.brandVersion || this.brands.activeVersion(s.id),
+      })),
       winnerId: exhibit.winnerId,
       winnerName: winner.name,
       story,
@@ -1254,6 +1267,7 @@ class Show {
         id: c.id, name: c.name, archetype: c.archetype, hue: c.hue, style: c.style, line: c.line,
         record: this.records.line(c.id), won: r.won, lost: r.lost, streak: r.streak,
         form: r.form, played: r.played, knownFor: this.records.knownFor(c.id),
+        brand: this.brands.publicOf(c.id),
       };
     });
   }
@@ -1277,7 +1291,29 @@ class Show {
         ? { sum: r.bidStepSum, n: r.bidSteps }
         : null,
       rivals, moments: r.moments,
+      brand: this.brands.publicOf(c.id),
+      brandRecord: this.brands.full(c.id),
     };
+  }
+
+  brandView(id) {
+    const brand = this.brands.full(id);
+    if (!brand) {
+      const err = new Error("unknown_agent");
+      err.code = "unknown_agent";
+      throw err;
+    }
+    return brand;
+  }
+
+  brandsForSeats(seats) {
+    const out = {};
+    for (const seat of seats || []) {
+      if (!seat || !seat.id) continue;
+      const brand = this.brands.publicOf(seat.id, seat.brandVersion);
+      if (brand) out[seat.id] = brand;
+    }
+    return out;
   }
 
   rememberHistory(archived) {
@@ -1290,7 +1326,10 @@ class Show {
     return this.history.map((h) => ({
       matchId: h.matchId,
       at: h.at,
-      seats: h.seats,
+      seats: (h.seats || []).map((s) => ({
+        ...s,
+        brand: this.brands.publicOf(s.id, s.brandVersion),
+      })),
       winnerId: h.winnerId,
       winnerName: h.winnerName,
       title: h.story?.title,

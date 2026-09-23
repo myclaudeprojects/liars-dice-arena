@@ -59,6 +59,15 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ok: true, agents: show.agentList() });
       return true;
     }
+    const brandGet = path.match(/^\/agents\/([^/]+)\/brand$/);
+    if (req.method === "GET" && brandGet) {
+      send(res, 200, { ok: true, brand: show.brandView(decodeURIComponent(brandGet[1])) });
+      return true;
+    }
+    if (req.method === "POST" && (path === "/agents/brand/create" || /^\/agents\/([^/]+)\/brand\/(concepts|select|assets|rebrand)$/.test(path))) {
+      send(res, 501, { ok: false, error: "not_implemented", status: "DRAFT" });
+      return true;
+    }
     if (req.method === "GET" && path.startsWith("/agents/")) {
       const id = decodeURIComponent(path.slice("/agents/".length));
       send(res, 200, { ok: true, agent: show.agentDetail(id) });
@@ -90,6 +99,8 @@ async function handleShow(req, res, url, query, show) {
         events: row.engineLog || [],
         story: row.story || null,
         share: row.share || null,
+        seats: row.seats || [],
+        brands: show.brandsForSeats(row.seats),
       });
       return true;
     }

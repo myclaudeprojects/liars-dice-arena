@@ -47,7 +47,8 @@ const required = [
 ];
 for (const name of required) assert(tokens.includes(name + ":"), "token " + name);
 
-assert(tokens.includes("hsl(350 42% 58%)"), "dracula accent keeps the cast hue");
+assert(tokens.includes("--brand-dracula-accent: #E8DDD0"), "dracula brand accent token");
+assert(tokens.includes("--agent-dracula: var(--brand-dracula-accent)"), "cast accent aliases the brand accent");
 assert(tokens.includes("--bg: var(--lda-bg)"), "legacy background alias");
 
 const pairs = [
@@ -104,6 +105,10 @@ assert(html.includes("primitives.css"), "page loads primitives");
 assert(html.indexOf("ui.js") < html.indexOf("app.js"), "helpers load before the app");
 assert(appJs.includes("ldaUi"), "watch markup uses the helpers");
 assert(appJs.includes("data-skip") && appJs.includes("syncDirector"), "presentation wiring stays");
+assert(appJs.includes("brand-title") && appJs.includes("market-identity"), "brand name plates reach markets");
+assert(appJs.includes("data-motion"), "motion language reaches the seat");
+assert(primitives.includes(".lda-emblem") && primitives.includes(".lda-palette"), "emblem and palette primitives");
+assert(primitives.includes("lda-choice-yes"), "market controls stay on the prediction treatment");
 
 assert(!/#[0-9a-fA-F]{3,8}/.test(appCss), "app.css has no one-off hex");
 assert(!appCss.includes("rgba("), "app.css has no one-off rgba");

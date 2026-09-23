@@ -119,7 +119,6 @@ function arena() {
       <button class="cta" type="button" data-go="watch">${open ? "Watch & pick" : m.phase === "settled" ? "See the result" : "Watch"}</button>
     </article>
     ${upcomingBlock()}
-    ${err ? `<p class="err">${esc(err)}</p>` : ""}
     ${hot ? `<section class="section"><h2>Hot</h2><div class="rowbtn"><b>${esc(hot.text)}</b><div class="fine">Can anyone stop ${esc(hot.name)}?</div></div></section>` : ""}
     ${rival ? `<section class="section"><h2>Rivalries</h2><button class="rowbtn" type="button" data-agent="${esc(rival.a.id)}"><b>${esc(rival.text)}</b><div class="fine">Series ${esc(rival.series)} · ${rival.meetings} meetings</div></button></section>` : ""}
     ${fresh ? `<section class="section"><h2>New</h2><button class="rowbtn" type="button" data-agent="${esc(fresh.id)}"><b>Meet ${esc(fresh.name)}</b><div class="fine">${esc(fresh.archetype)}. First match is this one.</div></button></section>` : ""}
@@ -443,12 +442,12 @@ async function poll() {
   try {
     const j = await api("/api/show?predictor=" + encodeURIComponent(me.id));
     if (gen !== pollGen || j.starting) return;
-    const prevPhase = snap && snap.live && snap.live.phase;
-    const prevId = snap && snap.live && snap.live.matchId;
     snap = j;
     if (j.you) me = j.you;
+    // A missing position means this match has no pick. Keeping the previous
+    // match's position would show the wrong name once the next one is live.
     if (j.live && j.live.market && j.live.market.you) position = j.live.market.you;
-    else if (!j.live || (j.live.phase === "pick" && (prevPhase !== "pick" || prevId !== j.live.matchId))) position = null;
+    else position = null;
     if (tab === "agents" || tab === "history" || tab === "profile") await refreshLists();
     if (gen !== pollGen) return;
     if (!focusAgent && !focusMatch) render();

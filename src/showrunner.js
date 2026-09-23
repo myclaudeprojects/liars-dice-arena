@@ -329,6 +329,7 @@ class Show {
       unit: "test-credits",
       cashValue: 0,
       custody: false,
+      realMoney: false,
       defaultStake: DEFAULT_STAKE,
       live: cur ? this.publicMatch(cur, predictorId) : null,
       hot: this.hotLine(),
@@ -768,7 +769,11 @@ class Show {
     if (this._interrupted) {
       const raw = this._interrupted;
       this._interrupted = null;
-      await this.finishInterrupted(raw);
+      try { await this.finishInterrupted(raw); }
+      catch (e) {
+        console.error("resume match failed:", e);
+        this.current = null;
+      }
     }
     if (!this.bootstrapDone) {
       const need = Math.max(0, this.bootstrapCount - this.history.length);

@@ -30,7 +30,7 @@ function opts(file, extra = {}) {
   assert(first.live && first.live.phase === "pick", "boots into live now");
   assert(first.upcoming && first.upcoming.length >= 1, "upcoming market is on the slate");
   assert(first.upcoming[0].matchId !== first.live.matchId, "upcoming is a second book");
-  assert(first.cashValue === 0 && first.custody === false, "still worthless credits");
+  assert(first.cashValue === 0 && first.custody === false && first.realMoney === false, "still worthless credits");
   assert(first.partner.status === "not_contracted" && first.partner.realMoney === false, "partner not contracted");
 
   show.market.openPredictor("persist01");

@@ -115,7 +115,7 @@ const show = new Show({
   bootstrapCount: envNum("SHOW_BOOTSTRAP", 12),
   loopEnabled: process.env.SHOW_LOOP !== "0",
   testHook: process.env.SHOW_TEST_HOOK === "1",
-  dataPath: defaultShowPath(),
+  dataPath: LEGACY_USDC ? null : defaultShowPath(),
   sleep,
 });
 
@@ -242,6 +242,8 @@ const server = http.createServer(async (req, res) => {
   if (!LEGACY_USDC && (url === "/api/show" || url.startsWith("/api/show/"))) {
     return handleShow(req, res, url, u.searchParams, show);
   }
+  // The show owns "/". Legacy mode keeps the old landing page and the table at /arena.
+  if (LEGACY_USDC && url === "/") return sendFile(res, "landing.html");
   if (PAGES[url]) return sendFile(res, PAGES[url]);
   if (url === "/health") {
     res.writeHead(200, { "content-type": "application/json" });

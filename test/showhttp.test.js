@@ -76,7 +76,7 @@ function req(method, url, body) {
       child.kill("SIGKILL");
       throw new Error("show did not open a pick window: " + out.slice(-800));
     }
-    assert(snap.cashValue === 0 && snap.custody === false, "not a real-money book");
+    assert(snap.cashValue === 0 && snap.custody === false && snap.realMoney === false, "not a real-money book");
     assert(snap.partner && snap.partner.status === "not_contracted" && snap.partner.realMoney === false, "partner not contracted");
     assert(snap.upcoming && snap.upcoming.length >= 1 && snap.upcoming[0].matchId !== snap.live.matchId, "upcoming slate");
     assert(snap.live.seats.length === 2, "two characters");

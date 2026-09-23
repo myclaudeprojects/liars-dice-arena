@@ -11,7 +11,10 @@ const DEFAULT_STAKE = 50;
 const MIN_STAKE = 10;
 const MAX_STAKE = 250;
 const THEORY_TAGS = ["Aggressive", "Conservative", "Bluffer", "Risk-taker", "Pressure player", "Unpredictable"];
-const CAREER_CAP = 40;
+// Latest 100 settled picks on the career chart. Older points drop.
+const CAREER_CAP = 100;
+const BUY_WINDOW_MS = 60_000;
+const BUY_WINDOW_MAX = 12;
 
 function round4(x) { return Math.round(Number(x) * 10000) / 10000; }
 
@@ -44,15 +47,32 @@ class SimMarket {
   }
 
   exportState() {
+    const now = Date.now();
+    const buysAt = {};
+    for (const [id, arr] of this.buysAt) {
+      const fresh = (arr || []).filter((t) => now - t < BUY_WINDOW_MS);
+      if (fresh.length) buysAt[id] = fresh;
+    }
     return {
       predictors: [...this.predictors.values()],
       markets: [...this.markets.values()],
+      buysAt,
     };
   }
 
   importState(data) {
     this.predictors = new Map((data?.predictors || []).map((p) => [p.id, p]));
     this.markets = new Map((data?.markets || []).map((m) => [m.matchId, m]));
+    // Predictors saved before `settled` existed keep pnl and picks. Leave the
+    // series empty. Do not invent chart points for matches this book never recorded.
+    this.buysAt = new Map();
+    const now = Date.now();
+    const raw = data?.buysAt && typeof data.buysAt === "object" ? data.buysAt : {};
+    for (const [id, arr] of Object.entries(raw)) {
+      if (!Array.isArray(arr)) continue;
+      const fresh = arr.map(Number).filter((t) => Number.isFinite(t) && now - t < BUY_WINDOW_MS);
+      if (fresh.length) this.buysAt.set(id, fresh);
+    }
   }
 
   openPredictor(id) {
@@ -102,6 +122,8 @@ class SimMarket {
       streak: p.streak,
       bestStreak: p.bestStreak,
       pnl: p.pnl,
+      // Empty when the saved predictor has pnl/picks and no settled list.
+      // That total stays. Points are not backfilled.
       series: (p.settled || []).map((s) => ({
         matchId: s.matchId,
         pnl: s.pnl,
@@ -160,8 +182,8 @@ class SimMarket {
 
   _hitRate(id) {
     const now = Date.now();
-    const arr = (this.buysAt.get(id) || []).filter((t) => now - t < 60_000);
-    if (arr.length >= 12) fail("slow_down");
+    const arr = (this.buysAt.get(id) || []).filter((t) => now - t < BUY_WINDOW_MS);
+    if (arr.length >= BUY_WINDOW_MAX) fail("slow_down");
     arr.push(now);
     this.buysAt.set(id, arr);
   }
@@ -385,5 +407,6 @@ const ERROR_TEXT = {
 
 module.exports = {
   SimMarket, pricesFromRecords, pricesFromDice, normalize,
-  STARTING_CREDITS, DEFAULT_STAKE, MIN_STAKE, MAX_STAKE, THEORY_TAGS, CAREER_CAP, ERROR_TEXT, round4,
+  STARTING_CREDITS, DEFAULT_STAKE, MIN_STAKE, MAX_STAKE, THEORY_TAGS, CAREER_CAP,
+  BUY_WINDOW_MS, BUY_WINDOW_MAX, ERROR_TEXT, round4,
 };

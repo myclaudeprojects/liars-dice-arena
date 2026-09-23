@@ -13,6 +13,9 @@ const { SimMarket, pricesFromRecords, pricesFromDice, DEFAULT_STAKE } = require(
 const { classifyPace, bidAside, revealHeadline, matchStory, shareCard } = require("./narrative");
 const { ShowStore } = require("./showstore");
 
+// Settled stories kept on the show file. Older matches drop off the list.
+const HISTORY_CAP = 100;
+
 function resultHash({ matchId, winnerId, seed, log }) {
   const events = (log || []).map((e) => ({
     type: e.type,
@@ -727,8 +730,7 @@ class Show {
       engineLog: exhibit.log,
       hands: exhibit.hands,
     };
-    this.history.unshift(archived);
-    if (this.history.length > 40) this.history.length = 40;
+    this.rememberHistory(archived);
     this.persist();
     this.emit({ type: "SETTLED", matchId: m.matchId, story, oracle: m.oracle, share: m.share });
     this.emitState();
@@ -858,6 +860,12 @@ class Show {
     };
   }
 
+  rememberHistory(archived) {
+    this.history.unshift(archived);
+    if (this.history.length > HISTORY_CAP) this.history.length = HISTORY_CAP;
+    return this.history;
+  }
+
   historyList() {
     return this.history.map((h) => ({
       matchId: h.matchId,
@@ -884,4 +892,4 @@ function requireFace(face) {
   return faceWord(face);
 }
 
-module.exports = { Show, Records, playExhibit, resultHash, DEFAULT_STAKE };
+module.exports = { Show, Records, playExhibit, resultHash, DEFAULT_STAKE, HISTORY_CAP };

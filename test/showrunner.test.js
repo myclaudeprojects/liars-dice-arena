@@ -1,4 +1,4 @@
-const { Show, playExhibit, resultHash } = require("../src/showrunner");
+const { Show, playExhibit, resultHash, HISTORY_CAP } = require("../src/showrunner");
 const { CAST, makePlayer, pairSchedule } = require("../src/characters");
 const { matchStory } = require("../src/narrative");
 
@@ -98,6 +98,13 @@ function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stri
   eq(archived.share.matchId, archived.matchId, "share card names the match");
   assert(!/usdc|wallet|\$/i.test(archived.share.text), "share text stays on the show");
   eq(show.matchDetail(archived.matchId).share.href, archived.share.href, "history keeps the replay link");
+
+  eq(HISTORY_CAP, 100, "history keeps 100 matches");
+  const shelf = new Show({ loopEnabled: false });
+  for (let i = 0; i < 105; i++) shelf.rememberHistory({ matchId: "h" + i });
+  eq(shelf.history.length, 100, "history cap drops the oldest");
+  eq(shelf.history[0].matchId, "h104", "newest stays first");
+  eq(shelf.history[99].matchId, "h5", "the oldest kept match is still on the list");
 
   console.log("showrunner ok");
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -132,6 +132,9 @@ function opts(file, extra = {}) {
   eq(again.you.series[0].cum, again.you.pnl, "reloaded career cum matches pnl");
   eq(again.you.series[0].matchId, liveId, "reloaded career point is the settled match");
   eq(again.you.cashValue, 0, "reloaded career still has no cash value");
+  const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
+  eq(onDisk.market.buysAt.persist01.length, 2, "buy window is in the show file");
+  eq((reloaded.market.buysAt.get("persist01") || []).length, 2, "buy window survived restart");
 
   const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), "lda-show-"));
   const file2 = path.join(dir2, "show.json");

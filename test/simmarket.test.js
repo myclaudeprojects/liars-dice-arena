@@ -1,5 +1,5 @@
 const {
-  SimMarket, pricesFromRecords, pricesFromDice, STARTING_CREDITS, ERROR_TEXT,
+  SimMarket, pricesFromRecords, pricesFromDice, STARTING_CREDITS, CAREER_CAP, ERROR_TEXT,
 } = require("../src/simmarket");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
@@ -125,9 +125,11 @@ eq(legacy.series.length, 0, "picks settled before the series stay a total, not i
 eq(legacy.pnl, 12, "old total pnl remains");
 eq(legacy.cashValue, 0, "old book still worthless");
 
+eq(CAREER_CAP, 100, "career chart keeps 100 settled picks");
 const capBook = new SimMarket();
 capBook.openPredictor("predictor9");
-for (let i = 0; i < 42; i++) {
+capBook.requirePredictor("predictor9").credits = 5000;
+for (let i = 0; i < 102; i++) {
   const id = "cap" + i;
   if (i % 10 === 0) capBook.buysAt.delete("predictor9");
   capBook.createMarket({ matchId: id, agents, prices: { dracula: 0.5, caesar: 0.5 } });
@@ -135,8 +137,37 @@ for (let i = 0; i < 42; i++) {
   capBook.lock(id);
   capBook.settle(id, { winnerId: "dracula", resultHash: "e".repeat(64) });
 }
-eq(capBook.requirePredictor("predictor9").settled.length, 40, "career series caps at 40");
+eq(capBook.requirePredictor("predictor9").settled.length, 100, "career series caps at 100");
 eq(capBook.openPredictor("predictor9").series[0].matchId, "cap2", "oldest points drop first");
 eq(capBook.openPredictor("predictor9").cashValue, 0, "capped book still worthless");
+
+const limited = new SimMarket();
+limited.openPredictor("predictor7");
+for (let i = 0; i < 12; i++) {
+  const id = "rate" + i;
+  limited.createMarket({ matchId: id, agents, prices: { dracula: 0.5, caesar: 0.5 } });
+  limited.buy({ matchId: id, predictorId: "predictor7", agentId: "caesar", side: "yes", stake: 10 });
+}
+const dumped = limited.exportState();
+eq(dumped.buysAt.predictor7.length, 12, "buy window is in the book export");
+const resumed = new SimMarket();
+resumed.importState(dumped);
+resumed.createMarket({ matchId: "rate12", agents, prices: { dracula: 0.5, caesar: 0.5 } });
+let slowed = false;
+try {
+  resumed.buy({ matchId: "rate12", predictorId: "predictor7", agentId: "caesar", side: "yes", stake: 10 });
+} catch (e) { slowed = e.code === "slow_down"; }
+assert(slowed, "imported window still enforces slow_down");
+eq(resumed.openPredictor("predictor7").cashValue, 0, "rate-limited book still worthless");
+
+const stale = new SimMarket();
+stale.importState({
+  predictors: [{ id: "predictor6", credits: 1000, granted: 1000, picks: 0, correct: 0, streak: 0, bestStreak: 0, pnl: 0, settled: [], theories: {} }],
+  markets: [],
+  buysAt: { predictor6: [Date.now() - 120000, "nope", Date.now() - 90000] },
+});
+stale.createMarket({ matchId: "fresh", agents, prices: { dracula: 0.5, caesar: 0.5 } });
+stale.buy({ matchId: "fresh", predictorId: "predictor6", agentId: "caesar", side: "yes", stake: 10 });
+eq(stale.buysAt.get("predictor6").length, 1, "stale stamps do not block a new buy");
 
 console.log("simmarket ok");

@@ -229,6 +229,12 @@ function setTab(next) {
   painted = "";
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   render();
+  if (next === "agents" || next === "history" || next === "profile") {
+    refreshLists().then(() => {
+      if (tab !== next || focusAgent || focusMatch) return;
+      render();
+    });
+  }
 }
 document.querySelector(".tabs").addEventListener("click", (e) => {
   const b = e.target.closest("button");
@@ -263,12 +269,14 @@ function spark(values, tone) {
 }
 
 function careerBlock(person, opts = {}) {
+  if (window.ldaCareer) return window.ldaCareer.careerMarkup(person, opts);
   const series = (person && person.series) || [];
-  if (!series.length) return opts.quiet ? "" : `<p class="fine">Settled picks will draw your line.</p>`;
+  if (!series.length) return opts.quiet ? "" : `<p class="fine">No settled picks yet. Your line starts at zero after the first one.</p>`;
   const last = series[series.length - 1];
   const tone = Number(last.cum) >= 0 ? "good" : "bad";
-  const values = [0, ...series.map((s) => Number(s.cum) || 0)];
-  return `<div class="career">${spark(values, tone)}<p class="fine">${series.length} settled · ${money(last.cum)} test</p></div>`;
+  const origin = Math.abs(Number(series[0].cum) - Number(series[0].pnl)) < 0.0001;
+  const values = origin ? [0, ...series.map((s) => Number(s.cum) || 0)] : series.map((s) => Number(s.cum) || 0);
+  return `<div class="career" data-points="${series.length}">${spark(values, tone)}<p class="fine">${series.length} settled · ${money(last.cum)} test</p></div>`;
 }
 
 function arena() {
@@ -525,7 +533,7 @@ function payoff() {
       ${pos ? `<p>${won ? `<b class="good">You called it.</b>` : `<b>You missed this one.</b>`} Your pick: <b>${esc(picked)}</b>.</p>` : `<p class="fine">You watched this one without a pick.</p>`}
       ${lesson ? `<p class="fine">${esc(lesson)}</p>` : ""}
       ${pos ? `<p class="delta ${won ? "good" : "bad"}">${money(pos.pnl)} test</p><p class="fine">Balance ${Math.round(bankroll())}</p>` : ""}
-      ${careerBlock(me, { quiet: true })}
+      ${careerBlock(me, { quiet: true, compact: true })}
       ${m.share ? shareBlock({ ...m.share, matchId: m.matchId }) : ""}
     </div>`;
 }
@@ -575,8 +583,9 @@ function agentDetail(a) {
 
 function historyView() {
   if (focusMatch) return matchReplay(focusMatch);
-  if (!history.length) return `<h1 class="page">History</h1><p class="fine">Stories show up after matches finish.</p>`;
-  return `<h1 class="page">History</h1>` + history.map((h) => `
+  const line = `<section class="section"><h2>Your line</h2>${careerBlock(me)}</section>`;
+  if (!history.length) return `<h1 class="page">History</h1>${line}<p class="fine">Stories show up after matches finish.</p>`;
+  return `<h1 class="page">History</h1>${line}` + history.map((h) => `
     <button class="rowbtn" type="button" data-match="${esc(h.matchId)}">
       <b>${esc(h.title || h.winnerName)}</b>
       <div class="fine">${esc((h.seats || []).map((s) => s.name).join(" vs "))} · ${esc(h.dek || "")}</div>
@@ -642,6 +651,7 @@ function profile() {
   if (!me) return `<p class="fine">Setting up your test-credit book…</p>`;
   return `
     <h1 class="page">Your record</h1>
+    <section class="section"><h2>Career</h2>${careerBlock(me)}</section>
     <div class="statgrid">
       <div><b>${me.accuracy || 0}%</b><span>Correct</span></div>
       <div><b>${me.picks || 0}</b><span>Picks</span></div>
@@ -649,7 +659,6 @@ function profile() {
       <div><b>${me.streak || 0}</b><span>Streak</span></div>
     </div>
     <p class="fine" style="margin-top:12px">${Math.round(me.credits)} test credits. They are not dollars, tokens, or a claim on anything.</p>
-    <section class="section"><h2>Career</h2>${careerBlock(me)}</section>
     ${me.bestRead ? `<section class="section"><h2>Best read</h2><div class="rowbtn"><b>${esc((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId)}</b><div class="fine">${me.bestRead.accuracy}% over ${me.bestRead.picks} picks</div></div></section>` : ""}
     <section class="section"><h2>Leaderboard</h2>
       ${(leaders.length ? leaders : [{ id: "you", accuracy: me.accuracy, pnl: me.pnl, picks: me.picks }]).slice(0, 8).map((p, i) => `<div class="rowbtn"><b>${i + 1}. ${esc(p.id === me.id ? "You" : p.id)}</b><div class="fine">${p.accuracy || 0}% · ${money(p.pnl || 0)} test</div></div>`).join("")}

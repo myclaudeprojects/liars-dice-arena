@@ -280,6 +280,23 @@ function clearReplay() {
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+function ui() {
+  return window.ldaUi || null;
+}
+function paintTabs() {
+  document.querySelectorAll(".tabs button").forEach((b) => {
+    const on = b.dataset.tab === tab;
+    b.classList.toggle("on", on);
+    if (on) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+  });
+}
+function pnlTone(n) {
+  const v = Number(n) || 0;
+  if (v > 0) return "win";
+  if (v < 0) return "loss";
+  return "";
+}
 function predictorId() {
   let v = localStorage.getItem("ldaPredictor") || "";
   if (!/^[a-z0-9]{8,40}$/.test(v)) {
@@ -297,10 +314,11 @@ async function api(path, opts) {
   return j;
 }
 function faceWord(face) { return FACE[face] || "dice"; }
-function mark(name, hue) {
+function mark(name, hue, id) {
+  if (ui()) return ui().avatar(name, hue, id);
   const letter = esc((name || "?").replace(/^The /, "")[0] || "?");
   const tone = hue == null ? 40 : hue;
-  return `<div class="mark" style="border-color:hsl(${tone} 42% 58%)">${letter}</div>`;
+  return `<div class="mark lda-avatar" style="--agent-accent:hsl(${tone} 42% 58%)">${letter}</div>`;
 }
 function die(n, extra) {
   const pips = (PIPS[n] || []).map(([x, y]) => `<i class="pip" style="left:calc(${x}% - 2px);top:calc(${y}% - 2px)"></i>`).join("");
@@ -337,7 +355,7 @@ function setTab(next) {
   clearReplayHash();
   enterView = true;
   painted = "";
-  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  paintTabs();
   render();
   if (next === "agents" || next === "history" || next === "profile") {
     refreshLists().then(() => {
@@ -390,7 +408,7 @@ function careerBlock(person, opts = {}) {
 }
 
 function emptyState(kicker, title, body) {
-  return `<section class="empty"><div class="kicker">${esc(kicker)}</div><h1 class="page">${esc(title)}</h1><p>${esc(body)}</p></section>`;
+  return `<section class="empty lda-empty" data-state="empty"><div class="kicker">${esc(kicker)}</div><h1 class="page">${esc(title)}</h1><p>${esc(body)}</p></section>`;
 }
 
 function linkBanner() {
@@ -398,7 +416,7 @@ function linkBanner() {
   if (!live()) return "";
   const text = presence().statusCopy(showState.link);
   if (!text) return "";
-  return `<p class="link" role="status">${esc(text)}</p>`;
+  return `<p class="link lda-badge lda-badge-stale" role="status">${esc(text)}</p>`;
 }
 
 function noPicksYet() {
@@ -433,16 +451,23 @@ function arena() {
   const watching = Number(snap.watching) || 0;
   const eye = watching > 0 ? ` · ${watching} watching` : "";
   const intro = frameBeats.some((b) => b.type === "intro" || b.type === "start") ? " intro" : "";
+  const final = m.phase === "settled";
+  const liveLabel = (final ? "Final" : "Live now") + eye;
+  const badge = ui() ? ui().liveBadge(liveLabel, { final }) : `<div class="kicker"><span class="dot"></span> ${esc(liveLabel)}</div>`;
+  const card = ui() ? ui().cardClass("match") : "lda-card lda-match";
+  const cta = ui()
+    ? ui().button({ text: open ? "Watch & pick" : final ? "See the result" : "Watch", extra: "cta", data: { go: "watch" } })
+    : `<button class="cta" type="button" data-go="watch">${open ? "Watch & pick" : final ? "See the result" : "Watch"}</button>`;
   return `
-    <div class="kicker"><span class="dot"></span> ${open ? "Live now" : m.phase === "settled" ? "Final" : "Live now"}${eye}</div>
-    <article class="live-card${intro}">
+    ${badge}
+    <article class="live-card ${card}${intro}">
       <div class="vs">
-        <div class="who">${mark(a.name, a.hue)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
+        <div class="who">${mark(a.name, a.hue, a.id)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
         <div class="x">VS</div>
-        <div class="who">${mark(b.name, b.hue)}<b>${esc(b.name)}</b><span>${esc(b.record)}</span></div>
+        <div class="who">${mark(b.name, b.hue, b.id)}<b>${esc(b.name)}</b><span>${esc(b.record)}</span></div>
       </div>
-      <div class="status">${m.phase === "live" ? `Round ${m.round || 1}` : m.phase === "settled" ? esc(m.story && m.story.title || "Settled") : "Picks are open"}</div>
-      <button class="cta" type="button" data-go="watch">${open ? "Watch & pick" : m.phase === "settled" ? "See the result" : "Watch"}</button>
+      <div class="status">${m.phase === "live" ? `Round ${m.round || 1}` : final ? esc(m.story && m.story.title || "Settled") : "Picks are open"}</div>
+      ${cta}
       ${noPicksYet() ? `<p class="first-run">No test position yet. YES or NO, in Arena Credits. They are not cash.</p>` : ""}
     </article>
     ${upcomingBlock()}
@@ -468,7 +493,23 @@ function centsLabel(n) {
 const TEST_BADGE = "TEST MARKET — Arena Credits have no monetary value.";
 
 function testBadge() {
-  return `<p class="test-badge">${esc(TEST_BADGE)}</p>`;
+  return ui() ? ui().marketBadge(TEST_BADGE) : `<p class="test-badge">${esc(TEST_BADGE)}</p>`;
+}
+
+function choiceButtons(yes, no, matchId, detailYes, detailNo, blocked) {
+  const busy = !!tradeBusy;
+  const disabled = busy || !!blocked;
+  if (!ui()) {
+    const dis = disabled ? " disabled" : "";
+    const id = matchId ? ` data-match="${esc(matchId)}"` : "";
+    return `<button class="giant" type="button" data-pick-side="yes"${id}${dis}>YES ${esc(yes)}</button><button class="giant" type="button" data-pick-side="no"${id}${dis}>NO ${esc(no)}</button>`;
+  }
+  const data = { "pick-side": "yes" };
+  const dataNo = { "pick-side": "no" };
+  if (matchId) { data.match = matchId; dataNo.match = matchId; }
+  const extra = matchId ? "lda-choice-compact" : "giant";
+  return ui().choice({ side: "yes", price: yes, detail: detailYes || "", extra, loading: busy, disabled, data, ariaLabel: `YES ${yes}. ${detailYes || ""}`.trim() })
+    + ui().choice({ side: "no", price: no, detail: detailNo || "", extra, loading: busy, disabled, data: dataNo, ariaLabel: `NO ${no}. ${detailNo || ""}`.trim() });
 }
 
 function upcomingBlock() {
@@ -484,16 +525,16 @@ function upcomingBlock() {
     const buttons = you || snap.testMarkets === false ? "" : `
       ${testBadge()}
       <div class="ahead">
-        <button type="button" data-pick-side="yes" data-match="${esc(u.matchId)}">YES ${esc(yes)}</button>
-        <button type="button" data-pick-side="no" data-match="${esc(u.matchId)}">NO ${esc(no)}</button>
+        ${choiceButtons(yes, no, u.matchId, `${target.name} wins`, `${target.name} does not win`)}
       </div>`;
+    const card = ui() ? ui().cardClass("match") : "lda-card lda-match";
     return `
-      <article class="upcard">
+      <article class="upcard ${card}">
         <div class="fine">${["Next", "Soon", "Later", "Last"][i] || "After"}</div>
         <div class="vs">
-          <div class="who">${mark(a.name, a.hue)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
+          <div class="who">${mark(a.name, a.hue, a.id)}<b>${esc(a.name)}</b><span>${esc(a.record)}</span></div>
           <div class="x">VS</div>
-          <div class="who">${mark(b.name, b.hue)}<b>${esc(b.name)}</b><span>${esc(b.record)}</span></div>
+          <div class="who">${mark(b.name, b.hue, b.id)}<b>${esc(b.name)}</b><span>${esc(b.record)}</span></div>
         </div>
         <p class="fine">${picked}</p>
         ${buttons}
@@ -516,7 +557,7 @@ function picker() {
   if (snap && snap.testMarkets === false) {
     return `
       <div class="picker${intro}">
-        <div class="kicker">Who wins?</div>
+        <div class="kicker lda-kicker-predict">Who wins?</div>
         <h1>${esc(target.name)} vs ${esc(m.seats[1].name)}</h1>
         <p class="fine">Test markets are off. The match still runs.</p>
       </div>`;
@@ -524,16 +565,18 @@ function picker() {
   const yes = book.yesCents != null ? `${book.yesCents}¢` : centsLabel(book.yesPrice);
   const no = book.noCents != null ? `${book.noCents}¢` : centsLabel(book.noPrice);
   const stake = snap.defaultStake || 50;
+  const broke = !!(me && Number(me.credits) < Number(stake));
+  const yesDetail = `${target.name} wins this match`;
+  const noDetail = `${target.name} does not win`;
   return `
     <div class="picker${intro}">
-      <div class="kicker">Who wins?</div>
+      <div class="kicker lda-kicker-predict">Who wins?</div>
       ${testBadge()}
       <h1>${esc(book.question || `Will ${target.name} win?`)}</h1>
       <p class="fine">Balance AC ${esc(String(bal))}. Arena Credits are play money.</p>
-      <button class="giant" type="button" data-pick-side="yes"><span><b>YES ${esc(yes)}</b><span>${esc(target.name)} wins this match</span></span></button>
-      <button class="giant" type="button" data-pick-side="no"><span><b>NO ${esc(no)}</b><span>${esc(target.name)} does not win</span></span></button>
-      <p class="fine">A tap buys about ${stake} Arena Credits of shares. They are not cash.</p>
-      <div class="err">${esc(err)}</div>
+      ${choiceButtons(yes, no, "", yesDetail, noDetail, broke)}
+      <p class="fine">${broke ? `Not enough Arena Credits for about ${stake} shares.` : `A tap buys about ${stake} Arena Credits of shares. They are not cash.`}</p>
+      <div class="err lda-error" role="alert">${esc(err)}</div>
     </div>`;
 }
 
@@ -614,7 +657,10 @@ function bookBar(m, beats) {
   const pulse = beats.some((b) => b.type === "price") ? " pulse" : "";
   const yes = book.yesCents != null ? `${book.yesCents}¢` : centsLabel(book.yesPrice);
   const no = book.noCents != null ? `${book.noCents}¢` : centsLabel(book.noPrice);
-  return `<div class="book${pulse}" aria-label="Test market">${testBadge()}<span><b>YES</b> ${esc(yes)}</span><span><b>NO</b> ${esc(no)}</span></div>`;
+  const held = position && (position.side === "no" ? "no" : position.side === "yes" ? "yes" : "");
+  const yesMark = held === "yes" ? `<i class="lda-yours">Your side</i>` : "";
+  const noMark = held === "no" ? `<i class="lda-yours">Your side</i>` : "";
+  return `<div class="book${pulse} lda-book" aria-label="Test market">${testBadge()}<span class="lda-quote${held === "yes" ? " is-selected" : ""}"><b>YES</b> ${esc(yes)}${yesMark}</span><span class="lda-quote${held === "no" ? " is-selected" : ""}"><b>NO</b> ${esc(no)}${noMark}</span></div>`;
 }
 
 function bidChip(m, beats) {
@@ -650,7 +696,9 @@ function youBlock(m, beats) {
   const pulse = beats.some((b) => b.type === "price") ? " pulse" : "";
   const openPnl = pos ? (pos.testPnl != null ? pos.testPnl : pos.unrealized) : 0;
   const sell = m.phase === "pick" && pos && pos.shares > 0
-    ? `<button class="ghost" type="button" data-sell>Sell shares</button>`
+    ? (ui()
+      ? ui().button({ variant: "ghost", text: "Sell shares", extra: "ghost", block: false, loading: tradeBusy, data: { sell: true } })
+      : `<button class="ghost" type="button" data-sell>Sell shares</button>`)
     : "";
   const you = pos
     ? `<div class="you${pulse}">${esc(pos.outcome || (pos.side === "no" ? "NO" : "YES"))} · <b>${Math.round(pos.shares || pos.contracts || 0)}</b> shares · worth <b>AC ${Math.round(pos.value)}</b> <span class="${openPnl >= 0 ? "good" : "bad"}">Test P&L ${money(openPnl)}</span>${sell}<p class="fine">${esc(TEST_BADGE)}</p></div>`
@@ -670,7 +718,7 @@ function seatBlock(seat, m, beats, frame) {
   }
   const label = api ? (api.REACTION_LABEL[react] || "") : "";
   const rolling = frame ? !!frame.roll : beats.some((b) => b.type === "roll" || b.type === "start");
-  return `<div class="${seatClass(seat, m, beats)} arena-seat" data-react="${esc(react)}">${mark(seat.name, seat.hue)}<div class="seat-copy"><b>${esc(seat.name)}</b><span>${diceLabel}</span>${label ? `<i class="react">${esc(label)}</i>` : ""}</div><div class="dice-row${rolling ? " shake" : ""}">${diceFor(seat, m, beats, frame)}</div></div>`;
+  return `<div class="${seatClass(seat, m, beats)} arena-seat" data-react="${esc(react)}">${mark(seat.name, seat.hue, seat.id)}<div class="seat-copy"><b>${esc(seat.name)}</b><span>${diceLabel}</span>${label ? `<i class="react">${esc(label)}</i>` : ""}</div><div class="dice-row${rolling ? " shake" : ""}">${diceFor(seat, m, beats, frame)}</div></div>`;
 }
 
 function stageModel(m, beats, frame) {
@@ -760,7 +808,7 @@ function tableView(m, beats, opts) {
     ? `<div class="verdict-hit ${callFacts.truth ? "good" : "bad"}">${callFacts.verdict}</div><div class="verdict-line">${callFacts.truth ? "The bid stands." : "The bid was short."} Bid was ${esc(callFacts.bidWords)}.</div>`
     : "";
   const resultHtml = showResult && callFacts && callFacts.result
-    ? `<div class="round-result">${esc(callFacts.result)}</div>`
+    ? `<div class="round-result lda-result-inline">${esc(callFacts.result)}</div>`
     : "";
   const visibleFeed = (cinematic && m.reveal && m.reveal.length && !showVerdict)
     ? feedLines.filter((line) => line !== (n.line || ""))
@@ -771,7 +819,7 @@ function tableView(m, beats, opts) {
       ${flash}
       ${liveSting}
       <div class="stage-bar">
-        <span class="kicker"><i class="dot"></i> ${m.phase === "settled" ? "Final" : "Live"}</span>
+        ${ui() ? ui().liveBadge(m.phase === "settled" ? "Final" : "Live", { final: m.phase === "settled" }) : `<span class="kicker"><i class="dot"></i> ${m.phase === "settled" ? "Final" : "Live"}</span>`}
         <span>R${m.round || 1}</span>
         <span class="score">${score}</span>
         <span class="pressure" aria-label="Intensity ${intensity} of 5${pressure ? ", " + esc(pressure) : ""}"><span class="pips">${pips}</span> ${esc(pressure)}</span>
@@ -817,10 +865,10 @@ function payoff() {
   const faces = (m.seats || []).map((seat) => {
     const react = reactions[seat.id] || "neutral";
     const label = api ? (api.REACTION_LABEL[react] || "") : "";
-    return `<div class="arena-seat" data-react="${esc(react)}">${mark(seat.name, seat.hue)}<div class="seat-copy"><b>${esc(seat.name)}</b>${label ? `<i class="react">${esc(label)}</i>` : ""}</div></div>`;
+    return `<div class="arena-seat" data-react="${esc(react)}">${mark(seat.name, seat.hue, seat.id)}<div class="seat-copy"><b>${esc(seat.name)}</b>${label ? `<i class="react">${esc(label)}</i>` : ""}</div></div>`;
   }).join("");
   return `
-    <div class="payoff${settle ? " sting" : ""}">
+    <div class="payoff ${ui() ? ui().cardClass("result") : "lda-card lda-result"}${settle ? " sting" : ""}">
       ${won && settle ? `<div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>` : ""}
       <div class="verdict ${tone}">${verdict}</div>
       <div class="result-seats">${faces}</div>
@@ -847,7 +895,7 @@ function watch() {
     if (showState.link === "down") return emptyState("Reconnecting", "The table will be right back", "Still reaching the show. Your last frame stays up when we have one.");
     return emptyState("Between matches", "Nothing on the table", "The next match opens in a moment. Arena lists what's coming.");
   }
-  if (flash) return `<div class="flash"><div class="kicker">Locked in</div><h1>You picked ${esc(flash)}</h1><p class="fine">Dice are coming.</p></div>`;
+  if (flash) return `<div class="flash lda-success" role="status"><div class="kicker">Locked in</div><h1>You picked ${esc(flash)}</h1><p class="fine">Dice are coming.</p></div>`;
   if (m.phase === "settled") return payoff();
   if (m.phase === "pick" && !position) return picker();
   return watchTable();
@@ -864,7 +912,7 @@ function agentsView() {
   }
   if (!agents.length) return `<h1 class="page">Agents</h1>${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
   return `<h1 class="page">Agents</h1><p class="fine">Characters, not algorithms with a hat on. Records are from matches they actually played.</p>` +
-    agents.map((a) => `<button class="agent-row" type="button" data-agent="${esc(a.id)}">${mark(a.name, a.hue)}<b>${esc(a.name)}</b><div class="fine">${esc(a.archetype)} · ${esc(a.record)}${a.streak ? ` · streak ${a.streak}` : ""}${a.knownFor ? ` · known for ${esc(a.knownFor)}` : ""}</div></button>`).join("");
+    agents.map((a) => `<button class="agent-row" type="button" data-agent="${esc(a.id)}">${mark(a.name, a.hue, a.id)}<b>${esc(a.name)}</b><div class="fine">${esc(a.archetype)} · ${esc(a.record)}${a.streak ? ` · streak ${a.streak}` : ""}${a.knownFor ? ` · known for ${esc(a.knownFor)}` : ""}</div></button>`).join("");
 }
 
 function agentDetail(a) {
@@ -873,14 +921,11 @@ function agentDetail(a) {
   const rivals = (a.rivals || []).map((r) => `<div class="rowbtn"><b>${esc(r.name)}</b><div class="fine">${esc(r.series)} in ${r.meetings}</div></div>`).join("");
   const moments = (a.moments || []).map((m) => `<div class="rowbtn"><b>${esc(m.title)}</b><div class="fine">${esc(m.dek || "")}</div></div>`).join("");
   return `
-    <button class="ghost" type="button" data-back="agents">All agents</button>
+    <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="agents">All agents</button>
     <h1 class="page">${esc(a.name)}</h1>
     <p class="fine">${esc(a.archetype)}</p>
     <div class="statgrid">
-      <div><b>${esc(a.record)}</b><span>Record</span></div>
-      <div><b>${a.streak || 0}</b><span>Streak</span></div>
-      <div><b>${a.winRate || 0}%</b><span>Win rate</span></div>
-      <div><b>${a.played || 0}</b><span>Played</span></div>
+      ${ui() ? ui().statPill(a.record, "Record") + ui().statPill(String(a.streak || 0), "Streak") + ui().statPill(`${a.winRate || 0}%`, "Win rate") + ui().statPill(String(a.played || 0), "Played") : `<div><b>${esc(a.record)}</b><span>Record</span></div><div><b>${a.streak || 0}</b><span>Streak</span></div><div><b>${a.winRate || 0}%</b><span>Win rate</span></div><div><b>${a.played || 0}</b><span>Played</span></div>`}
     </div>
     <section class="section"><h2>Style</h2><p>${esc(a.line)}</p><p class="fine">Strength: ${esc(a.strength)} Weakness: ${esc(a.weakness)}</p>${a.knownFor ? `<p class="fine">From the matches: ${esc(a.knownFor)}.</p>` : ""}${a.bluffLine ? `<p class="fine">${esc(a.bluffLine)}.</p>` : ""}${a.callLine ? `<p class="fine">${esc(a.callLine)}.</p>` : ""}</section>
     <section class="section"><h2>Recent form</h2><div class="form">${(a.form || []).map((x) => `<i class="${x === "W" ? "w" : "l"}">${esc(x)}</i>`).join("") || "—"}</div></section>
@@ -901,7 +946,7 @@ function historyView() {
   }
   if (!history.length) return `<h1 class="page">History</h1>${line}${emptyState("No stories yet", "Nothing has finished", "When a match settles, the story and the replay land here. Your line above stays at zero until you pick a winner.")}`;
   return `<h1 class="page">History</h1>${line}` + history.map((h) => `
-    <button class="rowbtn" type="button" data-match="${esc(h.matchId)}">
+    <button class="rowbtn lda-card lda-match" type="button" data-match="${esc(h.matchId)}">
       <b>${esc(h.title || h.winnerName)}</b>
       <div class="fine">${esc((h.seats || []).map((s) => s.name).join(" vs "))} · ${esc(h.dek || "")}</div>
     </button>`).join("");
@@ -959,7 +1004,7 @@ function matchReplay(m) {
   }).join("");
   const at = frames.length ? `${index + 1} / ${frames.length}` : "";
   return `
-    <button class="ghost" type="button" data-back="history">All stories</button>
+    <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="history">All stories</button>
     <h1 class="page">${esc(m.story && m.story.title || "Match")}</h1>
     <p>${esc(m.story && m.story.dek || "")}</p>
     ${stage}
@@ -974,10 +1019,9 @@ function profile() {
     <h1 class="page">Your record</h1>
     <section class="section"><h2>Career</h2>${careerBlock(me)}</section>
     <div class="statgrid">
-      <div><b>${me.accuracy || 0}%</b><span>Correct</span></div>
-      <div><b>${me.picks || 0}</b><span>Picks</span></div>
-      <div><b>${money(me.pnl || 0)}</b><span>Test PnL</span></div>
-      <div><b>${me.streak || 0}</b><span>Streak</span></div>
+      ${ui()
+        ? ui().statPill(`${me.accuracy || 0}%`, "Correct") + ui().statPill(String(me.picks || 0), "Picks") + ui().statPill(money(me.pnl || 0), "Test PnL", pnlTone(me.pnl)) + ui().statPill(String(me.streak || 0), "Streak")
+        : `<div><b>${me.accuracy || 0}%</b><span>Correct</span></div><div><b>${me.picks || 0}</b><span>Picks</span></div><div><b>${money(me.pnl || 0)}</b><span>Test PnL</span></div><div><b>${me.streak || 0}</b><span>Streak</span></div>`}
     </div>
     <p class="fine" style="margin-top:12px">AC ${Math.round(me.credits).toLocaleString("en-US")}. Arena Credits have no monetary value. Test P&L is not earnings.</p>
     ${me.bestRead ? `<section class="section"><h2>Best read</h2><div class="rowbtn"><b>${esc((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId)}</b><div class="fine">${me.bestRead.accuracy}% over ${me.bestRead.picks} picks</div></div></section>` : ""}
@@ -1034,7 +1078,7 @@ function render() {
     : profile();
   const m = live();
   const errInPicker = tab === "watch" && m && m.phase === "pick" && !position && !flash && snap.testMarkets !== false;
-  const html = linkBanner() + body + (!errInPicker && err ? `<div class="err">${esc(err)}</div>` : "");
+  const html = linkBanner() + body + (!errInPicker && err ? `<div class="err lda-error" role="alert">${esc(err)}</div>` : "");
   if (html === painted && !arriving) return;
   painted = html;
   view.classList.toggle("enter", !!arriving);
@@ -1063,11 +1107,13 @@ view.addEventListener("click", async (e) => {
       const j = await api("/api/show/agents/" + encodeURIComponent(agentBtn.dataset.agent));
       focusAgent = j.agent;
       tab = "agents";
-      document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === "agents"));
+      paintTabs();
       render();
     } catch (ex) { err = ex.message; render(); }
     return;
   }
+  const sideBtn = e.target.closest("[data-pick-side]");
+  if (sideBtn) return doPickSide(sideBtn.dataset.pickSide, sideBtn.dataset.match);
   const matchBtn = e.target.closest("[data-match]");
   if (matchBtn) {
     try { await loadReplay(matchBtn.dataset.match); }
@@ -1076,8 +1122,6 @@ view.addEventListener("click", async (e) => {
   }
   const ahead = e.target.closest("[data-ahead]");
   if (ahead) return doAhead(ahead.dataset.ahead, ahead.dataset.aheadAgent);
-  const sideBtn = e.target.closest("[data-pick-side]");
-  if (sideBtn) return doPickSide(sideBtn.dataset.pickSide, sideBtn.dataset.match);
   const sellBtn = e.target.closest("[data-sell]");
   if (sellBtn) return doSell();
   const pick = e.target.closest("[data-pick]");
@@ -1130,6 +1174,7 @@ async function doPickSide(side, matchId) {
   if (!id || !agentId) return;
   tradeBusy = true;
   const clientRequestId = `${me.id}-${side}-${Date.now().toString(36)}`;
+  render();
   try {
     const j = await api("/api/show/markets/" + encodeURIComponent(id) + "/buy", {
       method: "POST",
@@ -1154,9 +1199,9 @@ async function doPickSide(side, matchId) {
     await poll();
   } catch (ex) {
     err = ex.message;
-    render();
   } finally {
     tradeBusy = false;
+    render();
   }
 }
 
@@ -1166,6 +1211,7 @@ async function doSell() {
   if (tradeBusy || !m || !position || !me || !(position.shares > 0)) return;
   tradeBusy = true;
   const clientRequestId = `${me.id}-sell-${Date.now().toString(36)}`;
+  render();
   try {
     const j = await api("/api/show/markets/" + encodeURIComponent(m.matchId) + "/sell", {
       method: "POST",
@@ -1184,9 +1230,9 @@ async function doSell() {
     await poll();
   } catch (ex) {
     err = ex.message;
-    render();
   } finally {
     tradeBusy = false;
+    render();
   }
 }
 
@@ -1233,8 +1279,8 @@ function shareBlock(card) {
   return `
     <canvas class="share-card" width="720" height="960" aria-label="Share card"></canvas>
     <div class="share-actions">
-      <button class="ghost" type="button" data-share>Share the call</button>
-      <button class="ghost" type="button" data-save-card>Save card</button>
+      <button class="ghost lda-btn lda-btn-ghost" type="button" data-share>Share the call</button>
+      <button class="ghost lda-btn lda-btn-ghost" type="button" data-save-card>Save card</button>
     </div>
     ${shareNote ? `<p class="fine">${esc(shareNote)}</p>` : ""}`;
 }
@@ -1423,7 +1469,7 @@ async function loadReplay(id) {
   enterView = true;
   painted = "";
   tallySeen = "";
-  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === "history"));
+  paintTabs();
   const href = cardHref({ ...j.share, matchId: j.matchId || id });
   const next = location.pathname + href;
   if (location.pathname + location.search + location.hash !== next) window.history.replaceState(null, "", next);
@@ -1440,7 +1486,7 @@ async function openLinkedReplay() {
     focusMatch = null;
     tab = "history";
     shareNote = "";
-    document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === "history"));
+    paintTabs();
     err = ex.message || "That story isn't in the book.";
     render();
   }

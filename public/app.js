@@ -848,7 +848,7 @@ function challengerOf(m) {
   return seat ? seat.id : "";
 }
 
-function seatClass(seat, m, beats) {
+function seatClass(seat, m, beats, stage, activeId) {
   const bid = m.bid;
   const bidder = bidderOf(bid);
   const calling = m.narrative && m.narrative.headline === "LIAR.";
@@ -869,14 +869,45 @@ function seatClass(seat, m, beats) {
     if (prevId && seat.id === prevId && seat.id !== bidder) cool = true;
   }
   const out = seat.alive === false;
-  return ["who", "seat", hot && "hot", marked && "marked", cool && "cool", out && "out", loss && "hit"].filter(Boolean).join(" ");
+  const active = !!(activeId && seat.id === activeId);
+  const stageCls = active && stage ? `stage-${stage}` : "";
+  return ["who", "seat", hot && "hot", marked && "marked", cool && "cool", out && "out", loss && "hit", active && "active", stageCls].filter(Boolean).join(" ");
+}
+
+function stageLabel(seat, stage, activeId) {
+  if (!activeId || activeId !== seat.id) return seat.alive === false ? "ELIMINATED" : "IN THE ARENA";
+  if (stage === "roll") return "ROLLING";
+  if (stage === "thinking") return "THINKING";
+  if (stage === "announce") return "ANNOUNCING";
+  if (stage === "call") return "CALLS LIAR";
+  if (stage === "reveal") return "REVEAL";
+  if (stage === "result") return "WINNER";
+  return "ACTIVE";
+}
+
+function stageIcon(stage) {
+  if (stage === "roll") return "◈";
+  if (stage === "thinking") return "···";
+  if (stage === "call") return "!";
+  if (stage === "reveal") return "✦";
+  return "";
+}
+
+function stageReadout(stage, m) {
+  const active = (m.seats || []).find((seat) => seat.id === (m.activeAgentId || (m.thinking && m.thinking.agentId)));
+  if (stage === "roll") return "ROLLING DICE";
+  if (stage === "thinking" && active) return `${active.name.toUpperCase()} THINKING`;
+  if (stage === "announce") return "BID ANNOUNCED";
+  if (stage === "call") return "CHALLENGE";
+  if (stage === "reveal") return "DICE REVEAL";
+  if (stage === "result") return "FINAL";
+  return "LIVE MATCH";
 }
 
 function diceFor(seat, m, beats, frame) {
   const loss = beats.find((b) => b.type === "lose-die" && b.id === seat.id);
   const reveal = m.reveal && m.reveal.find((r) => r.id === seat.id);
-  // The felt owns the faces once the cups are open. Seats keep the count.
-  if (reveal && reveal.dice && reveal.dice.length) return "";
+  // Hidden trays show counts. Faces appear only after the engine reveal.
   const rolling = frame ? !!frame.roll : beats.some((b) => b.type === "roll" || b.type === "start" || b.type === "call");
   const revealing = frame ? !!frame.tumble : beats.some((b) => b.type === "reveal");
   const face = m.bid && m.bid.face;
@@ -959,7 +990,7 @@ function youBlock(m, beats) {
   return you + spark(pos && pos.trail);
 }
 
-function seatBlock(seat, m, beats, frame) {
+function seatBlock(seat, m, beats, frame, stage, activeId) {
   const diceLabel = seat.alive === false ? "out" : `${seat.dice} dice`;
   const api = presentApi();
   let react = api ? (api.reactionsOf(m)[seat.id] || "neutral") : "neutral";
@@ -970,10 +1001,31 @@ function seatBlock(seat, m, beats, frame) {
     react = seat.id === caller || seat.id === bidder ? "confident" : "neutral";
   }
   const label = api ? (api.REACTION_LABEL[react] || "") : "";
-  const rolling = frame ? !!frame.roll : beats.some((b) => b.type === "roll" || b.type === "start");
+  const rolling = stage === "roll" || (frame ? !!frame.roll : beats.some((b) => b.type === "roll" || b.type === "start"));
+  const thinking = stage === "thinking" && activeId === seat.id;
+  const status = stageLabel(seat, stage, activeId);
   const brand = brandFor(seat);
   const motion = brand && brand.motionLanguage ? ` data-motion="${esc(brand.motionLanguage)}"` : "";
-  return `<div class="${seatClass(seat, m, beats)} arena-seat" data-react="${esc(react)}" data-cast="${esc(seat.id)}"${motion}>${mark(seat.name, seat.hue, seat.id, brand)}<div class="seat-copy"><b>${esc(seat.name)}</b>${titleLine(seat)}<span>${diceLabel}</span>${label ? `<i class="react">${esc(label)}</i>` : ""}</div><div class="dice-row${rolling ? " shake" : ""}">${diceFor(seat, m, beats, frame)}</div></div>`;
+  const hue = Number(seat.hue);
+  const tone = Number.isFinite(hue) ? hue : 40;
+  const accent = HOUSE_CAST.has(seat.id) ? "" : ` style="--agent-accent:hsl(${tone} 42% 58%)"`;
+  return `<div class="${seatClass(seat, m, beats, stage, activeId)} arena-seat" data-react="${esc(react)}" data-cast="${esc(seat.id)}"${motion}${accent}>
+    <div class="agent-portrait-wrap">
+      <div class="agent-aura" aria-hidden="true"></div>
+      ${mark(seat.name, seat.hue, seat.id, brand)}
+      ${thinking ? `<div class="thought-orbit" aria-hidden="true"><i></i><i></i><i></i></div>` : ""}
+    </div>
+    <div class="agent-copy seat-copy">
+      <b>${esc(seat.name)}</b>
+      ${titleLine(seat)}
+      <span class="agent-status">${esc(status)}</span>
+      <span class="dice-count">${esc(diceLabel)}</span>
+      ${label ? `<i class="react">${esc(label)}</i>` : ""}
+    </div>
+    <div class="dice-tray${rolling ? " rolling" : ""}">
+      <div class="dice-row${rolling ? " shake" : ""}">${diceFor(seat, m, beats, frame)}</div>
+    </div>
+  </div>`;
 }
 
 function stageModel(m, beats, frame) {
@@ -989,14 +1041,7 @@ function stageModel(m, beats, frame) {
 }
 
 function centerDice(m, beats, frame) {
-  if (!m.reveal || !m.reveal.length) {
-    const rolling = frame ? !!frame.roll : beats.some((b) => b.type === "roll" || b.type === "start");
-    if (!rolling && !(m.phase === "live" && !m.bid)) return "";
-    const total = Math.min(10, (m.seats || []).reduce((sum, seat) => sum + (seat.alive === false ? 0 : (seat.dice || 0)), 0));
-    let html = "";
-    for (let i = 0; i < total; i++) html += `<span class="die back lg${rolling ? " shake" : ""}" style="--d:${i * 40}ms"></span>`;
-    return html ? `<div class="cups" aria-hidden="true">${html}</div>` : "";
-  }
+  if (!m.reveal || !m.reveal.length) return "";
   const face = m.bid && m.bid.face;
   const tumbling = frame ? !!frame.tumble : beats.some((b) => b.type === "reveal");
   const hands = m.reveal.map((hand) => {
@@ -1041,6 +1086,8 @@ function tableView(m, beats, opts) {
   const punch = frame ? !!frame.punch : !!bidBeat;
   const pips = [1, 2, 3, 4, 5].map((level) => `<i class="${level <= intensity ? "on" : ""}${level <= intensity && intensity >= 4 ? " hot" : ""}"></i>`).join("");
   const score = `${a.alive === false ? 0 : a.dice}–${b.alive === false ? 0 : b.dice}`;
+  const stage = api && api.broadcastStage ? api.broadcastStage(shownState) : (shownState === "THINKING" ? "thinking" : shownState === "CALL" ? "call" : shownState === "ROLLING" ? "roll" : "live");
+  const activeId = m.activeAgentId || pres.actorId || (m.thinking && m.thinking.agentId) || null;
   const whoNow = pres.state === "THINKING" && m.thinking
     ? `<b>${esc(m.thinking.name)}</b> to act`
     : pres.state === "CALL" && m.bid && m.bid.callerName
@@ -1069,36 +1116,45 @@ function tableView(m, beats, opts) {
     ? feedLines.filter((line) => line !== (n.line || ""))
     : feedLines;
   const feed = visibleFeed.map((line) => `<li>${esc(line)}</li>`).join("");
+  const liar = showLiar ? `<div class="cinematic-overlay liar-overlay" aria-hidden="true"><div class="liar-type">LIAR</div></div>` : "";
   return `
-    <div class="table stage${dim ? " dim" : ""}" data-state="${esc(shownState)}" data-camera="${esc(camera)}" data-intensity="${intensity}">
+    <section class="arena-shell table stage stage-${esc(stage)}${dim ? " dim" : ""}" data-state="${esc(shownState)}" data-stage="${esc(stage)}" data-camera="${esc(camera)}" data-intensity="${intensity}">
       ${flash}
-      ${liveSting}
-      <div class="stage-bar">
-        ${ui() ? ui().liveBadge(m.phase === "settled" ? "Final" : "Live", { final: m.phase === "settled" }) : `<span class="kicker"><i class="dot"></i> ${m.phase === "settled" ? "Final" : "Live"}</span>`}
-        <span>R${m.round || 1}</span>
-        <span class="score">${score}</span>
-        <span class="pressure" aria-label="Intensity ${intensity} of 5${pressure ? ", " + esc(pressure) : ""}"><span class="pips">${pips}</span> ${esc(pressure)}</span>
+      ${liar}
+      <div class="broadcast-strip stage-bar">
+        ${ui() ? ui().liveBadge(m.phase === "settled" ? "Final" : "Live", { final: m.phase === "settled" }) : `<span class="live-pill kicker"><i class="dot"></i> ${m.phase === "settled" ? "Final" : "Live"}</span>`}
+        <span>Round ${m.round || 1} · ${score}</span>
+        <span class="stage-readout">${esc(stageReadout(stage, m))}</span>
       </div>
-      <div class="who-now">${whoNow}</div>
-      ${seatBlock(a, m, beats, frame)}
-      <div class="felt" data-primary="${esc((frame && frame.primary) || pres.focus || "bid")}">
-        ${showLiar ? `<div class="liar-type">LIAR</div>` : ""}
-        ${pres.state === "THINKING" && m.thinking ? `<div class="think-line">${esc(m.thinking.name)} is thinking…</div>` : ""}
-        ${words ? `<div class="bid-banner${quietBid ? " quiet" : ""}${punch ? " pop" : ""}"><div class="bid-words">${esc(words)}</div>${sub ? `<div class="bid-by">${esc(sub)}</div>` : ""}</div>` : `<div class="bid-banner quiet"><div class="bid-words">CUPS DOWN</div></div>`}
-        ${centerDice(m, beats, frame)}
-        ${countHtml}
-        ${verdictHtml}
-        ${resultHtml}
-        ${n.aside ? `<div class="aside">${esc(n.aside)}</div>` : ""}
+      <div class="arena-surface">
+        ${liveSting}
+        <div class="who-now">${whoNow}</div>
+        <div class="vs arena-seats">
+          ${seatBlock(a, m, beats, frame, stage, activeId)}
+          <div class="center-table">
+            <div class="round-orb"><span>${m.phase === "settled" ? "FINAL" : "R" + (m.round || 1)}</span><small>${stageIcon(stage)}</small></div>
+            <div class="table-ring" aria-hidden="true"></div>
+          </div>
+          ${seatBlock(b, m, beats, frame, stage, activeId)}
+        </div>
+        <div class="center-action felt" data-primary="${esc((frame && frame.primary) || pres.focus || "bid")}">
+          <span class="pressure" aria-label="Intensity ${intensity} of 5${pressure ? ", " + esc(pressure) : ""}"><span class="pips">${pips}</span> ${esc(pressure)}</span>
+          ${pres.state === "THINKING" && m.thinking ? `<div class="think-line">${esc(m.thinking.name)} is thinking…</div>` : ""}
+          ${words ? `<div class="bid-banner bidchip${quietBid ? " quiet" : ""}${punch ? " pop" : ""}${showLiar ? " liar slam" : ""}"><div class="bid-words qty">${esc(showLiar ? "LIAR" : words)}</div>${sub ? `<div class="bid-by by">${esc(sub)}</div>` : ""}</div>` : `<div class="bid-banner bidchip quiet"><div class="bid-words qty">CUPS DOWN</div></div>`}
+          ${centerDice(m, beats, frame)}
+          ${countHtml}
+          ${verdictHtml}
+          ${resultHtml}
+          ${n.aside ? `<div class="aside">${esc(n.aside)}</div>` : ""}
+          <div class="line${showVerdict && n.line && n.line === n.headline ? " sr" : ""}" aria-live="polite">${esc(n.line || "")}</div>
+        </div>
+        ${hint ? `<div class="next-hint">${esc(hint)}</div>` : ""}
+        ${feed ? `<ol class="feed">${feed}</ol>` : ""}
+        ${bookBar(m, beats)}
+        ${showYou ? youBlock(m, beats) : ""}
+        ${skip}
       </div>
-      ${seatBlock(b, m, beats, frame)}
-      ${hint ? `<div class="next-hint">${esc(hint)}</div>` : ""}
-      <div class="line sr">${esc(n.line || "")}</div>
-      ${feed ? `<ol class="feed">${feed}</ol>` : ""}
-      ${bookBar(m, beats)}
-      ${showYou ? youBlock(m, beats) : ""}
-      ${skip}
-    </div>`;
+    </section>`;
 }
 
 function watchTable() {
@@ -1124,7 +1180,8 @@ function payoff() {
     return `<div class="arena-seat" data-react="${esc(react)}" data-cast="${esc(seat.id)}">${mark(seat.name, seat.hue, seat.id, brand)}<div class="seat-copy"><b>${esc(seat.name)}</b>${titleLine(seat)}${label ? `<i class="react">${esc(label)}</i>` : ""}</div></div>`;
   }).join("");
   return `
-    <div class="payoff ${ui() ? ui().cardClass("result") : "lda-card lda-result"}${settle ? " sting" : ""}">
+    <div class="payoff stage-result ${ui() ? ui().cardClass("result") : "lda-card lda-result"}${settle ? " sting" : ""}" data-stage="result">
+      <div class="broadcast-strip"><span>Final</span><span>Result</span><span class="stage-readout">MATCH RESULT</span></div>
       ${won && settle ? `<div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>` : ""}
       <div class="verdict ${tone}">${verdict}</div>
       <div class="result-seats">${faces}</div>

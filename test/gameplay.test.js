@@ -117,6 +117,7 @@ function fmt(n) { return n.toFixed(3); }
   const spectator = new Show({ loopEnabled: false });
   eq(spectator.turnDelayMs, 2400, "spectator turn dwell");
   eq(spectator.revealDelayMs, 3600, "spectator reveal dwell");
+  eq(spectator.thinkDelayMs, 1500, "thinking dwell is presentation, not a shorter turn");
 
   const view = {
     table: [{ alive: true, diceCount: 5 }, { alive: true, diceCount: 5 }],
@@ -280,6 +281,7 @@ function fmt(n) { return n.toFixed(3); }
     pickWindowMs: 0,
     turnDelayMs: 100,
     revealDelayMs: 0,
+    thinkDelayMs: 0,
     settleHoldMs: 0,
     bootstrapCount: 0,
     loopEnabled: false,

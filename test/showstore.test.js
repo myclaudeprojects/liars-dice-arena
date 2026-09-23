@@ -286,6 +286,56 @@ function opts(file, extra = {}) {
   assert(!guard.calls.includes("rename"), "a failed fsync does not rename");
   eq(JSON.parse(guard.files.get(guarded.file)).n, 8, "the previous book stays in place");
 
+  const handoff = path.join(storeDir, "handoff.json");
+  const storeMod = JSON.stringify(path.join(__dirname, "..", "src", "showstore.js"));
+  const holderSrc = `
+    const { ShowStore } = require(${storeMod});
+    const store = new ShowStore(process.argv[1], { lockWaitMs: 200 });
+    store.save({ v: 1, n: 1, cashValue: 0, custody: false, realMoney: false });
+    process.stdout.write("held\\n");
+    setInterval(() => {}, 1000);
+  `;
+  const handoffChild = spawn(process.execPath, ["-e", holderSrc, handoff], { stdio: ["ignore", "pipe", "inherit"] });
+  let heldOut = "";
+  handoffChild.stdout.on("data", (c) => { heldOut += c; });
+  try {
+    await waitUntil(() => heldOut.includes("held"));
+    assert(fs.existsSync(handoff + ".lock"), "the holder owns the lock");
+    eq(Number(fs.readFileSync(handoff + ".lock", "utf8")), handoffChild.pid, "the holder recorded its pid");
+    handoffChild.kill("SIGTERM");
+    const exitCode = await new Promise((r) => handoffChild.on("exit", (code) => r(code)));
+    eq(exitCode, 0, "SIGTERM is a clean release");
+    assert(!fs.existsSync(handoff + ".lock"), "SIGTERM drops the show lock");
+    eq(JSON.parse(fs.readFileSync(handoff, "utf8")).n, 1, "shutdown does not rewrite the book");
+    const next = new ShowStore(handoff, { lockWaitMs: 200 });
+    next.save({ v: 1, n: 3, cashValue: 0, custody: false, realMoney: false });
+    eq(next.load().n, 3, "the next process writes after the lock is released");
+  } finally {
+    if (handoffChild.exitCode == null && handoffChild.signalCode == null) {
+      handoffChild.kill("SIGKILL");
+      await new Promise((r) => handoffChild.on("exit", r));
+    }
+  }
+
+  const slowFile = path.join(storeDir, "slow.json");
+  fs.writeFileSync(slowFile, JSON.stringify({ v: 1, n: 1, cashValue: 0 }));
+  const slow = spawn(process.execPath, ["-e", "const fs=require('fs'); fs.writeFileSync(process.argv[1], String(process.pid)+'\\n'); setTimeout(()=>{ try { fs.unlinkSync(process.argv[1]); } catch {} process.exit(0); }, 400); setInterval(()=>{}, 1000);", slowFile + ".lock"], { stdio: "ignore" });
+  try {
+    await waitUntil(() => {
+      try { return Number(fs.readFileSync(slowFile + ".lock", "utf8")) === slow.pid; }
+      catch { return false; }
+    });
+    const waited = new ShowStore(slowFile, { lockWaitMs: 4000 });
+    waited.save({ v: 1, n: 5, cashValue: 0, custody: false, realMoney: false });
+    eq(waited.load().n, 5, "a waiter acquires the lock after the holder exits");
+    eq(JSON.parse(fs.readFileSync(slowFile, "utf8")).n, 5, "the waiter publishes only after it owns the lock");
+  } finally {
+    if (slow.exitCode == null && slow.signalCode == null) {
+      slow.kill("SIGKILL");
+      await new Promise((r) => slow.on("exit", r));
+    }
+  }
+
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(dir2, { recursive: true, force: true });
   fs.rmSync(storeDir, { recursive: true, force: true });

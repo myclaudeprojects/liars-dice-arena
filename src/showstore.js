@@ -6,9 +6,11 @@
 //
 // One process owns the file. load() and save() take show.json.lock and hold
 // it until this process exits. The lock records the owner's pid. The same
-// process may open the store again. A second process waits LOCK_WAIT_MS
-// (400ms), then throws show_store_locked and does not write. A lock whose
-// pid is dead, or still unreadable when the wait ends, is removed and taken.
+// process may open the store again. SIGTERM and SIGINT release the lock and
+// exit, so a Render rolling deploy can hand the disk to the next instance.
+// That next process waits LOCK_WAIT_MS (15s), then throws show_store_locked
+// and does not write. A lock whose pid is dead, or still unreadable when the
+// wait ends, is removed and taken. A live pid is never stolen.
 //
 // save() writes show.json.tmp, fsyncs that file, fsyncs the directory, then
 // renames it onto show.json and fsyncs the directory again. A crash before
@@ -19,10 +21,19 @@
 const fs = require("fs");
 const path = require("path");
 
-const LOCK_WAIT_MS = 400;
+const LOCK_WAIT_MS = 15000;
 const LOCK_POLL_MS = 20;
 const heldLocks = new Set();
 let exitHooked = false;
+
+function releaseHeldLocks() {
+  for (const store of heldLocks) {
+    try {
+      if (store._readPid(store.lockPath) === process.pid) store.fs.unlinkSync(store.lockPath);
+    } catch { /* the directory may already be gone */ }
+    store._lockHeld = false;
+  }
+}
 
 function defaultShowPath() {
   if (process.env.SHOW_DATA_PATH) return process.env.SHOW_DATA_PATH;
@@ -67,7 +78,13 @@ class ShowStore {
     }
   }
 
-  _stealLock() {
+  _stealLock(expectedPid) {
+    const owner = this._readPid(this.lockPath);
+    if (expectedPid == null) {
+      if (owner != null) return;
+    } else if (owner !== expectedPid || pidAlive(owner)) {
+      return;
+    }
     try { this.fs.unlinkSync(this.lockPath); } catch { /* another waiter took it */ }
   }
 
@@ -75,6 +92,7 @@ class ShowStore {
     if (this._lockHeld) return;
     const deadline = Date.now() + this.lockWaitMs;
     let stoleUnreadable = false;
+    let announcedWait = false;
     for (;;) {
       try {
         const fd = this.fs.openSync(this.lockPath, "wx");
@@ -86,6 +104,7 @@ class ShowStore {
         }
         this._lockHeld = true;
         this._hookRelease();
+        if (announcedWait) console.log(`show store: lock acquired by pid ${process.pid}`);
         return;
       } catch (e) {
         if (e.code !== "EEXIST") throw e;
@@ -96,18 +115,26 @@ class ShowStore {
           return;
         }
         if (owner != null && !pidAlive(owner)) {
-          this._stealLock();
+          console.log(`show store: removing stale lock held by dead pid ${owner}`);
+          this._stealLock(owner);
           continue;
         }
         if (Date.now() >= deadline) {
           if (owner == null && !stoleUnreadable) {
             stoleUnreadable = true;
-            this._stealLock();
+            console.log("show store: removing unreadable lock");
+            this._stealLock(null);
             continue;
           }
-          const err = new Error("show store is locked by another process");
+          const who = owner == null ? "" : ` (pid ${owner})`;
+          const err = new Error(`show store is locked by another process${who}`);
           err.code = "show_store_locked";
           throw err;
+        }
+        if (!announcedWait) {
+          announcedWait = true;
+          const who = owner == null ? "an unreadable owner" : `pid ${owner}`;
+          console.log(`show store: waiting up to ${this.lockWaitMs}ms for lock held by ${who}`);
         }
         sleepSync(LOCK_POLL_MS);
       }
@@ -118,13 +145,16 @@ class ShowStore {
     heldLocks.add(this);
     if (exitHooked) return;
     exitHooked = true;
-    process.on("exit", () => {
-      for (const store of heldLocks) {
-        try {
-          if (store._readPid(store.lockPath) === process.pid) store.fs.unlinkSync(store.lockPath);
-        } catch { /* the directory may already be gone */ }
-      }
-    });
+    process.on("exit", releaseHeldLocks);
+    const stop = (sig) => {
+      console.log(`show store: releasing lock on ${sig}`);
+      releaseHeldLocks();
+      process.exit(0);
+    };
+    // A listener replaces Node's default exit. Leave immediately after the
+    // unlock so this process cannot write once the next instance may take it.
+    process.once("SIGTERM", () => stop("SIGTERM"));
+    process.once("SIGINT", () => stop("SIGINT"));
   }
 
   _syncDir(dir) {

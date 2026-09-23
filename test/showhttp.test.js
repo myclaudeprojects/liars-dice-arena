@@ -149,7 +149,7 @@ function req(method, url, body) {
       conceptId: portraits.json.concepts[0].id,
     });
     assert(locked.status === 200 && locked.json.brand.brandVersion === "v1" && locked.json.brand.generation.status === "READY", "select locks brand v1");
-    assert(locked.json.brand.primaryPfpAssetId && locked.json.brand.assets.pfpPortrait && locked.json.brand.pfpStyleVersion === "lda-pfp-v1", "canonical pfp is stored");
+    assert(locked.json.brand.primaryPfpAssetId && locked.json.brand.assets.pfpPortrait && locked.json.brand.pfpStyleVersion === "lda-pfp-v2", "canonical pfp is stored");
     const castAfter = await req("GET", base + "/api/show/agents");
     const made = castAfter.json.agents.find((a) => a.id === created.json.agent.id);
     assert(made && made.roster === "user" && made.brand && made.brand.title && made.playable, "agents list exposes the new competitor");

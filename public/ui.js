@@ -42,9 +42,9 @@
   function avatar(name, hue, id, opts) {
     const o = opts || {};
     const src = typeof o.src === "string" ? o.src : "";
-    const safeSrc = /^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?size=(?:48|96|160|320|512|1024))?$/i.test(src) ? src : "";
+    const safeSrc = /^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?size=(?:48|96|160|256|320|512|1024))?$/i.test(src) ? src : "";
     if (safeSrc) {
-      const w = [48, 96, 160, 320, 512, 1024].includes(Number(o.size)) ? Number(o.size) : 96;
+      const w = [48, 96, 160, 256, 320, 512, 1024].includes(Number(o.size)) ? Number(o.size) : 96;
       const castAttr = id ? ` data-cast="${esc(id)}"` : "";
       return `<img class="mark lda-avatar lda-pfp" src="${esc(safeSrc)}" alt="" width="${w}" height="${w}"${castAttr}>`;
     }
@@ -120,6 +120,22 @@
     return `<div class="lda-pill ${toneClass}"><b>${esc(value)}</b><span>${esc(label)}</span></div>`;
   }
 
+  function hexColor(value, fallback) {
+    return /^#[0-9a-fA-F]{6}$/.test(String(value || "")) ? String(value) : fallback;
+  }
+
+  function agentAvatar(agent, opts) {
+    const o = opts || {};
+    const person = agent || {};
+    const brand = person.brand || {};
+    const sizeName = o.size === "xs" || o.size === "sm" || o.size === "md" || o.size === "lg" ? o.size : "md";
+    const px = sizeName === "lg" ? 160 : sizeName === "sm" || sizeName === "xs" ? 48 : 96;
+    const primary = hexColor(o.primary || brand.primaryColor || person.primaryColor, "#666666");
+    const accent = hexColor(o.accent || brand.accentColor || person.accentColor, "#ffffff");
+    const face = avatar(person.name, person.hue, person.id || person.agentId, { src: o.src || "", size: px });
+    return `<span class="agent-avatar agent-avatar--${sizeName}" style="--agent-primary:${esc(primary)};--agent-accent:${esc(accent)}">${face}</span>`;
+  }
+
   function cardClass(kind) {
     if (kind === "match") return "lda-card lda-match";
     if (kind === "result") return "lda-card lda-result";
@@ -130,6 +146,7 @@
     CAST_IDS,
     esc,
     avatar,
+    agentAvatar,
     emblem,
     palette,
     liveBadge,

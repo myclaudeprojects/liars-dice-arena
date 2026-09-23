@@ -4,7 +4,7 @@ const os = require("os");
 const path = require("path");
 const { CAST } = require("../src/characters");
 const { Show } = require("../src/showrunner");
-const { paletteNear, titlesTooClose, wordCount, SEED_BRANDS } = require("../src/brands");
+const { paletteNear, titlesTooClose, wordCount, brandSimilarity, SEED_BRANDS } = require("../src/brands");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); }
@@ -86,7 +86,10 @@ function signatures(concepts) {
   eq(locked.brand.title, picked.title, "selected title is canonical");
   eq(locked.brand.assets.emblem, "/api/show/agents/" + a.agent.id + "/emblem.svg", "emblem url");
   eq(locked.brand.primaryPfpAssetId, "pfp_" + a.agent.id + "_" + picked.id, "canonical pfp id");
-  eq(locked.brand.pfpStyleVersion, "lda-pfp-v1", "pfp style version");
+  eq(locked.brand.pfpStyleVersion, "lda-pfp-v2", "pfp style version");
+  eq(locked.brand.selectedConceptId, picked.id, "select locks the concept");
+  assert(brandSimilarity(locked.brand, locked.brand) >= 0.75, "a brand matches itself");
+  assert(brandSimilarity(locked.brand, SEED_BRANDS[0]) < 0.75, "locked brand stays off the house");
   eq(locked.brand.assets.pfpPortrait, "/api/show/agents/" + a.agent.id + "/pfp.svg", "pfp url");
   eq(locked.brand.assets.avatar48, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=48", "48 derived");
   eq(locked.brand.assets.avatar96, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=96", "96 derived");
@@ -135,6 +138,10 @@ function signatures(concepts) {
   assert(app.includes("/brand/pfp-select"), "wizard calls pfp select");
   assert(app.includes("Regenerate all"), "wizard can regenerate portraits");
   assert(app.includes("pfp-frame"), "wizard shows square portraits");
+  assert(app.includes("agent-reveal"), "lock ends on a reveal");
+  assert(app.includes("Advanced / Developer Options"), "developer options stay collapsed");
+  assert(app.includes("hero-match-card"), "arena leads with a match card");
+  assert(app.includes("cast-board"), "profile carries a cast board");
 
   console.log("brandcreate ok");
 })().catch((e) => {

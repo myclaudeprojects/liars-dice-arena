@@ -622,6 +622,7 @@ class BrandBook {
         48: (brand.assets && brand.assets.avatar48) || urls.sizes["48"],
         96: (brand.assets && brand.assets.avatar96) || urls.sizes["96"],
         160: (brand.assets && brand.assets.avatar160) || urls.sizes["160"],
+        256: (brand.assets && brand.assets.avatar256) || urls.sizes["256"],
         320: (brand.assets && brand.assets.avatar320) || urls.sizes["320"],
         512: (brand.assets && brand.assets.avatar512) || urls.sizes["512"],
       };
@@ -784,6 +785,32 @@ function paletteSimilarity(a, b) {
   return Math.max(0, Math.min(1, 1 - avg / 180));
 }
 
+function sameText(a, b) {
+  return String(a || "").toLowerCase() === String(b || "").toLowerCase();
+}
+
+function visualOf(brand) {
+  if (!brand) return {};
+  return brand.visualIdentity || brand.visualDNA || brand;
+}
+
+// Metadata overlap in [0, 1]. A score at or above 0.75 should take a new variant.
+function brandSimilarity(a, b) {
+  const left = a || {};
+  const right = b || {};
+  const va = visualOf(left);
+  const vb = visualOf(right);
+  let score = 0;
+  if (sameText(left.archetype, right.archetype)) score += 0.15;
+  if (sameText(va.silhouette, vb.silhouette)) score += 0.20;
+  if (sameText(va.emblem, vb.emblem)) score += 0.20;
+  if (sameText(va.facialAttitude, vb.facialAttitude)) score += 0.10;
+  if (sameText(va.backgroundMotif, vb.backgroundMotif)) score += 0.10;
+  if (sameText(va.primaryColor, vb.primaryColor)) score += 0.15;
+  if (sameText(va.accentColor, vb.accentColor)) score += 0.10;
+  return Math.min(1, score);
+}
+
 function identitySimilarity(a, b) {
   let score = 0;
   if (titlesTooClose(a.title, b.title)) score = Math.max(score, 1);
@@ -810,6 +837,7 @@ module.exports = {
   validateBrand,
   paletteNear,
   titlesTooClose,
+  brandSimilarity,
   colorDistance,
   wordCount,
 };

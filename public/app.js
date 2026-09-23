@@ -19,6 +19,7 @@ let me = null;
 let position = null;
 let focusAgent = null;
 let creator = null;
+let creatorBeat = null;
 let focusMatch = null;
 let agents = [];
 let history = [];
@@ -348,7 +349,7 @@ function personTitle(person) {
 }
 function pfpPath(url) {
   const text = String(url || "");
-  if (/^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?size=(?:48|96|160|320|512|1024))?$/i.test(text)) return text;
+  if (/^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?size=(?:48|96|160|256|320|512|1024))?$/i.test(text)) return text;
   return "";
 }
 function pfpSrc(brand, size) {
@@ -371,6 +372,19 @@ function mark(name, hue, id, brand) {
       })();
   if (!resolved || !resolved.emblemUrl || !ui()) return avatar;
   return `<span class="brand-lockup"${cast}>${ui().emblem()}${avatar}</span>`;
+}
+function heroFace(person) {
+  const brand = brandFor(person);
+  const src = pfpSrc(brand, 160) || pfpSrc(brand, 96);
+  if (ui() && ui().agentAvatar) {
+    return ui().agentAvatar({
+      name: person.name,
+      hue: person.hue,
+      id: person.id,
+      brand,
+    }, { src, size: "lg" });
+  }
+  return mark(person.name, person.hue, person.id, brand);
 }
 function titleLine(person) {
   const title = personTitle(person);
@@ -411,15 +425,16 @@ function pfpMini(svg, size) {
 function conceptPortrait(c) {
   const visual = c.visualIdentity || {};
   const on = c.id === creator.selectedId;
-  return `<button class="concept-card lda-card${on ? " is-selected" : ""}" type="button" data-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}">
-    ${pfpFrame(c.pfpSvg)}
+  const accent = hexColor(visual.accentColor) || "#E8DDD0";
+  return `<button class="concept-card pfp-concept lda-card${on ? " is-selected" : ""}" type="button" data-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait option ${esc(String((c.conceptNumber || 0)))}" style="--agent-accent:${esc(accent)}">
+    <span class="pfp-concept__image-wrap">${pfpFrame(c.pfpSvg)}<span class="pfp-concept__ring"></span></span>
     <span class="concept-copy">
       <span class="concept-name"><b>${esc(creator.form.name)}</b><span class="concept-emblem" style="color:${esc(hexColor(visual.accentColor) || "#e4c27a")}">${safeSvg(c.emblemSvg)}</span></span>
       <span class="brand-title">${esc(c.title)}</span>
       <span class="concept-tag">${esc(c.tagline)}</span>
     </span>
     <span class="swatches" aria-hidden="true"><i class="swatch" style="background:${esc(hexColor(visual.primaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.secondaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.accentColor))}"></i></span>
-    <span class="pfp-select">${on ? "Selected" : "Select"}</span>
+    <span class="pfp-select pfp-concept__label">${on ? "Selected" : "Option " + esc(String(c.conceptNumber || ""))}</span>
   </button>`;
 }
 function emblemPath(url) {
@@ -446,7 +461,7 @@ function brandStyle(person) {
 function marketIdentity(person) {
   if (!person) return "";
   const brand = brandFor(person);
-  return `<div class="market-identity" data-cast="${esc(person.id)}">${mark(person.name, person.hue, person.id, brand)}<div class="nameplate"><b>${esc(person.name)}</b>${titleLine(person)}</div></div>`;
+  return `<div class="market-identity market-outcome" data-cast="${esc(person.id)}">${mark(person.name, person.hue, person.id, brand)}<div class="nameplate market-outcome__identity"><b>${esc(person.name)}</b>${titleLine(person)}</div></div>`;
 }
 function die(n, extra) {
   const pips = (PIPS[n] || []).map(([x, y]) => `<i class="pip" style="left:calc(${x}% - 2px);top:calc(${y}% - 2px)"></i>`).join("");
@@ -628,11 +643,12 @@ function arena() {
   const stateLabel = m.phase === "live" ? `Round ${m.round || 1}` : final ? "Final" : "Picks are open";
   return `
     ${badge}
-    <article class="live-card ${card}${intro}" aria-label="${esc(`${liveLabel}. ${a.name} versus ${b.name}. ${prompt || nowLine || stateLabel}`)}">
-      <div class="vs">
-        <div class="who" data-cast="${esc(a.id)}">${mark(a.name, a.hue, a.id, brandFor(a))}<b>${esc(a.name)}</b>${titleLine(a)}<span>${esc(a.record)}</span></div>
-        <div class="x">VS</div>
-        <div class="who" data-cast="${esc(b.id)}">${mark(b.name, b.hue, b.id, brandFor(b))}<b>${esc(b.name)}</b>${titleLine(b)}<span>${esc(b.record)}</span></div>
+    <article class="live-card hero-match-card ${card}${intro}" aria-label="${esc(`${liveLabel}. ${a.name} versus ${b.name}. ${prompt || nowLine || stateLabel}`)}">
+      <div class="hero-match-card__status">${final ? "Final" : open ? "Up next" : "● Live"}</div>
+      <div class="vs hero-match-card__agents">
+        <div class="who hero-agent" data-cast="${esc(a.id)}"${brandStyle(a)}>${heroFace(a)}<b>${esc(a.name)}</b>${titleLine(a)}<span>${esc(a.record)}</span></div>
+        <div class="x hero-match-card__vs">VS</div>
+        <div class="who hero-agent" data-cast="${esc(b.id)}"${brandStyle(b)}>${heroFace(b)}<b>${esc(b.name)}</b>${titleLine(b)}<span>${esc(b.record)}</span></div>
       </div>
       ${prompt ? `<h1 class="arena-prompt">${esc(prompt)}</h1>` : ""}
       ${nowLine ? `<p class="arena-now">${esc(nowLine)}</p>` : ""}
@@ -1101,12 +1117,21 @@ function seatBlock(seat, m, beats, frame, stage, activeId) {
   const thinking = stage === "thinking" && activeId === seat.id;
   const status = stageLabel(seat, stage, activeId);
   const brand = brandFor(seat);
+  const mood = thinking || react === "thinking"
+    ? "is-thinking"
+    : react === "victory"
+      ? "is-winner"
+      : (react === "confident" || react === "successful-bluff" || react === "successful-call")
+        ? "is-confident"
+        : (react === "failed-bluff" || react === "failed-call" || react === "defeat")
+          ? "is-under-pressure"
+          : "";
   const motion = brand && brand.motionLanguage ? ` data-motion="${esc(brand.motionLanguage)}"` : "";
   const hue = Number(seat.hue);
   const tone = Number.isFinite(hue) ? hue : 40;
   const accent = HOUSE_CAST.has(seat.id) ? "" : ` style="--agent-accent:hsl(${tone} 42% 58%)"`;
   return `<div class="${seatClass(seat, m, beats, stage, activeId)} arena-seat" data-react="${esc(react)}" data-cast="${esc(seat.id)}"${motion}${accent}>
-    <div class="agent-portrait-wrap">
+    <div class="agent-portrait-wrap agent-face ${mood}">
       <div class="agent-aura" aria-hidden="true"></div>
       ${mark(seat.name, seat.hue, seat.id, brand)}
       ${thinking ? `<div class="thought-orbit" aria-hidden="true"><i></i><i></i><i></i></div>` : ""}
@@ -1330,12 +1355,41 @@ function archetypeLabel(id) {
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : "";
 }
 
+const CREATOR_BEATS = [
+  "Building personality...",
+  "Choosing visual DNA...",
+  "Designing silhouette...",
+  "Creating your portraits...",
+  "Checking roster uniqueness...",
+];
+
+function stopCreatorBeat() {
+  if (creatorBeat) clearInterval(creatorBeat);
+  creatorBeat = null;
+  if (creator) creator.statusLabel = "";
+}
+
+function startCreatorBeat() {
+  stopCreatorBeat();
+  let i = 0;
+  if (creator) creator.statusLabel = CREATOR_BEATS[0];
+  creatorBeat = setInterval(() => {
+    if (!creator || !creator.busy) return stopCreatorBeat();
+    i = (i + 1) % CREATOR_BEATS.length;
+    creator.statusLabel = CREATOR_BEATS[i];
+    painted = "";
+    render();
+  }, 700);
+}
+
 function blankCreator() {
   return {
     step: 1,
     busy: false,
     error: "",
+    statusLabel: "",
     moreTraits: false,
+    reveal: null,
     archetypes: CREATOR_ARCHETYPES.map((id) => ({ id, label: archetypeLabel(id) })),
     form: {
       name: "",
@@ -1404,65 +1458,82 @@ function selectedConcept() {
 function creatorView() {
   const step = creator.step;
   const f = creator.form;
-  const titles = ["Name", "Personality", "Visual direction", "Portraits", "Confirm"];
-  const kicker = `Step ${step} of 5 · ${titles[step - 1] || "Create"}`;
+  const titles = ["Name and personality", "Choose their look", "Reveal"];
+  const kicker = `Step ${step} of 3 · ${titles[step - 1] || "Create"}`;
   let body = "";
   if (step === 1) {
     const options = creator.archetypes.map((row) => `<option value="${esc(row.id)}"${row.id === f.archetype ? " selected" : ""}>${esc(row.label || archetypeLabel(row.id))}</option>`).join("");
     body = `
-      <label>Name<input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off"></label>
-      <label>Short description<textarea name="shortDescription" maxlength="240">${esc(f.shortDescription)}</textarea></label>
-      <label>Archetype<select name="archetype">${options}</select></label>`;
-  } else if (step === 2) {
-    body = `
+      <label>Name<input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Dracula"></label>
+      <label>Archetype<select name="archetype">${options}</select></label>
+      <p class="fine">Persona play. The show seats them. You watch and predict with Arena Credits.</p>
       ${sliderField("aggression", "Aggression")}
       ${sliderField("bluffing", "Bluffing")}
       ${sliderField("discipline", "Discipline")}
       ${sliderField("chaos", "Chaos")}
-      <button class="ghost" type="button" data-more-traits="1">${creator.moreTraits ? "Hide extra traits" : "More traits"}</button>
-      ${creator.moreTraits ? `
-        ${sliderField("confidence", "Confidence")}
-        ${sliderField("patience", "Patience")}
-        ${sliderField("showmanship", "Showmanship")}
-        ${sliderField("calculation", "Calculation")}
-        ${sliderField("riskTolerance", "Risk")}
-        ${sliderField("adaptability", "Adaptability")}
-      ` : ""}`;
-  } else if (step === 3) {
-    body = `<label>Optional visual direction<textarea name="visualDirection" maxlength="160" placeholder="Cold steel, moonlit, a calm face.">${esc(f.visualDirection)}</textarea></label><p class="fine">This shifts the palette and the face. Next you’ll pick a square portrait.</p>`;
-  } else if (step === 4) {
+      <label>Visual direction<textarea name="visualDirection" maxlength="160" placeholder="Elegant gothic gambler, crimson rim light.">${esc(f.visualDirection)}</textarea></label>
+      <details class="advanced-config">
+        <summary>Advanced / Developer Options</summary>
+        <div class="advanced-config__body">
+          <label>Short description<textarea name="shortDescription" maxlength="240" placeholder="A quiet closer who spends one lie and waits.">${esc(f.shortDescription)}</textarea></label>
+          <button class="ghost" type="button" data-more-traits="1">${creator.moreTraits ? "Hide extra traits" : "More traits"}</button>
+          ${creator.moreTraits ? `
+            ${sliderField("confidence", "Confidence")}
+            ${sliderField("patience", "Patience")}
+            ${sliderField("showmanship", "Showmanship")}
+            ${sliderField("calculation", "Calculation")}
+            ${sliderField("riskTolerance", "Risk")}
+            ${sliderField("adaptability", "Adaptability")}
+          ` : ""}
+          <p class="fine">No endpoint, API key, wallet, or funding on this flow. Custom brains and real-money seats are not part of the spectator arena.</p>
+        </div>
+      </details>`;
+  } else if (step === 2) {
     const cards = (creator.concepts || []).map((c) => conceptPortrait(c)).join("");
-    body = `<p class="fine">Square portraits. Same competitor, different expression and headwear. Pick the face that should be canonical.</p>
-      <div class="concept-grid">${cards}</div>
+    body = `<section class="brand-concepts">
+      <div class="brand-concepts__header">
+        <span class="kicker">Choose their look</span>
+        <h2>This becomes your agent’s identity.</h2>
+        <p class="fine">Four square portraits. Pick the face that should be canonical. You can regenerate before you lock it.</p>
+      </div>
+      <div class="concept-grid pfp-concept-grid" id="pfpConceptGrid">${cards || `<p class="fine">No portraits yet.</p>`}</div>
       <label>Refine<textarea name="refine" maxlength="160" placeholder="More like the quiet one, different metal.">${esc(f.refine)}</textarea></label>
-      <div class="creator-actions">
+      <div class="creator-actions concept-actions">
         <button class="ghost" type="button" data-creator-vary="all"${creator.busy ? " disabled" : ""}>Regenerate all</button>
         <button class="ghost" type="button" data-creator-vary="expression"${creator.busy ? " disabled" : ""}>Stronger expression</button>
         <button class="ghost" type="button" data-creator-vary="darker"${creator.busy ? " disabled" : ""}>Darker version</button>
         <button class="ghost" type="button" data-creator-vary="cleaner"${creator.busy ? " disabled" : ""}>Cleaner background</button>
         <button class="ghost" type="button" data-creator-vary="like"${creator.busy ? " disabled" : ""}>More like this</button>
-      </div>`;
+      </div>
+    </section>`;
   } else {
+    const reveal = creator.reveal || {};
     const c = selectedConcept();
     const visual = (c && c.visualIdentity) || {};
-    body = c ? `<article class="concept-card lda-card">
-      ${pfpFrame(c.pfpSvg)}
-      <span class="concept-copy"><b>${esc(creator.form.name)}</b><span class="brand-title">${esc(c.title)}</span><span class="concept-tag">${esc(c.tagline)}</span></span>
-      <span class="swatches" aria-hidden="true"><i class="swatch" style="background:${esc(hexColor(visual.primaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.secondaryColor))}"></i><i class="swatch" style="background:${esc(hexColor(visual.accentColor))}"></i></span>
-      <span class="pfp-sizes" aria-label="Small-size check">${pfpMini(c.pfpSvg, 48)}${pfpMini(c.pfpSvg, 96)}</span>
-      <p class="fine">${esc(archetypeLabel(creator.form.archetype))} · face-first portrait</p>
-    </article>` : `<p class="fine">Pick a portrait first.</p>`;
+    const accent = hexColor(reveal.accent || visual.accentColor) || "#E8DDD0";
+    body = `<section class="agent-reveal" style="--agent-accent:${esc(accent)};--agent-primary:${esc(hexColor(reveal.primary || visual.primaryColor) || "#6D0F1F")}">
+      <div class="agent-reveal__glow" aria-hidden="true"></div>
+      ${pfpFrame(reveal.svg || (c && c.pfpSvg))}
+      <div class="agent-reveal__copy">
+        <span class="agent-reveal__title">${esc(reveal.title || (c && c.title) || "")}</span>
+        <h1>${esc(reveal.name || f.name)}</h1>
+        <p>${esc(reveal.tagline || (c && c.tagline) || "")}</p>
+      </div>
+      <span class="pfp-sizes" aria-label="Small-size check">${pfpMini(reveal.svg || (c && c.pfpSvg), 48)}${pfpMini(reveal.svg || (c && c.pfpSvg), 96)}</span>
+    </section>`;
   }
-  const nextLabel = step === 3 ? "Generate portraits" : step === 4 ? "Use this portrait" : step === 5 ? "Enter the arena" : "Next";
-  const nextAttr = step === 3 ? "data-creator-generate" : step === 5 ? "data-creator-confirm" : "data-creator-next";
+  const nextLabel = step === 1 ? "Generate portraits" : step === 2 ? "Lock this portrait" : "Enter the Arena";
+  const nextAttr = step === 1 ? "data-creator-generate" : step === 2 ? "data-creator-confirm" : "data-enter-arena";
+  const working = creator.statusLabel || "Working.";
   return `<div class="creator">
     <p class="kicker">${esc(kicker)}</p>
     <h1 class="page">Create agent</h1>
     ${body}
+    ${creator.busy ? `<p class="fine creator-status" role="status">${esc(working)}</p>` : ""}
     ${creator.error ? `<div class="err lda-error" role="alert">${esc(creator.error)}</div>` : ""}
     <div class="creator-actions">
-      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" ${nextAttr}="1"${creator.busy ? " disabled" : ""}>${creator.busy ? "Working." : nextLabel}</button>
-      <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-creator-back="1"${creator.busy ? " disabled" : ""}>${step === 1 ? "Back to agents" : "Back"}</button>
+      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" ${nextAttr}="1"${creator.busy ? " disabled" : ""}>${creator.busy ? esc(working) : nextLabel}</button>
+      ${step === 3 ? "" : `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-creator-back="1"${creator.busy ? " disabled" : ""}>${step === 1 ? "Back to agents" : "Back"}</button>`}
     </div>
   </div>`;
 }
@@ -1498,7 +1569,7 @@ function resumeCreator(agent) {
   creator.draft = { agent: { id: agent.id, name: agent.name, status: agent.status } };
   creator.concepts = agent.concepts || [];
   creator.selectedId = agent.selectedConceptId || (creator.concepts[0] && creator.concepts[0].id) || null;
-  creator.step = creator.concepts.length ? 4 : 1;
+  creator.step = creator.concepts.length ? 2 : 1;
   focusAgent = null;
   tab = "agents";
   painted = "";
@@ -1508,8 +1579,15 @@ function resumeCreator(agent) {
 
 async function runConcepts(vary) {
   if (!creator || creator.busy) return;
+  if (!creator.draft && (creator.form.name.trim().length < 2 || creator.form.shortDescription.trim().length < 8)) {
+    creator.error = "Add a name, and a short description of at least 8 characters under Advanced.";
+    painted = "";
+    render();
+    return;
+  }
   creator.busy = true;
   creator.error = "";
+  startCreatorBeat();
   painted = "";
   render();
   try {
@@ -1533,10 +1611,13 @@ async function runConcepts(vary) {
     creator.concepts = concepts.concepts || [];
     creator.selectedId = (creator.concepts[0] && creator.concepts[0].id) || null;
     creator.form.refine = "";
-    creator.step = 4;
+    creator.step = 2;
   } catch (ex) {
-    creator.error = ex.message || "Could not generate concepts.";
+    creator.error = creator.draft
+      ? "Your agent is safe. The portrait generation failed."
+      : (ex.message || "Could not generate concepts.");
   } finally {
+    stopCreatorBeat();
     if (creator) {
       creator.busy = false;
       painted = "";
@@ -1556,6 +1637,7 @@ async function confirmConcept() {
   }
   creator.busy = true;
   creator.error = "";
+  startCreatorBeat();
   painted = "";
   render();
   const id = creator.draft.agent.id;
@@ -1565,18 +1647,23 @@ async function confirmConcept() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ conceptId: chosen.id }),
     });
-    creator = null;
+    const visual = chosen.visualIdentity || {};
+    creator.reveal = {
+      name: creator.form.name,
+      title: chosen.title,
+      tagline: chosen.tagline,
+      svg: chosen.pfpSvg,
+      accent: visual.accentColor,
+      primary: visual.primaryColor,
+    };
+    creator.step = 3;
     await refreshLists();
-    const j = await api("/api/show/agents/" + encodeURIComponent(id));
-    focusAgent = j.agent;
-    tab = "agents";
-    painted = "";
-    paintTabs();
-    render();
   } catch (ex) {
+    if (creator) creator.error = ex.message || "Could not lock that brand.";
+  } finally {
+    stopCreatorBeat();
     if (creator) {
       creator.busy = false;
-      creator.error = ex.message || "Could not lock that brand.";
       painted = "";
       render();
     }
@@ -1710,6 +1797,18 @@ function matchReplay(m) {
     <ol class="log">${beats}</ol>`;
 }
 
+function castBoard() {
+  const rows = agents.slice().sort((a, b) => (b.won || 0) - (a.won || 0) || String(a.name).localeCompare(String(b.name))).slice(0, 8);
+  if (!rows.length) return "";
+  return `<section class="section cast-board"><h2>Cast</h2>${rows.map((a, i) => `
+    <button class="rowbtn cast-row" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
+      <span class="cast-rank">#${i + 1}</span>
+      ${mark(a.name, a.hue, a.id, brandFor(a))}
+      <span><b>${esc(a.name)}</b>${titleLine(a)}</span>
+      <div class="fine">${esc(a.record || "0–0")}${a.streak ? ` · streak ${a.streak}` : ""}</div>
+    </button>`).join("")}</section>`;
+}
+
 function profile() {
   if (!me) return `<p class="fine">Setting up your test-credit book…</p>`;
   return `
@@ -1724,7 +1823,8 @@ function profile() {
     ${me.bestRead ? `<section class="section"><h2>Best read</h2><div class="rowbtn" data-cast="${esc(me.bestRead.agentId)}">${mark((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId, null, me.bestRead.agentId)}<span><b>${esc((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId)}</b>${titleLine({ id: me.bestRead.agentId })}</span><div class="fine">${me.bestRead.accuracy}% over ${me.bestRead.picks} picks</div></div></section>` : ""}
     <section class="section"><h2>Leaderboard</h2>
       ${(leaders.length ? leaders : [{ id: me.id, accuracy: me.accuracy, pnl: me.pnl, picks: me.picks }]).slice(0, 8).map((p, i) => `<div class="rowbtn"><b>${i + 1}. ${esc(p.id === me.id ? "You" : p.id)}</b><div class="fine">${p.accuracy || 0}% · ${money(p.pnl || 0)} test</div></div>`).join("")}
-    </section>`;
+    </section>
+    ${castBoard()}`;
 }
 
 function kickTally() {
@@ -1951,6 +2051,13 @@ view.addEventListener("click", async (e) => {
     if (vary) { runConcepts(vary.dataset.creatorVary); return; }
     if (e.target.closest("[data-creator-generate]")) { runConcepts("all"); return; }
     if (e.target.closest("[data-creator-confirm]")) { confirmConcept(); return; }
+    if (e.target.closest("[data-enter-arena]")) {
+      stopCreatorBeat();
+      creator = null;
+      await refreshLists();
+      setTab("arena");
+      return;
+    }
     if (e.target.closest("[data-more-traits]")) {
       creator.moreTraits = !creator.moreTraits;
       creator.error = "";
@@ -1967,30 +2074,14 @@ view.addEventListener("click", async (e) => {
       return;
     }
     if (e.target.closest("[data-creator-next]")) {
-      if (creator.step === 1 && (creator.form.name.trim().length < 2 || creator.form.shortDescription.trim().length < 8)) {
-        creator.error = "Add a name and a short description.";
-        painted = "";
-        render();
-        return;
-      }
-      if (creator.step === 4) {
-        if (!selectedConcept()) {
-          creator.error = "Pick a concept.";
-          painted = "";
-          render();
-          return;
-        }
-        creator.step = 5;
-      } else if (creator.step < 5) {
-        creator.step += 1;
-      }
-      creator.error = "";
-      painted = "";
-      render();
+      if (creator.step === 1) runConcepts("all");
       return;
     }
     if (e.target.closest("[data-creator-back]")) {
-      if (creator.step <= 1) creator = null;
+      if (creator.step <= 1) {
+        stopCreatorBeat();
+        creator = null;
+      } else if (creator.step === 3) creator.step = 2;
       else creator.step -= 1;
       painted = "";
       render();

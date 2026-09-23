@@ -34,9 +34,37 @@ let tallySeen = "";
 let replay = null;
 
 const SOUND_KEY = "ldaSound";
+let soundMem = null;
+let showState = { snap: null, link: "boot", holdUntil: 0 };
+let listsReady = false;
+let listsError = "";
+
+function presence() {
+  return window.ldaPresence || {
+    foldShow: (state, incoming) => ({
+      snap: incoming && !incoming.failed && !incoming.starting ? incoming.snap : (state && state.snap) || null,
+      link: "up",
+      holdUntil: 0,
+      apply: !!(incoming && !incoming.failed && !incoming.starting),
+    }),
+    statusCopy: () => "",
+    soundOn: (stored) => stored === "1",
+    replayIndex: (n, reduced) => (reduced && n ? n - 1 : 0),
+    replayPlays: (reduced) => !reduced,
+  };
+}
 
 function soundEnabled() {
-  return localStorage.getItem(SOUND_KEY) === "1";
+  if (soundMem != null) return soundMem;
+  let stored = null;
+  try { stored = localStorage.getItem(SOUND_KEY); } catch { stored = null; }
+  return presence().soundOn(stored);
+}
+
+function setSound(on) {
+  soundMem = !!on;
+  try { localStorage.setItem(SOUND_KEY, on ? "1" : "0"); } catch { /* the button still toggles */ }
+  paintSound();
 }
 
 function paintSound() {
@@ -279,9 +307,41 @@ function careerBlock(person, opts = {}) {
   return `<div class="career" data-points="${series.length}">${spark(values, tone)}<p class="fine">${series.length} settled · ${money(last.cum)} test</p></div>`;
 }
 
+function emptyState(kicker, title, body) {
+  return `<section class="empty"><div class="kicker">${esc(kicker)}</div><h1 class="page">${esc(title)}</h1><p>${esc(body)}</p></section>`;
+}
+
+function linkBanner() {
+  if (tab !== "arena" && tab !== "watch") return "";
+  if (!live()) return "";
+  const text = presence().statusCopy(showState.link);
+  if (!text) return "";
+  return `<p class="link" role="status">${esc(text)}</p>`;
+}
+
+function noPicksYet() {
+  return !!(me && !(Number(me.picks) > 0));
+}
+
+function arenaIdle() {
+  const waiting = showState.link === "boot";
+  const dropped = showState.link === "down";
+  const fresh = noPicksYet();
+  if (waiting) {
+    return emptyState("Connecting", "The show is coming up", "Picks open when the table answers. Test credits only. Nothing here is cash.");
+  }
+  if (dropped) {
+    return emptyState("Reconnecting", "The arena will be right back", "Still reaching the show. When a match was already up, that frame stays on Watch.");
+  }
+  const body = fresh
+    ? "The next pairing opens in a moment. You haven't picked a winner yet. One tap when the window opens. Test credits only."
+    : "The next pairing opens in a moment. You can wait here or look through Agents.";
+  return emptyState("Between matches", "Nothing is live right now", body) + upcomingBlock();
+}
+
 function arena() {
   const m = live();
-  if (!m) return `<p class="fine">The arena is warming up.</p>`;
+  if (!m) return arenaIdle();
   const [a, b] = m.seats;
   const open = m.phase === "pick";
   const hot = snap.hot;
@@ -301,6 +361,7 @@ function arena() {
       </div>
       <div class="status">${m.phase === "live" ? `Round ${m.round || 1}` : m.phase === "settled" ? esc(m.story && m.story.title || "Settled") : "Picks are open"}</div>
       <button class="cta" type="button" data-go="watch">${open ? "Watch & pick" : m.phase === "settled" ? "See the result" : "Watch"}</button>
+      ${noPicksYet() ? `<p class="first-run">No picks yet. One tap. 50 test credits, and they are not cash.</p>` : ""}
     </article>
     ${upcomingBlock()}
     ${hot ? `<section class="section"><h2>Hot</h2><div class="rowbtn"><b>${esc(hot.text)}</b><div class="fine">Can anyone stop ${esc(hot.name)}?</div></div></section>` : ""}
@@ -546,7 +607,11 @@ function seatName(id) {
 
 function watch() {
   const m = live();
-  if (!m) return `<p class="fine">No match yet.</p>`;
+  if (!m) {
+    if (showState.link === "boot") return emptyState("Connecting", "Taking you to the table", "The dice show up here as soon as the show answers.");
+    if (showState.link === "down") return emptyState("Reconnecting", "The table will be right back", "Still reaching the show. Your last frame stays up when we have one.");
+    return emptyState("Between matches", "Nothing on the table", "The next match opens in a moment. Arena lists what's coming.");
+  }
   if (flash) return `<div class="flash"><div class="kicker">Locked in</div><h1>You picked ${esc(flash)}</h1><p class="fine">Dice are coming.</p></div>`;
   if (m.phase === "settled") return payoff();
   if (m.phase === "pick" && !position) return picker();
@@ -555,6 +620,14 @@ function watch() {
 
 function agentsView() {
   if (focusAgent) return agentDetail(focusAgent);
+  if (!agents.length && !listsReady) {
+    const title = listsError ? "The cast didn't load" : "The cast is on its way";
+    const body = listsError
+      ? "The connection blinked. This tab will try again."
+      : "Records show up when the show answers.";
+    return `<h1 class="page">Agents</h1>${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
+  }
+  if (!agents.length) return `<h1 class="page">Agents</h1>${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
   return `<h1 class="page">Agents</h1><p class="fine">Characters, not algorithms with a hat on. Records are from matches they actually played.</p>` +
     agents.map((a) => `<button class="agent-row" type="button" data-agent="${esc(a.id)}">${mark(a.name, a.hue)}<b>${esc(a.name)}</b><div class="fine">${esc(a.archetype)} · ${esc(a.record)}${a.streak ? ` · streak ${a.streak}` : ""}${a.knownFor ? ` · known for ${esc(a.knownFor)}` : ""}</div></button>`).join("");
 }
@@ -584,7 +657,14 @@ function agentDetail(a) {
 function historyView() {
   if (focusMatch) return matchReplay(focusMatch);
   const line = `<section class="section"><h2>Your line</h2>${careerBlock(me)}</section>`;
-  if (!history.length) return `<h1 class="page">History</h1>${line}<p class="fine">Stories show up after matches finish.</p>`;
+  if (!listsReady) {
+    const title = listsError ? "Stories didn't load" : "Fetching stories";
+    const body = listsError
+      ? "The connection blinked. This tab will try again."
+      : "Finished matches will show here in a moment.";
+    return `<h1 class="page">History</h1>${line}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
+  }
+  if (!history.length) return `<h1 class="page">History</h1>${line}${emptyState("No stories yet", "Nothing has finished", "When a match settles, the story and the replay land here. Your line above stays at zero until you pick a winner.")}`;
   return `<h1 class="page">History</h1>${line}` + history.map((h) => `
     <button class="rowbtn" type="button" data-match="${esc(h.matchId)}">
       <b>${esc(h.title || h.winnerName)}</b>
@@ -595,7 +675,7 @@ function historyView() {
 const REPLAY_HOLD = { roll: 780, bid: 860, call: 820, reveal: 1680, out: 980, settle: 2200 };
 
 function armReplay() {
-  if (!replay) return;
+  if (!replay || !presence().replayPlays(reducedMotion())) return;
   if (replay.timer) clearTimeout(replay.timer);
   if (replay.index >= replay.frames.length - 1) return;
   const frame = replay.frames[replay.index];
@@ -611,7 +691,7 @@ function armReplay() {
 function restartReplay() {
   if (!replay || !replay.frames.length) return;
   if (replay.timer) clearTimeout(replay.timer);
-  replay.index = 0;
+  replay.index = presence().replayIndex(replay.frames.length, reducedMotion());
   tallySeen = "";
   render();
   armReplay();
@@ -661,7 +741,7 @@ function profile() {
     <p class="fine" style="margin-top:12px">${Math.round(me.credits)} test credits. They are not dollars, tokens, or a claim on anything.</p>
     ${me.bestRead ? `<section class="section"><h2>Best read</h2><div class="rowbtn"><b>${esc((agents.find((a) => a.id === me.bestRead.agentId) || {}).name || me.bestRead.agentId)}</b><div class="fine">${me.bestRead.accuracy}% over ${me.bestRead.picks} picks</div></div></section>` : ""}
     <section class="section"><h2>Leaderboard</h2>
-      ${(leaders.length ? leaders : [{ id: "you", accuracy: me.accuracy, pnl: me.pnl, picks: me.picks }]).slice(0, 8).map((p, i) => `<div class="rowbtn"><b>${i + 1}. ${esc(p.id === me.id ? "You" : p.id)}</b><div class="fine">${p.accuracy || 0}% · ${money(p.pnl || 0)} test</div></div>`).join("")}
+      ${(leaders.length ? leaders : [{ id: me.id, accuracy: me.accuracy, pnl: me.pnl, picks: me.picks }]).slice(0, 8).map((p, i) => `<div class="rowbtn"><b>${i + 1}. ${esc(p.id === me.id ? "You" : p.id)}</b><div class="fine">${p.accuracy || 0}% · ${money(p.pnl || 0)} test</div></div>`).join("")}
     </section>`;
 }
 
@@ -707,7 +787,9 @@ function render() {
     : tab === "agents" ? agentsView()
     : tab === "history" ? historyView()
     : profile();
-  const html = body + (tab !== "watch" && err ? `<div class="err">${esc(err)}</div>` : "");
+  const m = live();
+  const errInPicker = tab === "watch" && m && m.phase === "pick" && !position && !flash;
+  const html = linkBanner() + body + (!errInPicker && err ? `<div class="err">${esc(err)}</div>` : "");
   if (html === painted && !arriving) return;
   painted = html;
   view.classList.toggle("enter", !!arriving);
@@ -951,7 +1033,7 @@ async function saveCard() {
     shareNote = "Card saved on this device.";
     render();
   } catch (ex) {
-    err = ex.message;
+    shareNote = ex.message || "Couldn't save that card.";
     render();
   }
 }
@@ -977,7 +1059,7 @@ async function doShare() {
     render();
   } catch (ex) {
     if (ex && ex.name === "AbortError") return;
-    err = ex.message;
+    shareNote = ex.message || "Couldn't share that card.";
     render();
   }
 }
@@ -996,8 +1078,7 @@ async function loadReplay(id) {
       return found ? found.hue : 40;
     },
   });
-  replay = { id: j.matchId || id, frames, index: 0, timer: 0 };
-  if (reducedMotion() && frames.length) replay.index = frames.length - 1;
+  replay = { id: j.matchId || id, frames, index: presence().replayIndex(frames.length, reducedMotion()), timer: 0 };
   tab = "history";
   enterView = true;
   painted = "";
@@ -1007,7 +1088,7 @@ async function loadReplay(id) {
   const next = location.pathname + href;
   if (location.pathname + location.search + location.hash !== next) window.history.replaceState(null, "", next);
   render();
-  if (!reducedMotion()) armReplay();
+  armReplay();
 }
 
 async function openLinkedReplay() {
@@ -1035,34 +1116,56 @@ async function refreshLists() {
     agents = a.agents || [];
     history = h.matches || [];
     leaders = l.leaders || [];
-  } catch { /* next poll */ }
+    listsReady = true;
+    listsError = "";
+  } catch (ex) {
+    if (!listsReady) listsError = ex.message || "Couldn't load that list.";
+  }
+}
+
+function notePresence(folded) {
+  const linkChanged = folded.link !== showState.link;
+  showState = { snap: folded.snap, link: folded.link, holdUntil: folded.holdUntil };
+  snap = folded.snap;
+  return linkChanged;
 }
 
 async function poll() {
   const gen = ++pollGen;
+  let incoming;
   try {
     const j = await api("/api/show?predictor=" + encodeURIComponent(me.id));
-    if (gen !== pollGen || j.starting) return;
-    snap = j;
-    if (j.you) me = j.you;
-    // A missing position means this match has no pick. Keeping the previous
-    // match's position would show the wrong name once the next one is live.
-    if (j.live && j.live.market && j.live.market.you) position = j.live.market.you;
-    else position = null;
-    const prevLive = heardLive;
-    hear(j.live);
-    applyMotion(prevLive, j.live);
-    if (tab === "agents" || tab === "history" || tab === "profile") await refreshLists();
     if (gen !== pollGen) return;
-    if (!focusAgent && !focusMatch) render();
-    else renderCredits();
-  } catch { /* keep last frame */ }
+    incoming = { failed: false, starting: !!j.starting, snap: j };
+  } catch {
+    if (gen !== pollGen) return;
+    incoming = { failed: true };
+  }
+  const folded = presence().foldShow(showState, incoming, Date.now());
+  const linkChanged = notePresence(folded);
+  if (!folded.apply) {
+    if (linkChanged && !focusAgent && !focusMatch) render();
+    else if (linkChanged) renderCredits();
+    return;
+  }
+  const j = folded.snap || {};
+  if (j.you) me = j.you;
+  // A missing position means this match has no pick. Keeping the previous
+  // match's position would show the wrong name once the next one is live.
+  if (j.live && j.live.market && j.live.market.you) position = j.live.market.you;
+  else position = null;
+  const prevLive = heardLive;
+  hear(j.live);
+  applyMotion(prevLive, j.live);
+  if (tab === "agents" || tab === "history" || tab === "profile") await refreshLists();
+  if (gen !== pollGen) return;
+  if (!focusAgent && !focusMatch) render();
+  else renderCredits();
 }
 
 document.querySelector("#sound").addEventListener("click", async () => {
   const next = !soundEnabled();
-  localStorage.setItem(SOUND_KEY, next ? "1" : "0");
-  paintSound();
+  setSound(next);
   if (!next) return;
   const ctx = unlockAudio();
   if (ctx && ctx.resume) await ctx.resume();
@@ -1075,6 +1178,11 @@ document.addEventListener("pointerdown", () => {
 async function boot() {
   paintSound();
   render();
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      if (document.querySelector("canvas.share-card")) paintShareCards();
+    }).catch(() => {});
+  }
   const opened = await api("/api/show/predictors", {
     method: "POST",
     headers: { "content-type": "application/json" },

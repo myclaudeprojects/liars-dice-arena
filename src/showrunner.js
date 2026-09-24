@@ -36,6 +36,7 @@ const {
   humanize,
 } = require("./brandcreate");
 const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls } = require("./pfp");
+const { sectionPreviews, composedPreview } = require("./agentCreation/creationPreview");
 const { animatedPfpMeta } = require("./motionprofiles");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
@@ -1722,6 +1723,14 @@ class Show {
     };
   }
 
+  creationPreviews() {
+    return sectionPreviews();
+  }
+
+  creationPreview(selections) {
+    return composedPreview(selections);
+  }
+
   agentList() {
     const house = CAST.map((c) => this.listRow(c, "house"));
     const guests = [...this.userAgents.values()]
@@ -1780,6 +1789,7 @@ class Show {
       personality: draft ? draft.personality : null,
       personalitySummary: draft ? draft.personalitySummary : null,
       visualDirection: draft ? draft.visualDirection : null,
+      creationOptions: draft ? (draft.creationOptions || null) : null,
     };
   }
 

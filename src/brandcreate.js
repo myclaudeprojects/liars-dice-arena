@@ -28,6 +28,10 @@ const {
 const { createImageProvider } = require("./imageprovider");
 const { PFP_STYLE_ID } = require("./branding/stylePresets");
 const { buildVisualDNA } = require("./branding/buildVisualDNA");
+const { normalizeSelections, resolveLook, visualPatchFromLook } = require("./agentCreation/resolveLook");
+const { seedFor, composedSeed } = require("./agentCreation/previewSeeds");
+const { buildOptionPreviewPrompt } = require("./agentCreation/buildOptionPreviewPrompt");
+const { HOUSE_STYLE_ID } = require("./agentCreation/optionRegistry");
 
 const imageProvider = createImageProvider();
 
@@ -482,6 +486,7 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
       ? anchor.visualIdentity.silhouette
       : SILHOUETTES[(SILHOUETTES.indexOf(bias.silhouette) + index + attempt) % SILHOUETTES.length];
     const dna = buildVisualDNA({ archetype: draft.archetype });
+    const look = draft.creationOptions ? resolveLook(draft.creationOptions) : null;
     const visual = {
       silhouette,
       bodyLanguage: BODIES[(index + attempt + salt) % BODIES.length],
@@ -499,6 +504,20 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
       signatureFeature: dna.signatureFeature,
       styleId: PFP_STYLE_ID,
     };
+    if (look) {
+      const patch = visualPatchFromLook(look);
+      visual.silhouette = patch.silhouette;
+      visual.bodyLanguage = patch.bodyLanguage;
+      visual.facialAttitude = patch.facialAttitude;
+      visual.accentColor = patch.accentColor;
+      visual.backgroundMotif = patch.backgroundMotif;
+      visual.lightingStyle = patch.lightingStyle;
+      visual.materialLanguage = patch.materialLanguage;
+      visual.signatureFeature = patch.signatureFeature;
+      visual.motionLanguage = patch.motionLanguage;
+      visual.creationLook = patch.creationLook;
+      visual.styleId = PFP_STYLE_ID;
+    }
     if (!titleFree(title, occ, usedTitles)) continue;
     if (!keepEmblem && (occ.emblems.has(emblem) || usedEmblems.has(emblem))) continue;
     if (!paletteFree(visual, occ, usedPalettes)) continue;
@@ -650,6 +669,7 @@ function createDraft(input, ctx) {
     throw creatorError("bad_archetype", "Pick an archetype from the list.");
   }
   const visualDirection = cleanDirection(body.visualDirection || body.direction || "");
+  const creationOptions = normalizeSelections(body.creationOptions, { allowEmpty: true });
   const names = ctx.names || [];
   if (displayNameTaken(name, names)) {
     throw creatorError("name_collision", "That name is already in the arena.", 409);
@@ -668,6 +688,7 @@ function createDraft(input, ctx) {
     archetype,
     archetypeLabel: copy.label,
     visualDirection,
+    creationOptions,
     personality,
     personalitySummary: copy.personalitySummary,
     playstyleSummary: copy.playstyleSummary,
@@ -751,6 +772,26 @@ function sheetFor(draft, concept) {
   };
 }
 
+function creationRecord(draft) {
+  const chosen = draft && draft.creationOptions;
+  if (!chosen) return null;
+  const seeds = {};
+  for (const key of Object.keys(chosen)) seeds[key] = seedFor(key, chosen[key]);
+  seeds.composed = composedSeed(chosen);
+  return {
+    ...chosen,
+    houseStyleId: HOUSE_STYLE_ID,
+    seeds,
+    model: "procedural-svg",
+    renderer: "lda-pfp-v2",
+    prompt: buildOptionPreviewPrompt({
+      category: "composed",
+      optionId: seeds.composed,
+      lockedSelections: chosen,
+    }),
+  };
+}
+
 function lockBrand(draft, concept, at) {
   const stamp = at || new Date().toISOString();
   const portrait = concept.pfp || attachPfp(draft, concept, Math.max(0, (concept.conceptNumber || 1) - 1), "standard").pfp;
@@ -779,6 +820,7 @@ function lockBrand(draft, concept, at) {
     },
     pfpRecipe: portrait.recipe,
     assets: userAssetRefs(draft.id),
+    creationOptions: creationRecord(draft),
     generation: generationStamp({
       status: "READY",
       at: stamp,
@@ -804,6 +846,7 @@ function publicDraft(draft) {
     archetype: draft.archetype,
     archetypeLabel: draft.archetypeLabel,
     visualDirection: draft.visualDirection,
+    creationOptions: draft.creationOptions || null,
     personality: draft.personality,
     personalitySummary: draft.personalitySummary,
     playstyleSummary: draft.playstyleSummary,

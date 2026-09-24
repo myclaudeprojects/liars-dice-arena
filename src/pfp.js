@@ -33,6 +33,7 @@ const SKIN = Object.freeze({
   ash: ["#E4DEEA", "#B7AEC4", "#7A7088", "#9A8498"],
   metal: ["#E6E9EE", "#B4BCC8", "#6E7886", "#8A94A4"],
   ember: ["#F0C2A4", "#C47A52", "#7A3E2C", "#B55248"],
+  bone: ["#E7E0D6", "#C8BDB0", "#8A8078", "#6E645C"],
 });
 
 function hashString(text) {
@@ -156,12 +157,19 @@ function buildRecipe(input) {
   const visual = src.visual && typeof src.visual === "object" ? src.visual : {};
   const treatment = TREATMENTS.includes(src.treatment) ? src.treatment : "standard";
   const variation = Math.abs(Math.floor(Number(src.variation) || 0));
-  const primary = validHex(visual.primaryColor) || "#101216";
-  const secondary = validHex(visual.secondaryColor) || "#1F232A";
-  const accent = validHex(visual.accentColor) || "#4AD7FF";
-  const tone = skinKey(src.archetype, visual.emblem, src.name);
+  const look = src.look && typeof src.look === "object"
+    ? src.look
+    : (visual.creationLook && typeof visual.creationLook === "object" ? visual.creationLook : null);
+  let primary = validHex(visual.primaryColor) || "#101216";
+  let secondary = validHex(visual.secondaryColor) || "#1F232A";
+  let accent = validHex(visual.accentColor) || "#4AD7FF";
+  if (look && validHex(look.primary)) primary = validHex(look.primary);
+  if (look && validHex(look.secondary)) secondary = validHex(look.secondary);
+  if (look && validHex(look.accent)) accent = validHex(look.accent);
+  const tone = look && look.skin && SKIN[look.skin] ? look.skin : skinKey(src.archetype, visual.emblem, src.name);
   let pack = SKIN[tone];
-  const attitude = ATTITUDES.includes(visual.facialAttitude) ? visual.facialAttitude : "STOIC";
+  let attitude = ATTITUDES.includes(visual.facialAttitude) ? visual.facialAttitude : "STOIC";
+  if (look && ATTITUDES.includes(look.attitude)) attitude = look.attitude;
   const darker = treatment === "darker";
   const cleaner = treatment === "cleaner" || treatment === "minimal";
   const minimal = treatment === "minimal";
@@ -175,25 +183,32 @@ function buildRecipe(input) {
   const iris = tone === "ash"
     ? mix(accent, "#F7F4FF", 0.45)
     : (luma(shade(primary, -0.5)) < 0.2 ? shade(primary, -0.35) : "#241814");
-  const forced = ["crown", "laurel", "crest", "hood", "cowl", "long", "helm", "cropped", "halfmask", "asymmetric", "swept", "ears", "wild", "halo"].includes(src.headwear)
+  const forced = ["crown", "laurel", "crest", "hood", "cowl", "long", "helm", "cropped", "halfmask", "asymmetric", "swept", "ears", "wild", "halo", "cap", "visor", "bandana", "headband", "none"].includes(src.headwear)
     ? src.headwear
     : "";
-  const headwear = forced || headwearFor(visual.emblem, src.archetype, variation);
+  let headwear = forced || headwearFor(visual.emblem, src.archetype, variation);
+  if (look && look.headwear) headwear = String(look.headwear);
+  const hairColor = look && look.hairTint === "grey" ? "#C5CAD1" : hair;
+  const turn = look && Number.isInteger(Number(look.turn))
+    ? Math.max(-1, Math.min(1, Number(look.turn)))
+    : (variation % 3) - 1;
+  let intensity = treatment === "expression" ? 1.7 : 1.2;
+  if (look && look.intensity && treatment !== "expression") intensity = Number(look.intensity) || intensity;
   return {
     styleVersion: PFP_STYLE_VERSION,
     styleId: PFP_STYLE_ID,
     promptVersion: PFP_PROMPT_VERSION,
     treatment,
     variation,
-    turn: (variation % 3) - 1,
+    turn,
     attitude,
-    intensity: treatment === "expression" ? 1.7 : 1.2,
+    intensity,
     headwear,
-    hair: hairUnder(headwear),
-    silhouette: visual.silhouette || "SLIM_ELEGANT",
-    bodyLanguage: visual.bodyLanguage || "",
-    motif: visual.backgroundMotif || "SIGNAL_HALO",
-    lighting: visual.lightingStyle || "COOL_NEON_EDGE",
+    hair: look && look.hair ? look.hair : hairUnder(headwear),
+    silhouette: (look && look.silhouette) || visual.silhouette || "SLIM_ELEGANT",
+    bodyLanguage: (look && look.bodyLanguage) || visual.bodyLanguage || "",
+    motif: (look && look.motif) || visual.backgroundMotif || "SIGNAL_HALO",
+    lighting: (look && look.lighting) || visual.lightingStyle || "COOL_NEON_EDGE",
     emblem: visual.emblem || "",
     ornament: minimal ? 0.12 : cleaner ? 0.28 : Math.max(0, Math.min(1, Number(visual.ornamentationLevel) || 0.45)),
     darker,
@@ -209,7 +224,7 @@ function buildRecipe(input) {
       skinDeep: pack[2],
       lip: mix(pack[3], "#241014", 0.42),
       sclera: tone === "ash" || tone === "metal" ? "#E7E4F2" : "#F6F1EA",
-      hair,
+      hair: hairColor,
       cloth: primary,
       clothDeep: shade(primary, -0.32),
       trim: accent,
@@ -219,7 +234,8 @@ function buildRecipe(input) {
       iris,
     },
     signature: signatureOf(headwear),
-    signatureFeature: visual.signatureFeature || signatureOf(headwear),
+    signatureFeature: (look && look.signatureFeature) || visual.signatureFeature || signatureOf(headwear),
+    look: look || null,
     scale: compositionScale(),
     safeZone: {
       circle: 0.86,
@@ -255,14 +271,16 @@ const HOUSE_HEADWEAR = Object.freeze({
 
 function recipeFromBrand(brand) {
   const row = brand && typeof brand === "object" ? brand : {};
+  const visual = row.visualIdentity || {};
   return buildRecipe({
     name: row.name,
     title: row.title,
     archetype: row.archetype,
-    visual: row.visualIdentity || {},
+    visual,
     variation: hashString(row.agentId || row.name) % 5,
     treatment: "standard",
     headwear: HOUSE_HEADWEAR[row.agentId] || "",
+    look: visual.creationLook || null,
   });
 }
 
@@ -323,14 +341,63 @@ function promptFor(recipe) {
   return `${body}\n\nRENDERER: procedural SVG, lda-pfp-v2. No external image model.`;
 }
 
-function facePath(x) {
+function facePath(x, look) {
   const top = FACE_TOP;
   const bot = FACE_BOTTOM;
   const mid = Math.round((top + bot) / 2);
-  return `M ${x} ${top} C ${x + 188} ${top + 16} ${x + FACE_HALF + 8} ${mid - 70} ${x + FACE_HALF - 6} ${mid} C ${x + 198} ${mid + 110} ${x + 128} ${bot - 18} ${x} ${bot} C ${x - 128} ${bot - 18} ${x - 198} ${mid + 110} ${x - FACE_HALF + 6} ${mid} C ${x - FACE_HALF - 8} ${mid - 70} ${x - 188} ${top + 16} ${x} ${top} Z`;
+  if (!look || !look.face || look.face === "classic") {
+    return `M ${x} ${top} C ${x + 188} ${top + 16} ${x + FACE_HALF + 8} ${mid - 70} ${x + FACE_HALF - 6} ${mid} C ${x + 198} ${mid + 110} ${x + 128} ${bot - 18} ${x} ${bot} C ${x - 128} ${bot - 18} ${x - 198} ${mid + 110} ${x - FACE_HALF + 6} ${mid} C ${x - FACE_HALF - 8} ${mid - 70} ${x - 188} ${top + 16} ${x} ${top} Z`;
+  }
+  const jawN = Math.max(-0.6, Math.min(0.85, Number(look.jaw) || 0));
+  const profiles = {
+    sharp: [150, 164, 92, 22],
+    wide: [214, 240, 214, 8],
+    round: [200, 228, 206, 48],
+    oval: [148, 156, 100, 34],
+    angular: [186, 150, 132, 6],
+    snout: [160, 148, 64, 78],
+    skull: [170, 132, 150, 4],
+    synthetic: [196, 196, 176, 4],
+    weathered: [164, 158, 124, 18],
+    exaggerated: [210, 236, 160, 42],
+    predatory: [198, 176, 148, 10],
+  };
+  const row = profiles[look.face] || profiles.sharp;
+  const brow = row[0];
+  const cheek = row[1] + Math.round(jawN * 36);
+  const jawW = Math.max(48, row[2] + Math.round(jawN * 48));
+  const chin = row[3];
+  if (look.face === "angular" || look.face === "synthetic" || look.face === "skull") {
+    return `M ${x} ${top} L ${x + brow} ${top + 36} L ${x + cheek} ${mid - 40} L ${x + jawW} ${mid + 80} L ${x + chin} ${bot} L ${x - chin} ${bot} L ${x - jawW} ${mid + 80} L ${x - cheek} ${mid - 40} L ${x - brow} ${top + 36} Z`;
+  }
+  return `M ${x} ${top} C ${x + brow} ${top + 20} ${x + cheek} ${mid - 80} ${x + cheek} ${mid} C ${x + cheek} ${mid + 120} ${x + jawW} ${bot - chin} ${x} ${bot} C ${x - jawW} ${bot - chin} ${x - cheek} ${mid + 120} ${x - cheek} ${mid} C ${x - cheek} ${mid - 80} ${x - brow} ${top + 20} ${x} ${top} Z`;
 }
 
-function shoulderPath(x, silhouette) {
+function shoulderForLook(x, look) {
+  const chest = CHARACTER_BOTTOM - 70;
+  const pose = look.pose || "upright";
+  const kind = look.shoulder || "structured";
+  if (kind === "mechanical") {
+    const w = 480;
+    return `M ${x - w} 1024 L ${x - w + 16} ${chest + 10} L ${x - 160} ${chest - 80} L ${x - 72} ${chest - 8} L ${x + 72} ${chest - 8} L ${x + 160} ${chest - 80} L ${x + w - 16} ${chest + 10} L ${x + w} 1024 Z`;
+  }
+  let w = 360;
+  let rise = 0;
+  let drop = 0;
+  if (kind === "slim" || kind === "hooded") w = 286;
+  if (kind === "athletic") w = 446;
+  if (kind === "broad") w = 510;
+  if (kind === "heavy") { w = 540; drop = 36; }
+  if (kind === "relaxed") { w = 410; drop = 28; }
+  if (kind === "asymmetric") { w = 420; rise = 96; }
+  if (pose === "coiled") rise += 34;
+  if (pose === "forward") rise += 18;
+  if (pose === "relaxed") drop += 22;
+  return `M ${x - w - 24} 1024 L ${x - w} ${chest + 70 + drop} C ${x - w + 60} ${chest - 100 - rise} ${x - 160} ${chest - 30} ${x - 78} ${chest + 8} L ${x} ${chest + 36 + drop} L ${x + 78} ${chest + 8} C ${x + 160} ${chest - 10 + rise} ${x + w - 50} ${chest - 120} ${x + w} ${chest + 64} L ${x + w + 24} 1024 Z`;
+}
+
+function shoulderPath(x, silhouette, look) {
+  if (look && look.shoulder) return shoulderForLook(x, look);
   const broad = silhouette === "BROAD_IMPOSING" || silhouette === "HEAVY_ARMORED";
   const slim = silhouette === "SLIM_ELEGANT" || silhouette === "TALL_SHARP" || silhouette === "ROBED_MYSTIC";
   const w = broad ? 460 : slim ? 320 : 390;
@@ -360,6 +427,9 @@ function hairPath(kind, x, lean, color) {
   }
   if (kind === "asymmetric") {
     return el("path", { fill: color, d: `M ${x - 40} 168 C ${x - 250} 140 ${x - 280} 360 ${x - 160} 390 C ${x - 80} 250 ${x + 40} 240 ${x + 190} 360 C ${x + 220} 180 ${x + 40} 120 ${x - 40} 168 Z M ${x + 150} 250 L ${x + 250} 120 L ${x + 210} 280 Z` });
+  }
+  if (kind === "crest") {
+    return el("path", { fill: color, d: `M ${x - 170} 400 C ${x - 140} 250 ${x + 140} 250 ${x + 170} 400 C ${x + 70} 320 ${x - 70} 320 ${x - 170} 400 Z M ${x - 26} 260 L ${x} 128 L ${x + 26} 260 Z` });
   }
   const side = lean >= 0 ? 1 : -1;
   return el("path", {
@@ -487,6 +557,259 @@ function leaves(x, y, color) {
   return bits.join("");
 }
 
+function lookToken(value) {
+  return String(value || "").replace(/[^a-z0-9_-]/gi, "");
+}
+
+function wardrobeMarkup(x, look, c) {
+  const w = look.wardrobe;
+  const trim = c.trim;
+  const deep = c.clothDeep;
+  if (w === "suit" || w === "business" || w === "luxury") {
+    const spread = w === "luxury" ? 46 : w === "business" ? 16 : 28;
+    const lapel = `M ${x - 176} 790 L ${x - 18} 990 L ${x - spread} 1024 L ${x - 220} 900 Z M ${x + 176} 790 L ${x + 18} 990 L ${x + spread} 1024 L ${x + 220} 900 Z`;
+    const tie = w === "luxury"
+      ? `M ${x - 40} 850 L ${x} 990 L ${x + 40} 850 L ${x + 18} 1024 L ${x - 18} 1024 Z`
+      : `M ${x - 18} 860 L ${x} 910 L ${x + 18} 860 L ${x + 24} 1024 L ${x - 24} 1024 Z`;
+    return el("path", { fill: deep, d: lapel }) + el("path", { fill: trim, d: tie });
+  }
+  if (w === "jacket") {
+    return el("path", { fill: deep, d: `M ${x - 230} 790 L ${x - 70} 870 L ${x - 130} 1024 L ${x - 270} 1024 Z M ${x + 230} 790 L ${x + 70} 870 L ${x + 130} 1024 L ${x + 270} 1024 Z` })
+      + el("path", { fill: trim, d: `M ${x - 10} 870 H ${x + 10} V 1024 H ${x - 10} Z` });
+  }
+  if (w === "jersey") {
+    return el("path", { fill: trim, d: `M ${x - 220} 890 H ${x + 220} V 948 H ${x - 220} Z` })
+      + el("path", { fill: "none", stroke: trim, "stroke-width": 18, d: `M ${x - 78} 790 Q ${x} 870 ${x + 78} 790` });
+  }
+  if (w === "casual") {
+    return el("path", { fill: shade(c.cloth, 0.18), d: `M ${x - 96} 800 Q ${x} 910 ${x + 96} 800 L ${x + 74} 1024 L ${x - 74} 1024 Z` });
+  }
+  if (w === "tactical") {
+    return el("path", { fill: deep, d: `M ${x - 190} 810 H ${x + 190} V 1024 H ${x - 190} Z M ${x - 160} 860 H ${x - 46} V 990 H ${x - 160} Z M ${x + 46} 860 H ${x + 160} V 990 H ${x + 46} Z` })
+      + el("path", { fill: trim, d: `M ${x - 210} 830 H ${x + 210} V 854 H ${x - 210} Z` });
+  }
+  if (w === "fashion") {
+    return el("path", { fill: trim, opacity: "0.9", d: `M ${x - 30} 750 C ${x - 200} 900 ${x - 80} 1024 ${x + 30} 1024 C ${x + 110} 860 ${x + 50} 780 ${x - 30} 750 Z` });
+  }
+  if (w === "coat" || w === "rugged") {
+    const high = `M ${x - 160} 690 L ${x - 36} 830 L ${x - 90} 1024 L ${x - 250} 1024 L ${x - 210} 760 Z M ${x + 160} 690 L ${x + 36} 830 L ${x + 90} 1024 L ${x + 250} 1024 L ${x + 210} 760 Z`;
+    const straps = w === "rugged"
+      ? el("path", { fill: trim, d: `M ${x - 190} 880 L ${x + 170} 950 L ${x + 156} 982 L ${x - 204} 912 Z M ${x - 170} 970 L ${x + 190} 900 L ${x + 204} 932 L ${x - 156} 1002 Z` })
+      : "";
+    return el("path", { fill: deep, d: high }) + straps;
+  }
+  if (w === "shell" || w === "cyber" || w === "mech") {
+    return el("path", { fill: shade(c.cloth, 0.2), stroke: trim, "stroke-width": 12, d: `M ${x - 160} 820 L ${x - 48} 770 L ${x + 48} 770 L ${x + 160} 820 L ${x + 184} 990 L ${x} 1024 L ${x - 184} 990 Z` })
+      + el("path", { fill: trim, d: `M ${x - 30} 860 H ${x + 30} V 910 H ${x - 30} Z` });
+  }
+  if (w === "ornament" || w === "costume") {
+    return el("path", { fill: "none", stroke: trim, "stroke-width": 14, d: `M ${x - 130} 860 L ${x} 790 L ${x + 130} 860 L ${x + 86} 990 L ${x} 940 L ${x - 86} 990 Z` })
+      + el("path", { fill: trim, d: `M ${x} 900 L ${x + 20} 928 L ${x} 956 L ${x - 20} 928 Z` });
+  }
+  if (w === "minimal") {
+    return el("path", { fill: c.skin, opacity: "0.55", d: `M ${x - 64} 830 Q ${x} 900 ${x + 64} 830 L ${x + 46} 980 L ${x - 46} 980 Z` });
+  }
+  return "";
+}
+
+function headwearMarkup(x, look, c) {
+  const kind = look.headwear;
+  const trim = c.trim;
+  const deep = c.clothDeep;
+  if (kind === "cap") {
+    return el("path", { fill: deep, d: `M ${x - 200} 340 Q ${x} 188 ${x + 188} 348 L ${x + 160} 400 Q ${x} 330 ${x - 170} 392 Z` })
+      + el("path", { fill: trim, d: `M ${x - 10} 360 L ${x + 250} 410 L ${x + 220} 468 L ${x - 16} 408 Z` });
+  }
+  if (kind === "visor") {
+    return el("path", { fill: trim, opacity: "0.42", stroke: trim, "stroke-width": 16, d: `M ${x - 220} 392 H ${x + 220} V 468 H ${x - 220} Z` });
+  }
+  if (kind === "bandana") {
+    return el("path", { fill: trim, d: `M ${x - 190} 300 L ${x} 250 L ${x + 190} 300 L ${x + 150} 390 L ${x - 150} 390 Z` });
+  }
+  if (kind === "headband") {
+    return el("path", { fill: trim, d: `M ${x - 188} 300 H ${x + 188} V 348 H ${x - 188} Z` });
+  }
+  return "";
+}
+
+function faceCueMarkup(x, look, c) {
+  const bits = [];
+  if (look.ageLines) {
+    bits.push(el("path", {
+      fill: "none",
+      stroke: c.skinDeep,
+      "stroke-width": 8,
+      d: `M ${x - 120} 500 Q ${x - 40} 530 ${x - 130} 560 M ${x + 120} 500 Q ${x + 40} 530 ${x + 130} 560 M ${x - 80} 650 H ${x + 80}`,
+    }));
+  }
+  if (look.beard) {
+    bits.push(el("path", { fill: c.hair, d: `M ${x - 90} 640 Q ${x} 790 ${x + 96} 630 Q ${x + 40} 720 ${x} 740 Q ${x - 36} 720 ${x - 90} 640 Z` }));
+  }
+  if (look.face === "snout") {
+    bits.push(el("path", { fill: c.skin, d: `M ${x - 78} 560 Q ${x} 760 ${x + 78} 560 Q ${x} 640 ${x - 78} 560 Z` }));
+    bits.push(el("path", { fill: c.skinDeep, d: `M ${x - 22} 620 L ${x} 668 L ${x + 22} 620 Z` }));
+  }
+  if (look.face === "skull") {
+    bits.push(el("ellipse", { cx: x - 90, cy: 450, rx: 70, ry: 54, fill: "#140E12" }));
+    bits.push(el("ellipse", { cx: x + 90, cy: 450, rx: 70, ry: 54, fill: "#140E12" }));
+    bits.push(el("path", { fill: "#140E12", d: `M ${x - 16} 530 L ${x} 590 L ${x + 16} 530 Z` }));
+    bits.push(el("path", { fill: c.skin, d: `M ${x - 70} 640 H ${x + 70} V 670 H ${x - 70} Z M ${x - 54} 670 H ${x - 34} V 710 H ${x - 54} Z M ${x - 16} 670 H ${x + 4} V 710 H ${x - 16} Z M ${x + 22} 670 H ${x + 42} V 710 H ${x + 22} Z` }));
+  }
+  if (look.face === "synthetic") {
+    bits.push(el("path", {
+      fill: "none",
+      stroke: c.trim,
+      "stroke-width": 8,
+      d: `M ${x - 150} 390 H ${x + 150} M ${x - 140} 520 H ${x + 140} M ${x} 280 V 680`,
+    }));
+    bits.push(el("rect", { x: x - 150, y: 400, width: 84, height: 48, fill: c.trim, opacity: "0.85" }));
+    bits.push(el("rect", { x: x + 66, y: 400, width: 84, height: 48, fill: c.trim, opacity: "0.85" }));
+  }
+  if (look.pointedEar) {
+    bits.push(el("path", { fill: c.skin, stroke: c.trim, "stroke-width": 8, d: `M ${x - 190} 470 L ${x - 290} 400 L ${x - 176} 540 Z M ${x + 190} 470 L ${x + 290} 400 L ${x + 176} 540 Z` }));
+  }
+  if (look.scar || look.accessory === "scar" || look.accessory === "claw") {
+    const mark = look.accessory === "claw"
+      ? `M ${x - 40} 430 L ${x + 30} 560 M ${x - 10} 420 L ${x + 54} 560 M ${x + 20} 430 L ${x + 78} 540`
+      : `M ${x + 40} 430 L ${x + 110} 560`;
+    bits.push(el("path", { fill: "none", stroke: c.trim, "stroke-width": 10, d: mark }));
+  }
+  if (look.tattoo) {
+    bits.push(el("path", { fill: "none", stroke: c.trim, "stroke-width": 8, d: `M ${x + 70} 700 l 24 28 l -24 28 l 24 28` }));
+  }
+  return bits.join("");
+}
+
+function accessoryMarkup(x, look, c) {
+  const kind = look.accessory;
+  const trim = c.trim;
+  if (!kind || kind === "none") return "";
+  if (kind === "glasses") {
+    return el("path", {
+      fill: "none",
+      stroke: trim,
+      "stroke-width": 16,
+      d: `M ${x - 210} 392 H ${x - 40} V 468 H ${x - 210} Z M ${x + 40} 392 H ${x + 210} V 468 H ${x + 40} Z M ${x - 40} 420 H ${x + 40}`,
+    });
+  }
+  if (kind === "shades") {
+    return el("path", {
+      fill: trim,
+      opacity: "0.72",
+      stroke: "#120E12",
+      "stroke-width": 10,
+      d: `M ${x - 220} 388 H ${x - 24} V 478 H ${x - 220} Z M ${x + 24} 388 H ${x + 220} V 478 H ${x + 24} Z`,
+    });
+  }
+  if (kind === "mask") {
+    return el("path", { fill: "#120E12", stroke: trim, "stroke-width": 12, d: `M ${x - 150} 500 Q ${x} 470 ${x + 150} 500 L ${x + 130} 690 Q ${x} 760 ${x - 130} 690 Z` });
+  }
+  if (kind === "headphones") {
+    return el("path", { fill: "none", stroke: trim, "stroke-width": 28, d: `M ${x - 230} 430 Q ${x} 250 ${x + 230} 430` })
+      + el("circle", { cx: x - 214, cy: 500, r: 52, fill: "#16181E", stroke: trim, "stroke-width": 12 })
+      + el("circle", { cx: x + 214, cy: 500, r: 52, fill: "#16181E", stroke: trim, "stroke-width": 12 });
+  }
+  if (kind === "cigar") {
+    return el("path", { fill: "#8A5A32", d: `M ${x + 40} 600 H ${x + 210} V 628 H ${x + 40} Z` })
+      + el("circle", { cx: x + 230, cy: 560, r: 16, fill: c.skin, opacity: "0.35" })
+      + el("circle", { cx: x + 260, cy: 520, r: 22, fill: c.skin, opacity: "0.22" });
+  }
+  if (kind === "chain") {
+    const links = [];
+    for (let i = 0; i < 7; i++) {
+      links.push(el("circle", { cx: x - 90 + i * 30, cy: 860 + (i % 2) * 10, r: 12, fill: "none", stroke: trim, "stroke-width": 6 }));
+    }
+    return links.join("") + el("circle", { cx: x + 214, cy: 470, r: 10, fill: trim });
+  }
+  if (kind === "armband") {
+    return el("path", { fill: trim, d: `M ${x - 250} 900 H ${x - 150} V 948 H ${x - 250} Z` });
+  }
+  if (kind === "earpiece") {
+    return el("rect", { x: x + 198, y: 470, width: 36, height: 22, rx: 6, fill: trim });
+  }
+  if (kind === "optic") {
+    return el("circle", { cx: x + 118, cy: 430, r: 54, fill: "#10141A", stroke: trim, "stroke-width": 12 })
+      + el("circle", { cx: x + 118, cy: 430, r: 16, fill: trim });
+  }
+  if (kind === "collar") {
+    return el("path", { fill: trim, d: `M ${x - 80} 760 H ${x + 80} V 796 H ${x - 80} Z` })
+      + el("circle", { cx: x, cy: 820, r: 16, fill: trim });
+  }
+  if (kind === "ornament") {
+    return el("path", { fill: trim, d: `M ${x} 250 L ${x + 28} 290 L ${x} 330 L ${x - 28} 290 Z` });
+  }
+  if (kind === "pet") {
+    const px = x + 246;
+    const py = 790;
+    return el("path", { fill: c.skinShadow, stroke: trim, "stroke-width": 8, d: `M ${px} ${py - 48} C ${px + 40} ${py - 48} ${px + 48} ${py} ${px} ${py + 36} C ${px - 48} ${py} ${px - 40} ${py - 48} ${px} ${py - 48} Z M ${px - 28} ${py - 40} l -18 -28 l 30 10 Z M ${px + 18} ${py - 44} l 22 -26 l -8 32 Z` })
+      + el("circle", { cx: px - 8, cy: py - 8, r: 6, fill: trim });
+  }
+  if (kind === "weapon") {
+    return el("path", { fill: trim, d: `M ${x + 180} 820 L ${x + 250} 700 L ${x + 274} 712 L ${x + 210} 860 Z` });
+  }
+  if (kind === "fx") {
+    return el("circle", { cx: x, cy: 420, r: 300, fill: "none", stroke: trim, "stroke-width": 8, "stroke-dasharray": "16 22", opacity: "0.85" })
+      + el("circle", { cx: x, cy: 420, r: 246, fill: "none", stroke: look.accent2 || trim, "stroke-width": 4, opacity: "0.7" });
+  }
+  return "";
+}
+
+function backgroundMarkup(kind, c, seed) {
+  const trim = c.trim;
+  const n = hashString(seed || kind || "bg");
+  if (kind === "city_night") {
+    const bars = [[70, 760, 76], [160, 820, 54], [230, 690, 96], [780, 730, 70], [870, 660, 88], [960, 800, 48]];
+    const d = bars.map(([bx, y, w]) => `M ${bx} ${y} h ${w} V 1024 H ${bx} Z`).join(" ");
+    return el("path", { fill: trim, opacity: "0.28", d });
+  }
+  if (kind === "underground") {
+    return el("path", { fill: "none", stroke: trim, "stroke-width": 18, opacity: "0.55", d: `M 40 1024 C 40 560 250 430 512 430 C 774 430 984 560 984 1024` })
+      + el("path", { fill: "none", stroke: trim, "stroke-width": 8, opacity: "0.4", d: `M 140 1024 C 150 680 300 560 512 560 C 724 560 874 680 884 1024` });
+  }
+  if (kind === "club") {
+    const blobs = [el("path", { fill: "none", stroke: trim, "stroke-width": 10, opacity: "0.45", d: `M 140 200 Q 512 60 900 220` })];
+    for (let i = 0; i < 6; i++) {
+      const cx = 120 + ((n + i * 137) % 800);
+      const cy = 140 + ((n + i * 89) % 700);
+      blobs.push(el("circle", { cx, cy, r: 46 + (i % 3) * 18, fill: trim, opacity: "0.16" }));
+    }
+    return blobs.join("");
+  }
+  if (kind === "casino") {
+    return el("path", { fill: "none", stroke: trim, "stroke-width": 10, opacity: "0.55", d: `M 512 120 l 70 70 l -70 70 l -70 -70 Z M 180 280 l 48 48 l -48 48 l -48 -48 Z M 820 240 l 56 56 l -56 56 l -56 -56 Z M 240 760 l 40 40 l -40 40 l -40 -40 Z` });
+  }
+  if (kind === "studio") {
+    return el("ellipse", { cx: 512, cy: 420, rx: 280, ry: 180, fill: trim, opacity: "0.08" })
+      + el("path", { fill: "none", stroke: trim, "stroke-width": 8, opacity: "0.35", d: `M 180 180 H 320 M 180 180 V 320 M 844 180 H 704 M 844 180 V 320` });
+  }
+  if (kind === "tech_lab") {
+    return el("path", { fill: "none", stroke: trim, "stroke-width": 6, opacity: "0.5", d: `M 512 80 V 944 M 80 512 H 944 M 512 512 m -40 0 a 40 40 0 1 0 80 0 a 40 40 0 1 0 -80 0` });
+  }
+  if (kind === "vault") {
+    return el("path", { fill: "none", stroke: trim, "stroke-width": 22, opacity: "0.4", d: `M 120 160 H 904 V 900 H 120 Z` });
+  }
+  if (kind === "beach") {
+    return el("path", { fill: trim, opacity: "0.18", d: `M 0 760 H 1024 V 1024 H 0 Z` })
+      + el("circle", { cx: 760, cy: 280, r: 70, fill: trim, opacity: "0.35" });
+  }
+  if (kind === "space") {
+    const stars = [];
+    for (let i = 0; i < 18; i++) {
+      const sx = 40 + ((n + i * 97) % 960);
+      const sy = 40 + ((n + i * 53) % 960);
+      stars.push(`M ${sx} ${sy} h 8 v 8 h -8 Z`);
+    }
+    return el("path", { fill: trim, opacity: "0.8", d: stars.join(" ") });
+  }
+  if (kind === "abstract") {
+    return el("path", { fill: trim, opacity: "0.16", d: `M 80 200 C 200 40 420 80 512 220 C 640 40 900 120 860 360 C 980 520 760 700 560 640 C 360 820 40 640 120 420 C 40 300 40 240 80 200 Z` });
+  }
+  if (kind === "custom") {
+    return el("path", { fill: trim, opacity: "0.55", d: `M 140 180 L 220 80 L 260 200 Z M 820 140 L 940 220 L 800 260 Z M 160 860 L 80 760 L 240 780 Z` });
+  }
+  return "";
+}
+
 function renderPfp(recipe, opts) {
   const row = recipe && recipe.colors ? recipe : buildRecipe(recipe);
   const size = normalizeSize(opts && opts.size);
@@ -494,7 +817,7 @@ function renderPfp(recipe, opts) {
   const c = row.colors;
   const x = 512 + row.turn * 18;
   const lean = row.turn * 36;
-  const face = expressionOf(row.attitude, row.intensity || 1);
+  const face = row.look && row.look.emotion ? row.look.emotion : expressionOf(row.attitude, row.intensity || 1);
   const id = (name) => `${nonce}_${name}`;
   const neonLight = /NEON|RIM|GLOW|EDGE/.test(String(row.lighting || ""));
   const rim = neonLight || row.premium ? 22 : 16;
@@ -523,7 +846,7 @@ function renderPfp(recipe, opts) {
       el("stop", { offset: "48%", "stop-color": c.skin }),
       el("stop", { offset: "100%", "stop-color": c.skinShadow }),
     ].join("")),
-    el("clipPath", { id: id("face") }, el("path", { d: facePath(x) })),
+    el("clipPath", { id: id("face") }, el("path", { d: facePath(x, row.look) })),
     el("filter", { id: id("rim"), x: "-20%", y: "-20%", width: "140%", height: "140%" }, el("feGaussianBlur", { stdDeviation: "6" })),
   ].join("");
   const eyesY = 430;
@@ -540,8 +863,11 @@ function renderPfp(recipe, opts) {
     browMarkup(x + 118, 340, face.brow[1] * (row.intensity || 1), face.brow[1] < 0),
     mouthMarkup(x + (face.mouth === "smirk" ? 8 : 0), mouthY, face.mouth, c.lip, row.intensity),
     beard ? el("path", { fill: c.hair, d: `M ${x - 70} 650 Q ${x} 760 ${x + 78} 646 Q ${x + 40} 700 ${x} 710 Q ${x - 36} 700 ${x - 70} 650 Z` }) : "",
+    row.look && face.wink > 0.5 ? el("path", { fill: c.skin, d: `M ${x - 220} 430 Q ${x - 118} 392 ${x - 16} 430 Q ${x - 118} 458 ${x - 220} 430 Z` }) : "",
+    row.look ? faceCueMarkup(x, row.look, c) : "",
   ].join("");
-  const ears = [
+  const hideEars = row.look && (row.look.face === "synthetic" || row.look.face === "skull" || row.look.face === "snout");
+  const ears = hideEars ? "" : [
     el("ellipse", { cx: x - 214, cy: 500, rx: 30, ry: 46, fill: c.skinShadow }),
     el("ellipse", { cx: x + 214, cy: 500, rx: 30, ry: 46, fill: c.skin }),
   ].join("");
@@ -571,7 +897,8 @@ function renderPfp(recipe, opts) {
   if (row.headwear === "cowl") {
     front.push(el("path", { fill: c.cloth, d: `M ${x - 120} 700 Q ${x} 640 ${x + 120} 700 Q ${x} 780 ${x - 120} 700 Z` }));
   }
-  const collar = row.minimal ? "" : el("path", {
+  if (row.look) front.push(headwearMarkup(x, row.look, c));
+  const collar = row.look || row.minimal ? "" : el("path", {
     fill: c.trim,
     opacity: "0.92",
     d: `M ${x - 150} 760 L ${x} 860 L ${x + 156} 748 L ${x + 86} 900 L ${x} 868 L ${x - 86} 908 Z`,
@@ -583,33 +910,40 @@ function renderPfp(recipe, opts) {
     el("ellipse", { cx: x - 230, cy: 860, rx: 90, ry: 48, fill: shade(c.cloth, 0.12) }),
     el("ellipse", { cx: x + 230, cy: 860, rx: 90, ry: 48, fill: shade(c.cloth, -0.08) }),
   ].join("") : "";
+  const neckScale = row.look && row.look.neck ? Number(row.look.neck) || 1 : 1;
+  const neckD = !row.look
+    ? `M ${x - 58} 690 L ${x + 58} 690 L ${x + 46} 860 L ${x - 46} 860 Z`
+    : `M ${x - Math.round(58 * neckScale)} 690 L ${x + Math.round(58 * neckScale)} 690 L ${x + Math.round(46 * neckScale)} 860 L ${x - Math.round(46 * neckScale)} 860 Z`;
+  const wardrobe = row.look ? wardrobeMarkup(x, row.look, c) : "";
   const motif = motifParts(row.motif, c, row.cleaner);
   const rimGlow = [
-    el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim + 30, opacity: "0.95", filter: `url(#${id("rim")})` }),
-    el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 22, opacity: "0.7", filter: `url(#${id("rim")})` }),
+    el("path", { d: facePath(x, row.look), fill: "none", stroke: c.trim, "stroke-width": rim + 30, opacity: "0.95", filter: `url(#${id("rim")})` }),
+    el("path", { d: shoulderPath(x, row.silhouette, row.look), fill: "none", stroke: c.trim, "stroke-width": 22, opacity: "0.7", filter: `url(#${id("rim")})` }),
   ].join("");
   const torso = [
     plates,
-    el("path", { fill: c.cloth, d: shoulderPath(x, row.silhouette) }),
+    el("path", { fill: c.cloth, d: shoulderPath(x, row.silhouette, row.look) }),
     el("path", { fill: shade(c.cloth, 0.08), d: `M ${x - 78} 760 L ${x + 78} 760 L ${x + 96} 900 L ${x - 96} 900 Z` }),
-    el("path", { fill: c.skinShadow, d: `M ${x - 58} 690 L ${x + 58} 690 L ${x + 46} 860 L ${x - 46} 860 Z` }),
-    el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 16, opacity: "0.82" }),
+    el("path", { fill: c.skinShadow, d: neckD }),
+    wardrobe,
+    el("path", { d: shoulderPath(x, row.silhouette, row.look), fill: "none", stroke: c.trim, "stroke-width": 16, opacity: "0.82" }),
   ].join("");
   const head = [
     ears,
     beast,
     el("g", { "clip-path": `url(#${id("face")})` }, [
-      el("path", { fill: `url(#${id("skin")})`, d: facePath(x) }),
+      el("path", { fill: `url(#${id("skin")})`, d: facePath(x, row.look) }),
       el("ellipse", { cx: keyX, cy: 400, rx: 140, ry: 180, fill: "#FFFFFF", opacity: row.darker ? "0.06" : "0.14" }),
       features,
     ].join("")),
-    el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim + 16, opacity: "0.45", filter: `url(#${id("rim")})` }),
-    el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim, opacity: row.darker ? "0.55" : "0.9" }),
+    el("path", { d: facePath(x, row.look), fill: "none", stroke: c.trim, "stroke-width": rim + 16, opacity: "0.45", filter: `url(#${id("rim")})` }),
+    el("path", { d: facePath(x, row.look), fill: "none", stroke: c.trim, "stroke-width": rim, opacity: row.darker ? "0.55" : "0.9" }),
     layer("hairFront", front.join("")),
   ].join("");
   const body = [
     layer("bg", el("rect", { width: 1024, height: 1024, fill: `url(#${id("bg")})` })),
-    layer("bgGrid", neonGrid(c), { opacity: row.cleaner ? "0.1" : "0.22" }),
+    layer("bgGrid", neonGrid(c), { opacity: row.look && row.look.background ? "0.06" : (row.cleaner ? "0.1" : "0.22") }),
+    layer("bgScene", row.look && row.look.background ? backgroundMarkup(row.look.background, c, row.look.seed) : ""),
     layer("bgFx", motif.fx),
     layer("particles", motif.particles, { opacity: "0.52" }),
     layer("aura", [
@@ -620,12 +954,19 @@ function renderPfp(recipe, opts) {
     layer("hairBack", wear.join("")),
     layer("torso", torso),
     layer("head", head),
+    layer("accessoryFx", row.look ? accessoryMarkup(x, row.look, c) : ""),
     layer("rimGlow", rimGlow, { opacity: "0.78" }),
     layer("scanFx", el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("scan")})` }), { opacity: row.cleaner ? "0.05" : "0.12" }),
     layer("collarFx", collar + gem),
   ].join("");
   const scale = compositionScale();
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" data-pfp-style="${row.styleId || PFP_STYLE_ID}" data-engine="procedural-svg" data-layered="1" data-signature="${row.signature || "COLLAR"}" data-character-scale="${scale.characterHeight}" data-face-scale="${scale.faceHeight}" aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
+  const lookAttr = row.look
+    ? ` data-face="${lookToken(row.look.face)}" data-wardrobe="${lookToken(row.look.wardrobe)}" data-accessory="${lookToken(row.look.accessory)}" data-background="${lookToken(row.look.background)}" data-palette="${lookToken(row.look.palette)}" data-body="${lookToken(row.look.selections && row.look.selections.bodyType)}"`
+    : "";
+  const accent2 = row.look && row.look.accent2
+    ? el("path", { d: facePath(x, row.look), fill: "none", stroke: row.look.accent2, "stroke-width": 14, opacity: "0.9" })
+    : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" data-pfp-style="${row.styleId || PFP_STYLE_ID}" data-engine="procedural-svg" data-layered="1" data-signature="${row.signature || "COLLAR"}" data-character-scale="${scale.characterHeight}" data-face-scale="${scale.faceHeight}"${lookAttr} aria-hidden="true"><defs>${defs}</defs>${body}${accent2}</svg>`;
 }
 
 function normalizeSize(value) {

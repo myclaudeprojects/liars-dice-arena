@@ -1543,6 +1543,22 @@ function startCreatorBeat() {
   }, 700);
 }
 
+const CREATION_LOOK_DEFAULTS = {
+  archetype: "executive",
+  bodyType: "male_lean",
+  expression: "confident",
+  attire: "formal",
+  colorPalette: "red",
+  background: "city_night",
+  accessories: "glasses",
+};
+
+function sameCreationLook(a, b) {
+  const left = a || {};
+  const right = b || {};
+  return Object.keys(CREATION_LOOK_DEFAULTS).every((key) => left[key] === right[key]);
+}
+
 function blankCreator() {
   return {
     step: 1,
@@ -1552,6 +1568,13 @@ function blankCreator() {
     moreTraits: false,
     reveal: null,
     archetypes: CREATOR_ARCHETYPES.map((id) => ({ id, label: archetypeLabel(id) })),
+    look: { ...CREATION_LOOK_DEFAULTS },
+    previewSections: [],
+    optionPreviews: {},
+    heroSvg: "",
+    previewReady: false,
+    previewError: "",
+    heroToken: 0,
     form: {
       name: "",
       shortDescription: "",
@@ -1609,7 +1632,49 @@ function creatorPayload() {
       riskTolerance: f.riskTolerance,
       adaptability: f.adaptability,
     },
+    creationOptions: { ...(creator.look || CREATION_LOOK_DEFAULTS) },
   };
+}
+
+function creationLookBlock() {
+  const look = creator.look || CREATION_LOOK_DEFAULTS;
+  const sections = creator.previewSections || [];
+  const previews = creator.optionPreviews || {};
+  const summary = sections.map((section) => {
+    const row = (previews[section.key] || []).find((item) => item.id === look[section.key]);
+    return row ? row.label : "";
+  }).filter(Boolean).join(" · ");
+  const hero = creator.heroSvg
+    ? `<div class="creation-hero__frame">${pfpFrame(creator.heroSvg)}</div>`
+    : `<div class="creation-hero__frame creation-hero__frame--empty"><p class="fine">${creator.previewReady ? "Draft look" : "Drawing option previews…"}</p></div>`;
+  const grids = sections.map((section) => {
+    const cards = (previews[section.key] || []).map((option) => {
+      const on = look[section.key] === option.id;
+      return `<button class="creation-preview-card${on ? " is-selected" : ""}" type="button" data-creation-option="${esc(option.id)}" data-creation-category="${esc(section.key)}" aria-pressed="${on ? "true" : "false"}" title="${esc(option.description || option.label)}">
+        <span class="creation-preview-card__thumb">${safeSvg(option.svg)}</span>
+        <span>${esc(option.label)}</span>
+      </button>`;
+    }).join("");
+    return `<section class="creation-preview-section">
+      <div class="creation-preview-section__meta">
+        <h2>${esc(section.title)}</h2>
+        <p>${esc(section.subtitle)}</p>
+      </div>
+      <div class="creation-preview-section__options">${cards}</div>
+    </section>`;
+  }).join("");
+  return `<section class="creation-look">
+    <div class="creation-hero">
+      ${hero}
+      <div class="creation-hero__copy">
+        <span class="kicker">Draft look</span>
+        <p>${esc(summary || "Executive · Male (Lean) · Confident")}</p>
+        <p class="fine">Each card locks the other categories so the difference is the option itself. The portrait above uses every choice together.</p>
+      </div>
+    </div>
+    ${creator.previewError ? `<p class="fine">${esc(creator.previewError)}</p>` : ""}
+    <div class="creation-preview-grid">${grids}</div>
+  </section>`;
 }
 
 function selectedConcept() {
@@ -1633,6 +1698,7 @@ function creatorView() {
       ${sliderField("discipline", "Discipline")}
       ${sliderField("chaos", "Chaos")}
       <label>Visual direction<textarea name="visualDirection" maxlength="160" placeholder="Elegant gothic gambler, crimson rim light.">${esc(f.visualDirection)}</textarea></label>
+      ${creationLookBlock()}
       <details class="advanced-config">
         <summary>Advanced / Developer Options</summary>
         <div class="advanced-config__body">
@@ -1728,6 +1794,43 @@ async function openCreator() {
       render();
     }
   } catch { /* the fallback list still submits */ }
+  loadCreationPreviews();
+}
+
+async function loadCreationPreviews() {
+  try {
+    const j = await api("/api/show/agents/brand/creation-previews");
+    if (!creator) return;
+    creator.previewSections = j.sections || [];
+    creator.optionPreviews = j.previews || {};
+    creator.lookDefaults = j.defaults || { ...CREATION_LOOK_DEFAULTS };
+    if (j.hero && j.hero.svg && sameCreationLook(creator.look, creator.lookDefaults)) creator.heroSvg = j.hero.svg;
+    creator.previewReady = true;
+    creator.previewError = "";
+    render();
+    if (!sameCreationLook(creator.look, creator.lookDefaults)) refreshCreationHero();
+  } catch {
+    if (!creator) return;
+    creator.previewError = "Option previews did not load. The default look still applies.";
+    creator.previewReady = true;
+    render();
+  }
+}
+
+async function refreshCreationHero() {
+  if (!creator) return;
+  const token = (creator.heroToken = (creator.heroToken || 0) + 1);
+  const look = { ...creator.look };
+  try {
+    const j = await api("/api/show/agents/brand/creation-preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ creationOptions: look }),
+    });
+    if (!creator || creator.heroToken !== token) return;
+    creator.heroSvg = j.svg || creator.heroSvg;
+    render();
+  } catch { /* keep the last portrait */ }
 }
 
 function resumeCreator(agent) {
@@ -1736,6 +1839,7 @@ function resumeCreator(agent) {
   creator.form.shortDescription = agent.shortDescription || agent.note || "";
   creator.form.archetype = agent.archetypeId || "GAMBLER";
   creator.form.visualDirection = agent.visualDirection || "";
+  if (agent.creationOptions) creator.look = { ...CREATION_LOOK_DEFAULTS, ...agent.creationOptions };
   const personality = agent.personality || {};
   for (const key of Object.keys(creator.form)) {
     if (typeof personality[key] === "number") creator.form[key] = personality[key];
@@ -1749,6 +1853,7 @@ function resumeCreator(agent) {
   painted = "";
   paintTabs();
   render();
+  loadCreationPreviews();
 }
 
 async function runConcepts(vary) {
@@ -2395,6 +2500,20 @@ view.addEventListener("click", async (e) => {
       creator = null;
       await refreshLists();
       setTab("arena");
+      return;
+    }
+    const choice = e.target.closest("[data-creation-option]");
+    if (choice && creator.look) {
+      creator.look[choice.dataset.creationCategory] = choice.dataset.creationOption;
+      creator.error = "";
+      const defaults = creator.lookDefaults || CREATION_LOOK_DEFAULTS;
+      const isolated = Object.keys(CREATION_LOOK_DEFAULTS).every((key) => key === choice.dataset.creationCategory || creator.look[key] === defaults[key]);
+      if (isolated) {
+        const row = ((creator.optionPreviews || {})[choice.dataset.creationCategory] || []).find((item) => item.id === choice.dataset.creationOption);
+        if (row && row.svg) creator.heroSvg = row.svg;
+      }
+      render();
+      refreshCreationHero();
       return;
     }
     if (e.target.closest("[data-more-traits]")) {

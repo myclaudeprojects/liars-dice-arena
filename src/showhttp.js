@@ -92,6 +92,15 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ok: true, ...show.creatorOptions() });
       return true;
     }
+    if (req.method === "GET" && path === "/agents/brand/creation-previews") {
+      send(res, 200, { ok: true, ...show.creationPreviews() });
+      return true;
+    }
+    if (req.method === "POST" && path === "/agents/brand/creation-preview") {
+      const body = await readBody(req);
+      send(res, 200, { ok: true, ...show.creationPreview(body.creationOptions || body) });
+      return true;
+    }
     if (req.method === "POST" && path === "/agents/brand/create") {
       const body = await readBody(req);
       send(res, 200, { ok: true, ...show.createAgent(body) });

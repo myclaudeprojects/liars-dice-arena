@@ -27,6 +27,7 @@ for (const brand of SEED_BRANDS) {
   assert(measured.characterHeight >= 0.65 && measured.characterHeight <= 0.82, brand.agentId + " head and torso scale");
   assert(measured.faceHeight >= 0.45, brand.agentId + " face scale");
   assert(svg.includes('data-style="lda-pfp-v2"'), brand.agentId + " v2 style");
+  assert(svg.includes('data-pfp-style="neon-competitive"'), brand.agentId + " neon style");
   assert(recipe.signature, brand.agentId + " signature silhouette");
 }
 eq(AVATAR_SIZES.join(","), "48,96,160,256,320,512", "derived sizes");
@@ -50,13 +51,13 @@ const visual = {
 const base = buildRecipe({ name: "Vesper", title: "The Quiet Cipher", archetype: "ASSASSIN", visual, variation: 1, treatment: "standard" });
 const louder = buildRecipe({ name: "Vesper", title: "The Quiet Cipher", archetype: "ASSASSIN", visual, variation: 1, treatment: "expression" });
 assert(pathData(renderPfp(base)) !== pathData(renderPfp(louder)), "stronger expression changes the drawing");
-assert(promptFor(base).includes("square composition"), "prompt shape is recorded");
-assert(promptFor(base).includes("No external image model"), "prompt does not claim a photo model");
-assert(promptFor(base).includes("lda-pfp-v2"), "prompt names the house style");
-assert(promptFor(base).includes("tight competitive game roster portrait"), "prompt asks for a roster crop");
-assert(promptFor(base).includes("exactly one primary visual signature"), "prompt keeps one signature");
-assert(promptFor(base).includes("designed to be recognizable at 48px"), "prompt targets the small size");
+assert(promptFor(base).includes("Premium modern competitive portrait"), "prompt locks the neon description");
+assert(promptFor(base).includes("controlled neon accent lighting"), "prompt keeps neon as an accent");
+assert(promptFor(base).includes("Not fantasy"), "prompt rejects fantasy");
+assert(promptFor(base).includes("readable at 48px"), "prompt targets the small size");
 assert(promptFor(base).includes("no movie poster layout"), "prompt rejects a poster layout");
+assert(promptFor(base).includes("No external image model"), "prompt does not claim a photo model");
+assert(promptFor(base).includes("lda-pfp-v2"), "prompt names the procedural renderer");
 eq(PFP_STYLE_VERSION, "lda-pfp-v2", "style version");
 const provider = new ProceduralSvgProvider();
 const drawn = provider.renderSync({ recipe: base, size: 48, nonce: "prov" });

@@ -26,6 +26,8 @@ const {
   assetUrls,
 } = require("./pfp");
 const { createImageProvider } = require("./imageprovider");
+const { PFP_STYLE_ID } = require("./branding/stylePresets");
+const { buildVisualDNA } = require("./branding/buildVisualDNA");
 
 const imageProvider = createImageProvider();
 
@@ -62,12 +64,11 @@ const BODIES = Object.freeze([
 ]);
 
 const MOTIFS = Object.freeze([
-  "CANDLE_VAULT", "GILDED_HALL", "MOONLIT_STEEL", "TIDE_ROOM", "VOID_ARCH",
-  "STONE_GALLERY", "EMBER_PIT", "QUIET_CLOISTER", "STORM_DECK", "INK_LIBRARY",
+  "NEON_HALO_GRID", "AUREATE_SIGNAL_RING", "VOID_PULSE", "SIGNAL_HALO",
 ]);
 
 const LIGHTING = Object.freeze([
-  "DRAMATIC_RIM_LIGHT", "CONTROLLED_KEY", "LOW_KEY", "SPLIT_COLOR", "COLD_RIM",
+  "CRIMSON_NEON_RIM", "AMBER_NEON_EDGE", "VIOLET_NEON_GLOW", "COOL_NEON_EDGE",
 ]);
 
 const GEOMETRY = Object.freeze([
@@ -79,12 +80,10 @@ const MOTIONS = Object.freeze([
 ]);
 
 const MATERIALS = Object.freeze([
-  ["velvet", "smoke", "polished metal"],
-  ["bronze", "stone", "leather"],
-  ["silk", "lacquer", "bone"],
-  ["brushed steel", "glass", "ink"],
-  ["wool", "oak", "candle wax"],
-  ["scale", "ash", "tarnished gold"],
+  ["matte fabric", "glass", "metal"],
+  ["brushed metal", "carbon", "stone"],
+  ["smoke", "glass", "carbon"],
+  ["carbon", "glass"],
 ]);
 
 const TAGLINES = Object.freeze([
@@ -150,12 +149,12 @@ const EMBLEM_PATHS = Object.freeze({
 const EMBLEM_IDS = Object.freeze(Object.keys(EMBLEM_PATHS));
 
 const DIRECTION_HINTS = Object.freeze([
-  { test: /cold|ice|moon|silver|steel|blue/i, hue: 206, motif: "MOONLIT_STEEL" },
-  { test: /gold|sun|imperial|warm|brass/i, hue: 38, motif: "GILDED_HALL" },
-  { test: /blood|red|crimson|rose/i, hue: 352, motif: "CANDLE_VAULT" },
-  { test: /sea|wave|tide|green/i, hue: 162, motif: "TIDE_ROOM" },
-  { test: /void|shadow|night|black/i, hue: 274, motif: "VOID_ARCH" },
-  { test: /stone|marble|cloak|monk/i, hue: 28, motif: "QUIET_CLOISTER" },
+  { test: /cold|ice|moon|silver|steel|blue/i, hue: 196, motif: "SIGNAL_HALO" },
+  { test: /gold|sun|imperial|warm|brass|amber/i, hue: 38, motif: "AUREATE_SIGNAL_RING" },
+  { test: /blood|red|crimson|rose/i, hue: 348, motif: "NEON_HALO_GRID" },
+  { test: /sea|wave|tide|green/i, hue: 168, motif: "SIGNAL_HALO" },
+  { test: /void|shadow|night|black|violet/i, hue: 268, motif: "VOID_PULSE" },
+  { test: /stone|marble|cloak|monk/i, hue: 200, motif: "SIGNAL_HALO" },
 ]);
 
 const ARCHETYPE_BIAS = Object.freeze({
@@ -402,24 +401,25 @@ function directionBias(text, fallbackHue) {
 }
 
 function paletteAt(hue, balance) {
+  const accentHue = (hue + 28) % 360;
   if (balance === 1) {
     return {
-      primaryColor: hslToHex(hue, 48, 28),
-      secondaryColor: hslToHex(hue + 188, 16, 16),
-      accentColor: hslToHex(hue + 46, 58, 70),
+      primaryColor: hslToHex(hue, 42, 16),
+      secondaryColor: hslToHex(hue + 18, 30, 9),
+      accentColor: hslToHex(accentHue, 92, 62),
     };
   }
   if (balance === 2) {
     return {
-      primaryColor: hslToHex(hue, 62, 42),
-      secondaryColor: hslToHex(hue + 230, 18, 11),
-      accentColor: hslToHex(hue + 16, 28, 82),
+      primaryColor: hslToHex(hue, 36, 13),
+      secondaryColor: hslToHex(hue + 210, 16, 8),
+      accentColor: hslToHex(accentHue + 12, 88, 66),
     };
   }
   return {
-    primaryColor: hslToHex(hue, 56, 34),
-    secondaryColor: hslToHex(hue + 206, 20, 12),
-    accentColor: hslToHex(hue + 28, 40, 76),
+    primaryColor: hslToHex(hue, 48, 15),
+    secondaryColor: hslToHex(hue, 22, 8),
+    accentColor: hslToHex(accentHue + 6, 90, 64),
   };
 }
 
@@ -481,6 +481,7 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
     const silhouette = like && anchor
       ? anchor.visualIdentity.silhouette
       : SILHOUETTES[(SILHOUETTES.indexOf(bias.silhouette) + index + attempt) % SILHOUETTES.length];
+    const dna = buildVisualDNA({ archetype: draft.archetype });
     const visual = {
       silhouette,
       bodyLanguage: BODIES[(index + attempt + salt) % BODIES.length],
@@ -489,12 +490,14 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
       secondaryColor: colors.secondaryColor,
       accentColor: colors.accentColor,
       emblem,
-      materialLanguage: MATERIALS[(index + salt + attempt) % MATERIALS.length].slice(),
-      backgroundMotif: hinted.motif || MOTIFS[(index + salt + attempt) % MOTIFS.length],
-      lightingStyle: LIGHTING[(index + attempt) % LIGHTING.length],
-      ornamentationLevel: Math.round(clamp01(0.35 + ((index + attempt) % 5) * 0.12) * 100) / 100,
+      materialLanguage: (dna.materials || MATERIALS[(index + salt + attempt) % MATERIALS.length]).slice(),
+      backgroundMotif: hinted.motif || dna.backgroundMotif || MOTIFS[(index + salt + attempt) % MOTIFS.length],
+      lightingStyle: dna.lightingStyle || LIGHTING[(index + attempt) % LIGHTING.length],
+      ornamentationLevel: Math.round(clamp01(0.28 + ((index + attempt) % 4) * 0.08) * 100) / 100,
       geometryLanguage: GEOMETRY[(index + salt) % GEOMETRY.length],
       motionLanguage: bias.motion,
+      signatureFeature: dna.signatureFeature,
+      styleId: PFP_STYLE_ID,
     };
     if (!titleFree(title, occ, usedTitles)) continue;
     if (!keepEmblem && (occ.emblems.has(emblem) || usedEmblems.has(emblem))) continue;

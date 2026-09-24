@@ -372,7 +372,7 @@ function pfpMotion(person) {
   if (named) return named;
   const api = pfpRuntime();
   if (api) return api.profileForBrand(brand || person || {});
-  return "REGAL_STEADY";
+  return "NEON_COMPETITIVE";
 }
 function animatedPortrait(inner, person, context, state) {
   const brand = brandFor(person);
@@ -382,7 +382,7 @@ function animatedPortrait(inner, person, context, state) {
   const id = (person && (person.id || person.agentId)) || "";
   const srcAttr = context === "reveal" || !src ? ` data-inline="1"` : ` data-pfp-src="${esc(src)}"`;
   const cls = context === "profile" ? "animated-pfp agent-pfp" : "animated-pfp";
-  return `<span class="${cls}" data-context="${esc(context)}" data-state="${esc(state || "idle")}" data-motion="${esc(motion)}" data-agent="${esc(id)}"${srcAttr}>${inner}</span>`;
+  return `<span class="${cls}" data-context="${esc(context)}" data-state="${esc(state || "idle")}" data-style="neon-competitive" data-motion="${esc(motion)}" data-agent="${esc(id)}"${srcAttr}>${inner}</span>`;
 }
 function bindAnimatedPfps(root) {
   const api = pfpRuntime();
@@ -494,7 +494,7 @@ function pfpMini(svg, size) {
 function conceptPortrait(c) {
   const visual = c.visualIdentity || {};
   const on = c.id === creator.selectedId;
-  const accent = hexColor(visual.accentColor) || "#E8DDD0";
+  const accent = hexColor(visual.accentColor) || "#4AD7FF";
   return `<button class="concept-card pfp-concept lda-card${on ? " is-selected" : ""}" type="button" data-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait option ${esc(String((c.conceptNumber || 0)))}" style="--agent-accent:${esc(accent)}">
     <span class="pfp-concept__image-wrap">${pfpFrame(c.pfpSvg)}<span class="pfp-concept__ring"></span></span>
     <span class="concept-copy">
@@ -1671,8 +1671,8 @@ function creatorView() {
     const reveal = creator.reveal || {};
     const c = selectedConcept();
     const visual = (c && c.visualIdentity) || {};
-    const accent = hexColor(reveal.accent || visual.accentColor) || "#E8DDD0";
-    const primary = hexColor(reveal.primary || visual.primaryColor) || "#6D0F1F";
+    const accent = hexColor(reveal.accent || visual.accentColor) || "#4AD7FF";
+    const primary = hexColor(reveal.primary || visual.primaryColor) || "#101216";
     const emblem = safeSvg(reveal.emblem || (c && c.emblemSvg));
     const revealMotion = pfpRuntime()
       ? pfpRuntime().profileForBrand({
@@ -1680,12 +1680,12 @@ function creatorView() {
         visualIdentity: visual,
         personality: { chaos: f.chaos, showmanship: f.showmanship },
       })
-      : "ELEGANT_SMOKE";
+      : "NEON_COMPETITIVE";
     const revealId = (creator.draft && creator.draft.agent && creator.draft.agent.id) || "";
     body = `<section class="agent-reveal" style="--agent-accent:${esc(accent)};--agent-primary:${esc(primary)}">
       <div class="agent-reveal__aura agent-reveal__glow" aria-hidden="true"></div>
       ${emblem ? `<div class="agent-reveal__emblem" aria-hidden="true">${emblem}</div>` : ""}
-      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${pfpFrame(reveal.svg || (c && c.pfpSvg))}</div>
+      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-style="neon-competitive" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${pfpFrame(reveal.svg || (c && c.pfpSvg))}</div>
       <div class="agent-reveal__identity agent-reveal__copy">
         <span class="agent-reveal__title">${esc(reveal.title || (c && c.title) || "")}</span>
         <h1>${esc(reveal.name || f.name)}</h1>

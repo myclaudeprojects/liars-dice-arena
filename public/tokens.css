@@ -58,16 +58,16 @@
 
   /* Cast brand palettes. Accents alias the brand accent so seats and chips share one source. */
   --brand-dracula-primary: #6D0F1F;
-  --brand-dracula-secondary: #111111;
-  --brand-dracula-accent: #E8DDD0;
-  --brand-caesar-primary: #8A6A2F;
-  --brand-caesar-secondary: #3A3834;
-  --brand-caesar-accent: #F3E6C8;
-  --brand-reaper-primary: #141416;
-  --brand-reaper-secondary: #6E6A72;
+  --brand-dracula-secondary: #2A0E18;
+  --brand-dracula-accent: #F43B5F;
+  --brand-caesar-primary: #101216;
+  --brand-caesar-secondary: #2A2417;
+  --brand-caesar-accent: #FFC247;
+  --brand-reaper-primary: #0F1014;
+  --brand-reaper-secondary: #1F1A2E;
   --brand-reaper-accent: #B15CFF;
   --brand-athena-primary: #163A66;
-  --brand-athena-secondary: #D8DEE8;
+  --brand-athena-secondary: #141A24;
   --brand-athena-accent: #E2B340;
   --brand-shark-primary: #0B3A32;
   --brand-shark-secondary: #101820;
@@ -82,7 +82,7 @@
   --brand-brutus-secondary: #241610;
   --brand-brutus-accent: #F0A07A;
   --brand-monk-primary: #1F4D32;
-  --brand-monk-secondary: #E6E1D4;
+  --brand-monk-secondary: #141814;
   --brand-monk-accent: #7DAF6A;
   --brand-siren-primary: #0C6B62;
   --brand-siren-secondary: #071018;
@@ -126,6 +126,11 @@
 
   /* Elevation. */
   --lda-scrim: rgba(0, 0, 0, 0.66);
+  /* Neon competitive portrait shell. Accents still come from the agent. */
+  --lda-pfp-shell-top: #11131a;
+  --lda-pfp-shell-bottom: #0b0d12;
+  --lda-pfp-neon: #4ad7ff;
+
   --lda-shadow-1: 0 1px 0 rgba(0, 0, 0, 0.28);
   --lda-shadow-2: 0 10px 28px rgba(0, 0, 0, 0.32);
   --lda-shadow-3: 0 18px 48px rgba(0, 0, 0, 0.42);

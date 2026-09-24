@@ -66,4 +66,75 @@ ${negativeLine}
 `.trim();
 }
 
-module.exports = { buildPfpPrompt };
+function buildNeonPfpVisualInstruction(agent) {
+  const row = agent && typeof agent === "object" ? agent : {};
+  const s = row.creationSelections || {};
+  return `
+LDA VISUAL STYLE:
+Premium modern competitive roster portrait.
+Dark premium background.
+Face-first composition.
+Head-and-shoulders or tight chest-up crop.
+High-end stylized portrait.
+Strong silhouette.
+Controlled neon accent lighting.
+Clean, modern and brandable.
+Readable at 48px.
+One character only.
+No text.
+No watermark.
+No full-body poster composition.
+
+SELECTED CHARACTER OPTIONS:
+Archetype: ${s.archetype || ""}
+Body / Character Form: ${s.bodyType || ""}
+Expression: ${s.expression || ""}
+Attire: ${s.attire || ""}
+Color Palette: ${s.colorPalette || ""}
+Background: ${s.background || ""}
+Accessory: ${s.accessories || ""}
+
+CRITICAL DIFFERENTIATION RULE:
+These options define the actual character structure.
+
+Do NOT reuse the same generic human face.
+
+Archetype and body/character form may change:
+- gender presentation
+- age
+- facial structure
+- face shape
+- skin/material appearance
+- species/type
+- human vs synthetic construction
+- build
+- shoulders
+- hair/head design
+- silhouette
+- tech level
+- wardrobe language
+
+Examples:
+- robot_ai + full_robot MUST be visibly synthetic and non-human.
+- animal + non_human MUST visibly be an animal/anthro character, not a human with ears.
+- elder MUST visibly read as older.
+- female_athletic MUST structurally differ from male_lean.
+- executive MUST visually differ from street.
+- athlete MUST visually differ from criminal.
+- tech MUST differ from robot_ai: Tech may be augmented human; Robot/AI may be fully synthetic.
+
+NEON RULE:
+Neon is controlled accent lighting, not visual noise.
+
+BACKGROUND RULE:
+The selected background is a simplified premium backdrop, not a busy full scene.
+
+ACCESSORY RULE:
+Make the selected accessory visible without hiding the character.
+
+FINAL OUTPUT:
+One unique canonical Liar's Dice Arena competitor portrait.
+`.trim();
+}
+
+module.exports = { buildPfpPrompt, buildNeonPfpVisualInstruction };

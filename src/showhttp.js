@@ -68,7 +68,8 @@ async function handleShow(req, res, url, query, show) {
     const pfpGet = path.match(/^\/agents\/([^/]+)\/pfp\.svg$/);
     if (req.method === "GET" && pfpGet) {
       const size = query && query.get ? query.get("size") : "";
-      const svg = show.pfpSvgFor(decodeURIComponent(pfpGet[1]), size);
+      const version = query && query.get ? query.get("v") : "";
+      const svg = show.pfpSvgFor(decodeURIComponent(pfpGet[1]), size, version);
       if (!svg) { send(res, 404, { ok: false, error: "No portrait for that agent.", code: "unknown_agent" }); return true; }
       res.writeHead(200, {
         "content-type": "image/svg+xml; charset=utf-8",
@@ -107,6 +108,18 @@ async function handleShow(req, res, url, query, show) {
     if (req.method === "POST" && select) {
       const body = await readBody(req);
       send(res, 200, { ok: true, ...show.selectConcept(decodeURIComponent(select[1]), body.conceptId) });
+      return true;
+    }
+    const selections = path.match(/^\/agents\/([^/]+)\/brand\/selections$/);
+    if (req.method === "POST" && selections) {
+      const body = await readBody(req);
+      send(res, 200, { ok: true, ...show.updateSelections(decodeURIComponent(selections[1]), body.creationSelections || body) });
+      return true;
+    }
+    const generate = path.match(/^\/agents\/([^/]+)\/brand\/(?:generate|regenerate)$/);
+    if (req.method === "POST" && generate) {
+      const body = await readBody(req);
+      send(res, 200, { ok: true, ...await show.generatePortrait(decodeURIComponent(generate[1]), body) });
       return true;
     }
     const pfpConcepts = path.match(/^\/agents\/([^/]+)\/brand\/pfp-concepts$/);

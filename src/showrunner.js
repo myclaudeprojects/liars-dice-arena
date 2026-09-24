@@ -34,8 +34,13 @@ const {
   emblemSvg,
   creatorError,
   humanize,
+  renderCanonicalPortrait,
+  buildPortraitBrand,
+  visualOptionGroups,
+  normalizeSelections,
 } = require("./brandcreate");
-const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls } = require("./pfp");
+const { inferSelectionsFromBrand } = require("./branding/creationSelections");
+const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls, withBrandVersion } = require("./pfp");
 const { animatedPfpMeta } = require("./motionprofiles");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
@@ -1458,7 +1463,9 @@ class Show {
     for (const row of raw) {
       if (!row || typeof row.id !== "string" || typeof row.name !== "string") continue;
       if (CAST.some((c) => c.id === row.id)) continue;
-      this.userAgents.set(row.id, JSON.parse(JSON.stringify(row)));
+      const copy = JSON.parse(JSON.stringify(row));
+      if (!copy.creationSelections) copy.creationSelections = inferSelectionsFromBrand(copy.identity || copy);
+      this.userAgents.set(row.id, copy);
       this.records.ensure(row.id);
     }
   }
@@ -1673,11 +1680,113 @@ class Show {
     return emblem ? emblemSvg(emblem) : null;
   }
 
-  pfpSvgFor(agentId, size) {
-    const brand = this.brands.full(agentId);
+  pfpSvgFor(agentId, size, version) {
+    const numeric = Number(version);
+    const brand = Number.isFinite(numeric) && numeric > 0
+      ? (this.brands.full(agentId, `v${numeric}`) || this.brands.full(agentId))
+      : this.brands.full(agentId);
     if (!brand || !brand.visualIdentity) return null;
     const recipe = brand.pfpRecipe && brand.pfpRecipe.colors ? brand.pfpRecipe : recipeFromBrand(brand);
     return renderPfp(recipe, { size, nonce: agentId });
+  }
+
+  updateSelections(agentId, selections) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
+    draft.creationSelections = normalizeSelections(selections || draft.creationSelections);
+    draft.visualDirty = true;
+    draft.pfpStatus = "AWAITING_REGENERATION";
+    draft.updatedAt = new Date().toISOString();
+    if (this.brands.full(agentId)) {
+      this.brands.patchActive(agentId, {
+        visualDirty: true,
+        status: "AWAITING_REGENERATION",
+        creationSelections: draft.creationSelections,
+      });
+    }
+    this.persist();
+    return {
+      agent: this.agentSummary(draft),
+      creationSelections: draft.creationSelections,
+      visualDirty: true,
+      status: "AWAITING_REGENERATION",
+    };
+  }
+
+  async generatePortrait(agentId, input = {}) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
+    const previous = this.brands.full(agentId);
+    const selections = normalizeSelections(input.creationSelections || draft.creationSelections);
+    draft.creationSelections = selections;
+    draft.visualDirty = true;
+    draft.pfpStatus = "AWAITING_REGENERATION";
+    draft.updatedAt = new Date().toISOString();
+    this.persist();
+    let portrait;
+    try {
+      portrait = await renderCanonicalPortrait(draft, {
+        selections,
+        brands: this.brandPool(),
+        currentVersion: Number(previous && previous.version || 0),
+        provider: input.provider,
+      });
+    } catch (err) {
+      draft.visualDirty = true;
+      draft.pfpStatus = "GENERATION_FAILED";
+      draft.updatedAt = new Date().toISOString();
+      if (previous) {
+        this.brands.patchActive(agentId, { visualDirty: true, status: "GENERATION_FAILED" });
+      }
+      this.persist();
+      if (err && err.code) throw err;
+      throw creatorError("generation_failed", "Portrait generation failed. The last portrait was kept.", 502);
+    }
+    const locked = buildPortraitBrand(draft, portrait, previous);
+    try {
+      this.brands.appendVersion(locked.brand);
+    } catch (e) {
+      draft.visualDirty = true;
+      draft.pfpStatus = "GENERATION_FAILED";
+      if (previous) this.brands.patchActive(agentId, { visualDirty: true, status: "GENERATION_FAILED" });
+      this.persist();
+      if (e.code === "brand_title_collision" || e.code === "brand_emblem_collision" || e.code === "brand_palette_collision") {
+        throw creatorError("uniqueness_exhausted", "That portrait is too close to an existing brand.", 409);
+      }
+      throw e;
+    }
+    const saved = this.brands.full(draft.id);
+    if (!saved || !saved.assets || !saved.assets.canonicalPfp) {
+      throw creatorError("generation_failed", "PFP generation did not produce a persisted canonical image.", 502);
+    }
+    draft.sheet = locked.sheet;
+    draft.status = "READY";
+    draft.visualDirty = false;
+    draft.pfpStatus = "READY";
+    draft.identity = {
+      ...draft.identity,
+      title: saved.title,
+      tagline: saved.tagline,
+      visualIdentity: saved.visualIdentity,
+    };
+    draft.updatedAt = saved.generation.approvedAt || new Date().toISOString();
+    this.records.ensure(draft.id);
+    const wasSeated = this.busyIds().has(draft.id);
+    if (!wasSeated) this.seatGuest(draft.id);
+    this.persist();
+    this.emitState();
+    console.log("PFP_CANONICAL_SAVED", {
+      agentId: draft.id,
+      newBrandVersion: saved.version,
+      canonicalPfp: saved.assets.canonicalPfp,
+    });
+    return {
+      agent: this.agentSummary(draft),
+      brand: saved,
+      svg: portrait.svg,
+      seated: this.busyIds().has(draft.id),
+      creationSelections: draft.creationSelections,
+    };
   }
 
   deriveAssets(agentId) {
@@ -1719,6 +1828,7 @@ class Show {
       optionalSliders: OPTIONAL_SLIDERS,
       roster: "user",
       houseCast: CAST.length,
+      visualOptions: visualOptionGroups(),
     };
   }
 
@@ -1775,6 +1885,11 @@ class Show {
       playable: !draft || draft.status === "READY",
       seated: this.busyIds().has(c.id),
       identity: draft ? draft.identity : null,
+      creationSelections: draft
+        ? (draft.creationSelections || inferSelectionsFromBrand(draft.identity || draft))
+        : inferSelectionsFromBrand(this.brands.full(c.id) || {}),
+      visualDirty: draft ? draft.visualDirty === true : false,
+      pfpStatus: draft ? (draft.pfpStatus || (draft.status === "READY" ? "READY" : "AWAITING_REGENERATION")) : "READY",
       concepts: draft && draft.status !== "READY" ? draft.concepts : undefined,
       selectedConceptId: draft ? draft.selectedConceptId : null,
       personality: draft ? draft.personality : null,
@@ -1791,7 +1906,9 @@ class Show {
       throw err;
     }
     const urls = assetUrls(id);
-    const preview = (brand.assets && brand.assets.pfpPortrait) || urls.master;
+    const version = Number(brand.version) || 1;
+    const stamp = (url) => (url ? withBrandVersion(url, { version }) : url);
+    const preview = stamp((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master);
     const view = {
       ...brand,
       pfpAssetType: ASSET_TYPE,
@@ -1805,14 +1922,15 @@ class Show {
       },
       assets: {
         ...brand.assets,
+        canonicalPfp: preview,
         pfpPortrait: preview,
-        avatar: (brand.assets && brand.assets.avatar) || urls.avatar,
-        avatar48: (brand.assets && brand.assets.avatar48) || urls.sizes["48"],
-        avatar96: (brand.assets && brand.assets.avatar96) || urls.sizes["96"],
-        avatar160: (brand.assets && brand.assets.avatar160) || urls.sizes["160"],
-        avatar256: (brand.assets && brand.assets.avatar256) || urls.sizes["256"],
-        avatar320: (brand.assets && brand.assets.avatar320) || urls.sizes["320"],
-        avatar512: (brand.assets && brand.assets.avatar512) || urls.sizes["512"],
+        avatar: stamp((brand.assets && brand.assets.avatar) || urls.avatar),
+        avatar48: stamp((brand.assets && brand.assets.avatar48) || urls.sizes["48"]),
+        avatar96: stamp((brand.assets && brand.assets.avatar96) || urls.sizes["96"]),
+        avatar160: stamp((brand.assets && brand.assets.avatar160) || urls.sizes["160"]),
+        avatar256: stamp((brand.assets && brand.assets.avatar256) || urls.sizes["256"]),
+        avatar320: stamp((brand.assets && brand.assets.avatar320) || urls.sizes["320"]),
+        avatar512: stamp((brand.assets && brand.assets.avatar512) || urls.sizes["512"]),
       },
     };
     const motion = animatedPfpMeta(brand, preview);

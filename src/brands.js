@@ -9,7 +9,8 @@
 // Similarity embeddings are not computed; palette and title checks are local.
 
 const { CAST } = require("./characters");
-const { assetUrls, PFP_STYLE_VERSION, PFP_STYLE_ID, ASSET_TYPE } = require("./pfp");
+const { assetUrls, PFP_STYLE_VERSION, PFP_STYLE_ID, ASSET_TYPE, withBrandVersion } = require("./pfp");
+const { inferSelectionsFromBrand } = require("./branding/creationSelections");
 const { animatedPfpMeta } = require("./motionprofiles");
 
 const HOUSE_STYLE_VERSION = "lda-house-v1";
@@ -617,6 +618,12 @@ class BrandBook {
       facialAttitude: visual.facialAttitude,
       motionLanguage: visual.motionLanguage,
       status: brand.generation.status,
+      version: Number(brand.version) || 1,
+      styleId: brand.styleId || PFP_STYLE_ID,
+      styleVersion: brand.styleVersion || "v1",
+      visualDirty: brand.visualDirty === true,
+      pfpStatus: brand.status || brand.generation.status,
+      creationSelections: inferSelectionsFromBrand(brand),
       pfpUrl: null,
       pfpAssetType: null,
       primaryPfpAssetId: brand.primaryPfpAssetId || null,
@@ -626,21 +633,30 @@ class BrandBook {
     };
     if (visual.primaryColor) {
       const urls = assetUrls(brand.agentId);
-      view.pfpUrl = (brand.assets && brand.assets.pfpPortrait) || urls.master;
+      const versioned = (url) => withBrandVersion(url, brand.version ? brand : { version: view.version });
+      view.pfpUrl = versioned((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master);
+      view.canonicalPfp = view.pfpUrl;
       view.pfpAssetType = ASSET_TYPE;
       view.primaryPfpAssetId = brand.primaryPfpAssetId || `pfp_${brand.agentId}_canonical`;
       view.pfpStyleVersion = brand.pfpStyleVersion || PFP_STYLE_VERSION;
       view.pfpStyleId = PFP_STYLE_ID;
-      view.avatarUrl = (brand.assets && brand.assets.avatar) || urls.avatar;
+      view.avatarUrl = versioned((brand.assets && brand.assets.avatar) || urls.avatar);
       view.avatarSizes = {
-        48: (brand.assets && brand.assets.avatar48) || urls.sizes["48"],
-        96: (brand.assets && brand.assets.avatar96) || urls.sizes["96"],
-        160: (brand.assets && brand.assets.avatar160) || urls.sizes["160"],
-        256: (brand.assets && brand.assets.avatar256) || urls.sizes["256"],
-        320: (brand.assets && brand.assets.avatar320) || urls.sizes["320"],
-        512: (brand.assets && brand.assets.avatar512) || urls.sizes["512"],
+        48: versioned((brand.assets && brand.assets.avatar48) || urls.sizes["48"]),
+        96: versioned((brand.assets && brand.assets.avatar96) || urls.sizes["96"]),
+        160: versioned((brand.assets && brand.assets.avatar160) || urls.sizes["160"]),
+        256: versioned((brand.assets && brand.assets.avatar256) || urls.sizes["256"]),
+        320: versioned((brand.assets && brand.assets.avatar320) || urls.sizes["320"]),
+        512: versioned((brand.assets && brand.assets.avatar512) || urls.sizes["512"]),
       };
-      const motion = animatedPfpMeta(brand, view.pfpUrl);
+      view.assets = {
+        canonicalPfp: view.canonicalPfp,
+        avatar48: view.avatarSizes[48],
+        avatar96: view.avatarSizes[96],
+        avatar256: view.avatarSizes[256],
+        avatar512: view.avatarSizes[512],
+      };
+      const motion = animatedPfpMeta({ ...brand, version: view.version, assets: { ...(brand.assets || {}), canonicalPfp: view.canonicalPfp } }, view.canonicalPfp);
       if (motion) view.animatedPfp = motion;
     }
     return view;
@@ -704,6 +720,19 @@ class BrandBook {
     this._versions.set(key, stored);
     if (opts.activate !== false) this._activate(stored);
     return clone(stored);
+  }
+
+  patchActive(agentId, patch = {}) {
+    const version = this._active.get(agentId);
+    if (!version) return null;
+    const row = this._versions.get(versionKey(agentId, version));
+    if (!row) return null;
+    if (patch.visualDirty != null) row.visualDirty = patch.visualDirty === true;
+    if (patch.status) row.status = patch.status;
+    if (patch.creationSelections) row.creationSelections = patch.creationSelections;
+    const meta = this._meta.get(agentId);
+    if (meta) meta.updatedAt = new Date().toISOString();
+    return clone(row);
   }
 
   rebrand(agentId, patch = {}) {

@@ -1814,6 +1814,61 @@ body {
   .agent-hero .agent-pfp { width: clamp(180px, 28vw, 260px); }
   .agent-roster { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+.agent-visual-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.visual-group { margin: 0 0 18px; }
+.visual-group h2 { font-size: 15px; margin: 0 0 8px; }
+.option-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid var(--lda-line);
+  background: var(--lda-surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.option-card img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  background: var(--lda-avatar-bg);
+}
+.option-card span { font-size: 12px; line-height: 1.3; text-transform: capitalize; }
+.option-card.is-selected {
+  border-color: var(--lda-gold);
+  box-shadow: inset 0 0 0 1px var(--lda-gold);
+}
+.portrait-editor { margin: 12px 0 18px; }
+.portrait-editor summary { cursor: pointer; font-weight: 650; margin-bottom: 10px; }
+.pfp-debug {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--lda-surface-2);
+  font-size: 12px;
+}
+.pfp-debug p { margin: 4px 0; word-break: break-all; }
+.pfp-compare {
+  display: grid;
+  grid-template-columns: repeat(4, 96px);
+  gap: 12px;
+  align-items: start;
+}
+.pfp-compare img { width: 96px; height: 96px; border-radius: 12px; background: var(--lda-avatar-bg); }
+@media (min-width: 760px) {
+  .agent-visual-options {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 @media (max-width: 640px) {
   .roster-extra { display: none; }
   .matchup-hero { min-height: min(62dvh, 560px); padding: var(--space-3); }

@@ -10,6 +10,7 @@
 
 const { CAST } = require("./characters");
 const { assetUrls, PFP_STYLE_VERSION, ASSET_TYPE } = require("./pfp");
+const { animatedPfpMeta } = require("./motionprofiles");
 
 const HOUSE_STYLE_VERSION = "lda-house-v1";
 const PROMPT_VERSION = "agent-brand-prompt-v1";
@@ -626,6 +627,8 @@ class BrandBook {
         320: (brand.assets && brand.assets.avatar320) || urls.sizes["320"],
         512: (brand.assets && brand.assets.avatar512) || urls.sizes["512"],
       };
+      const motion = animatedPfpMeta(brand, view.pfpUrl);
+      if (motion) view.animatedPfp = motion;
     }
     return view;
   }

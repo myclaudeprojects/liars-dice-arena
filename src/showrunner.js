@@ -36,6 +36,7 @@ const {
   humanize,
 } = require("./brandcreate");
 const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls } = require("./pfp");
+const { animatedPfpMeta } = require("./motionprofiles");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
 const SAMPLE_FLOOR = 6;
@@ -1790,7 +1791,8 @@ class Show {
       throw err;
     }
     const urls = assetUrls(id);
-    return {
+    const preview = (brand.assets && brand.assets.pfpPortrait) || urls.master;
+    const view = {
       ...brand,
       pfpAssetType: ASSET_TYPE,
       primaryPfpAssetId: brand.primaryPfpAssetId || `pfp_${id}_canonical`,
@@ -1803,7 +1805,7 @@ class Show {
       },
       assets: {
         ...brand.assets,
-        pfpPortrait: (brand.assets && brand.assets.pfpPortrait) || urls.master,
+        pfpPortrait: preview,
         avatar: (brand.assets && brand.assets.avatar) || urls.avatar,
         avatar48: (brand.assets && brand.assets.avatar48) || urls.sizes["48"],
         avatar96: (brand.assets && brand.assets.avatar96) || urls.sizes["96"],
@@ -1813,6 +1815,9 @@ class Show {
         avatar512: (brand.assets && brand.assets.avatar512) || urls.sizes["512"],
       },
     };
+    const motion = animatedPfpMeta(brand, preview);
+    if (motion) view.animatedPfp = motion;
+    return view;
   }
 
   brandsForSeats(seats) {

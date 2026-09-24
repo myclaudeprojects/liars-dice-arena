@@ -363,6 +363,32 @@ function pfpSrc(brand, size) {
   const sized = brand.avatarSizes && (brand.avatarSizes[size] || brand.avatarSizes[String(size)]);
   return pfpPath(sized || brand.pfpUrl || "");
 }
+function pfpRuntime() {
+  return window.ldaAnimatedPfp || null;
+}
+function pfpMotion(person) {
+  const brand = brandFor(person);
+  const named = brand && brand.animatedPfp && brand.animatedPfp.motionProfile;
+  if (named) return named;
+  const api = pfpRuntime();
+  if (api) return api.profileForBrand(brand || person || {});
+  return "REGAL_STEADY";
+}
+function animatedPortrait(inner, person, context, state) {
+  const brand = brandFor(person);
+  const src = pfpSrc(brand, 320) || pfpSrc(brand, 256) || pfpSrc(brand, 160);
+  if (context !== "reveal" && !src) return inner;
+  const motion = pfpMotion(person);
+  const id = (person && (person.id || person.agentId)) || "";
+  const srcAttr = context === "reveal" || !src ? ` data-inline="1"` : ` data-pfp-src="${esc(src)}"`;
+  const cls = context === "profile" ? "animated-pfp agent-pfp" : "animated-pfp";
+  return `<span class="${cls}" data-context="${esc(context)}" data-state="${esc(state || "idle")}" data-motion="${esc(motion)}" data-agent="${esc(id)}"${srcAttr}>${inner}</span>`;
+}
+function bindAnimatedPfps(root) {
+  const api = pfpRuntime();
+  if (!api || !root || !api.scan) return;
+  api.scan(root);
+}
 function mark(name, hue, id, brand) {
   const resolved = brand || brandFor({ id });
   const cast = id ? ` data-cast="${esc(id)}"` : "";
@@ -379,21 +405,22 @@ function mark(name, hue, id, brand) {
   if (!resolved || !resolved.emblemUrl || !ui()) return avatar;
   return `<span class="brand-lockup"${cast}>${ui().emblem()}${avatar}</span>`;
 }
-function facePlate(person, px) {
+function facePlate(person, px, opts) {
   const who = person || {};
   const brand = brandFor(who);
   const size = [48, 96, 160, 256, 320, 512, 1024].includes(px) ? px : 160;
   const src = pfpSrc(brand, size) || pfpSrc(brand, 160) || pfpSrc(brand, 96);
   const named = size >= 320 ? "xl" : size >= 160 ? "lg" : size >= 96 ? "md" : "sm";
-  if (ui() && ui().agentAvatar) {
-    return ui().agentAvatar({
+  const plate = ui() && ui().agentAvatar
+    ? ui().agentAvatar({
       name: who.name,
       hue: who.hue,
       id: who.id || who.agentId,
       brand,
-    }, { src, size: named });
-  }
-  return mark(who.name, who.hue, who.id || who.agentId, brand);
+    }, { src, size: named })
+    : mark(who.name, who.hue, who.id || who.agentId, brand);
+  if (!opts || !opts.animate) return plate;
+  return animatedPortrait(plate, who, opts.context || "watch", opts.state || "idle");
 }
 function heroFace(person) {
   return facePlate(person, 320);
@@ -413,12 +440,15 @@ function heroThemeAttr(a, b) {
   if (right) bits.push("--hero-b:" + right);
   return bits.length ? ` style="${bits.join(";")}"` : "";
 }
-function matchupSide(person, side, plate) {
+function matchupSide(person, side, plate, state) {
   const kind = plate || "hero";
   const px = kind === "hero" ? 320 : kind === "rival" ? 160 : 160;
   const record = person && person.record ? `<small class="matchup-agent__record">${esc(person.record)}</small>` : "";
+  const face = kind === "hero"
+    ? facePlate(person, px, { animate: true, context: "hero", state: state || "idle" })
+    : facePlate(person, px);
   return `<div class="matchup-agent matchup-agent--${side} who hero-agent" data-cast="${esc((person && (person.id || person.agentId)) || "")}"${brandStyle(person)}>
-    <div class="portrait-plate portrait-plate--${kind}">${facePlate(person, px)}</div>
+    <div class="portrait-plate portrait-plate--${kind}">${face}</div>
     ${titleLine(person)}
     <b class="matchup-name">${esc((person && person.name) || "")}</b>
     ${record}
@@ -446,7 +476,8 @@ function agentPortrait(agent) {
   if (!large) return mark(agent.name, agent.hue, agent.id, brand);
   const small = pfpSrc(brand, 48);
   const mid = pfpSrc(brand, 96);
-  return `<img class="agent-pfp" src="${esc(large)}" alt="" width="320" height="320">
+  const hero = animatedPortrait(`<img src="${esc(large)}" alt="" width="320" height="320">`, agent, "profile", "idle");
+  return `${hero}
     <span class="pfp-sizes" aria-label="Avatar sizes">${small ? `<img class="pfp-mini" src="${esc(small)}" alt="" width="48" height="48">` : ""}${mid ? `<img class="pfp-mini is-96" src="${esc(mid)}" alt="" width="96" height="96">` : ""}</span>`;
 }
 function pfpFrame(svg) {
@@ -743,13 +774,15 @@ function arena() {
   const nowLine = !open && narrativeLine ? narrativeLine : "";
   const stateLabel = m.phase === "live" ? `Round ${m.round || 1}` : final ? "Final" : "Picks are open";
   const status = final ? "Final" : open ? "● Up next" : "● Live";
+  const winnerId = final && m.oracle && m.oracle.winnerId ? m.oracle.winnerId : "";
+  const heroState = (person) => (!winnerId || !person ? "idle" : (person.id === winnerId ? "winner" : "loser"));
   return `
     <article class="live-card hero-match-card matchup-hero ${card}${intro}" aria-label="${esc(`${liveLabel}. ${a.name} versus ${b.name}. ${prompt || nowLine || stateLabel}`)}"${heroThemeAttr(a, b)}>
       <div class="matchup-hero__status hero-match-card__status">${esc(status)}</div>
       <div class="matchup-hero__body vs hero-match-card__agents">
-        ${matchupSide(a, "left", "hero")}
+        ${matchupSide(a, "left", "hero", heroState(a))}
         <div class="x matchup-hero__vs hero-match-card__vs"><span>VS</span></div>
-        ${matchupSide(b, "right", "hero")}
+        ${matchupSide(b, "right", "hero", heroState(b))}
       </div>
       ${prompt ? `<h1 class="arena-prompt">${esc(prompt)}</h1>` : ""}
       ${nowLine ? `<p class="arena-now">${esc(nowLine)}</p>` : ""}
@@ -1207,7 +1240,7 @@ function youBlock(m, beats) {
   return you + spark(pos && pos.trail);
 }
 
-function seatBlock(seat, m, beats, frame, stage, activeId) {
+function seatBlock(seat, m, beats, frame, stage, activeId, animatePfp) {
   const diceLabel = seat.alive === false ? "out" : `${seat.dice} dice`;
   const api = presentApi();
   let react = api ? (api.reactionsOf(m)[seat.id] || "neutral") : "neutral";
@@ -1235,10 +1268,19 @@ function seatBlock(seat, m, beats, frame, stage, activeId) {
   const hue = Number(seat.hue);
   const tone = Number.isFinite(hue) ? hue : 40;
   const accent = HOUSE_CAST.has(seat.id) ? "" : ` style="--agent-accent:hsl(${tone} 42% 58%)"`;
-  return `<div class="${seatClass(seat, m, beats, stage, activeId)} arena-seat" data-react="${esc(react)}" data-cast="${esc(seat.id)}"${motion}${accent}>
+  const seated = seatClass(seat, m, beats, frame, stage, activeId).split(" ");
+  const onTurn = seated.includes("active") || seated.includes("hot");
+  const pfpState = react === "victory" ? "winner"
+    : (react === "defeat" || seat.alive === false) ? "loser"
+      : thinking ? "thinking"
+        : (onTurn ? "activeTurn" : "idle");
+  const portrait = animatePfp
+    ? facePlate(seat, 320, { animate: true, context: "watch", state: pfpState })
+    : facePlate(seat, 320);
+  return `<div class="${seated.join(" ")} arena-seat" data-react="${esc(react)}" data-cast="${esc(seat.id)}"${motion}${accent}>
     <div class="agent-portrait-wrap watch-agent__pfp agent-face ${mood}">
       <div class="agent-aura" aria-hidden="true"></div>
-      ${facePlate(seat, 320)}
+      ${portrait}
       ${thinking ? `<div class="thought-orbit" aria-hidden="true"><i></i><i></i><i></i></div>` : ""}
     </div>
     <div class="agent-copy seat-copy">
@@ -1294,6 +1336,7 @@ function tableView(m, beats, opts) {
   const [a, b] = m.seats;
   const n = m.narrative || {};
   const showYou = !opts || opts.you !== false;
+  const animateSeats = !opts || opts.animatePfp !== false;
   const view = stageModel(m, beats, frame);
   const { api, pres, cinematic, showLiar, showCount, showVerdict, showResult, shownState } = view;
   const callFacts = api ? api.roundCall(m) : null;
@@ -1359,12 +1402,12 @@ function tableView(m, beats, opts) {
         ${liveSting}
         <div class="who-now">${whoNow}</div>
         <div class="vs arena-seats">
-          ${seatBlock(a, m, beats, frame, stage, activeId)}
+          ${seatBlock(a, m, beats, frame, stage, activeId, animateSeats)}
           <div class="center-table">
             <div class="round-orb"><span>${m.phase === "settled" ? "FINAL" : "R" + (m.round || 1)}</span><small>${stageIcon(stage)}</small></div>
             <div class="table-ring" aria-hidden="true"></div>
           </div>
-          ${seatBlock(b, m, beats, frame, stage, activeId)}
+          ${seatBlock(b, m, beats, frame, stage, activeId, animateSeats)}
         </div>
         <div class="center-action felt" data-primary="${esc((frame && frame.primary) || pres.focus || "bid")}">
           <span class="pressure" aria-label="Intensity ${intensity} of 5${pressure ? ", " + esc(pressure) : ""}"><span class="pips">${pips}</span> ${esc(pressure)}</span>
@@ -1631,10 +1674,18 @@ function creatorView() {
     const accent = hexColor(reveal.accent || visual.accentColor) || "#E8DDD0";
     const primary = hexColor(reveal.primary || visual.primaryColor) || "#6D0F1F";
     const emblem = safeSvg(reveal.emblem || (c && c.emblemSvg));
+    const revealMotion = pfpRuntime()
+      ? pfpRuntime().profileForBrand({
+        archetype: f.archetype,
+        visualIdentity: visual,
+        personality: { chaos: f.chaos, showmanship: f.showmanship },
+      })
+      : "ELEGANT_SMOKE";
+    const revealId = (creator.draft && creator.draft.agent && creator.draft.agent.id) || "";
     body = `<section class="agent-reveal" style="--agent-accent:${esc(accent)};--agent-primary:${esc(primary)}">
       <div class="agent-reveal__aura agent-reveal__glow" aria-hidden="true"></div>
       ${emblem ? `<div class="agent-reveal__emblem" aria-hidden="true">${emblem}</div>` : ""}
-      <div class="agent-reveal__pfp">${pfpFrame(reveal.svg || (c && c.pfpSvg))}</div>
+      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${pfpFrame(reveal.svg || (c && c.pfpSvg))}</div>
       <div class="agent-reveal__identity agent-reveal__copy">
         <span class="agent-reveal__title">${esc(reveal.title || (c && c.title) || "")}</span>
         <h1>${esc(reveal.name || f.name)}</h1>
@@ -1918,7 +1969,7 @@ function matchReplay(m) {
   let shot = null;
   const api = presentApi();
   if (api && synthetic) shot = api.direct(api.commandFor(synthetic, api.presentationOf(synthetic)), { reduced: true }).frameAt(0);
-  const stage = synthetic ? tableView(synthetic, reducedMotion() ? [] : (frame.beats || []), { you: false, frame: shot }) : "";
+  const stage = synthetic ? tableView(synthetic, reducedMotion() ? [] : (frame.beats || []), { you: false, frame: shot, animatePfp: false }) : "";
   const beats = events.filter((e) => e.type === "bid" || e.type === "challenge" || e.type === "match_over").map((e) => {
     if (e.type === "bid") return `<li>${esc(e.name)} bids ${e.count} ${esc(faceWord(e.face))}.</li>`;
     if (e.type === "challenge") return `<li><b>${esc(e.bidWasTrue ? "Telling the truth." : "Bluffing.")}</b> Call on ${e.bid.count} ${esc(faceWord(e.bid.face))}.</li>`;
@@ -2216,6 +2267,7 @@ function paintMatchIntro(match) {
   if (root) root.className = introClass(t);
   introEl.classList.toggle("intro-complete", t >= 1550);
   scheduleIntro(t);
+  bindAnimatedPfps(introEl);
 }
 
 function render() {
@@ -2246,6 +2298,7 @@ function render() {
   paintMatchIntro(tab === "watch" ? watching : null);
   if (matchHtml === paintedMatch && marketHtml === paintedMarket && sheetHtml === paintedSheet && !arriving) {
     announceLine(watching && watching.narrative && watching.narrative.line);
+    bindAnimatedPfps(view);
     return;
   }
   const saved = pinScroll ? captureScroll() : null;
@@ -2270,6 +2323,7 @@ function render() {
   announceLine(watching && watching.narrative && watching.narrative.line);
   kickTally();
   paintShareCards();
+  bindAnimatedPfps(view);
 }
 
 function openWinnerSheet(btn) {

@@ -42,7 +42,7 @@
   function avatar(name, hue, id, opts) {
     const o = opts || {};
     const src = typeof o.src === "string" ? o.src : "";
-    const safeSrc = /^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?size=(?:48|96|160|256|320|512|1024))?$/i.test(src) ? src : "";
+    const safeSrc = /^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?(?:size=(?:48|96|160|256|320|512|1024)|v=[1-9][0-9]{0,5})(?:&(?:size=(?:48|96|160|256|320|512|1024)|v=[1-9][0-9]{0,5}))?)?$/i.test(src) ? src : "";
     if (safeSrc) {
       const w = [48, 96, 160, 256, 320, 512, 1024].includes(Number(o.size)) ? Number(o.size) : 96;
       const castAttr = id ? ` data-cast="${esc(id)}"` : "";

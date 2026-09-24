@@ -355,13 +355,19 @@ function personTitle(person) {
 }
 function pfpPath(url) {
   const text = String(url || "");
-  if (/^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?size=(?:48|96|160|256|320|512|1024))?$/i.test(text)) return text;
+  if (/^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?(?:size=(?:48|96|160|256|320|512|1024)|v=[1-9][0-9]{0,5})(?:&(?:size=(?:48|96|160|256|320|512|1024)|v=[1-9][0-9]{0,5}))?)?$/i.test(text)) return text;
   return "";
+}
+function withPfpVersion(url, version) {
+  const text = String(url || "");
+  if (!text || /[?&]v=\d+/i.test(text)) return text;
+  const v = Math.max(1, Math.floor(Number(version) || 1));
+  return text + (text.includes("?") ? "&" : "?") + "v=" + v;
 }
 function pfpSrc(brand, size) {
   if (!brand) return "";
   const sized = brand.avatarSizes && (brand.avatarSizes[size] || brand.avatarSizes[String(size)]);
-  return pfpPath(sized || brand.pfpUrl || "");
+  return pfpPath(withPfpVersion(sized || brand.pfpUrl || "", brand.version));
 }
 function pfpRuntime() {
   return window.ldaAnimatedPfp || null;
@@ -1575,6 +1581,7 @@ function blankCreator() {
     previewReady: false,
     previewError: "",
     heroToken: 0,
+    regenerate: false,
     form: {
       name: "",
       shortDescription: "",
@@ -1633,6 +1640,7 @@ function creatorPayload() {
       adaptability: f.adaptability,
     },
     creationOptions: { ...(creator.look || CREATION_LOOK_DEFAULTS) },
+    creationSelections: { ...(creator.look || CREATION_LOOK_DEFAULTS) },
   };
 }
 
@@ -1685,7 +1693,9 @@ function creatorView() {
   const step = creator.step;
   const f = creator.form;
   const titles = ["Name and personality", "Choose their look", "Reveal"];
-  const kicker = `Step ${step} of 3 · ${titles[step - 1] || "Create"}`;
+  const kicker = creator.regenerate
+    ? `Regenerate PFP · Step ${step} of 3`
+    : `Step ${step} of 3 · ${titles[step - 1] || "Create"}`;
   let body = "";
   if (step === 1) {
     const options = creator.archetypes.map((row) => `<option value="${esc(row.id)}"${row.id === f.archetype ? " selected" : ""}>${esc(row.label || archetypeLabel(row.id))}</option>`).join("");
@@ -1766,7 +1776,7 @@ function creatorView() {
   const working = creator.statusLabel || "Working.";
   return `<div class="creator">
     <p class="kicker">${esc(kicker)}</p>
-    <h1 class="page">Create agent</h1>
+    <h1 class="page">${creator.regenerate ? "Regenerate PFP" : "Create agent"}</h1>
     ${body}
     ${creator.busy ? `<p class="fine creator-status" role="status">${esc(working)}</p>` : ""}
     ${creator.error ? `<div class="err lda-error" role="alert">${esc(creator.error)}</div>` : ""}
@@ -1817,6 +1827,17 @@ async function loadCreationPreviews() {
   }
 }
 
+function persistCreationSelections() {
+  if (!creator || !creator.draft || !creator.draft.agent || !creator.draft.agent.id) return;
+  const id = creator.draft.agent.id;
+  const look = { ...(creator.look || CREATION_LOOK_DEFAULTS) };
+  api("/api/show/agents/" + encodeURIComponent(id) + "/brand/selections", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ creationSelections: look }),
+  }).catch(() => {});
+}
+
 async function refreshCreationHero() {
   if (!creator) return;
   const token = (creator.heroToken = (creator.heroToken || 0) + 1);
@@ -1839,7 +1860,8 @@ function resumeCreator(agent) {
   creator.form.shortDescription = agent.shortDescription || agent.note || "";
   creator.form.archetype = agent.archetypeId || "GAMBLER";
   creator.form.visualDirection = agent.visualDirection || "";
-  if (agent.creationOptions) creator.look = { ...CREATION_LOOK_DEFAULTS, ...agent.creationOptions };
+  const savedLook = agent.creationSelections || agent.creationOptions;
+  if (savedLook) creator.look = { ...CREATION_LOOK_DEFAULTS, ...savedLook };
   const personality = agent.personality || {};
   for (const key of Object.keys(creator.form)) {
     if (typeof personality[key] === "number") creator.form[key] = personality[key];
@@ -1879,7 +1901,12 @@ async function runConcepts(vary) {
       creator.draft = created;
     }
     const id = creator.draft.agent.id;
-    const body = { count: 4, vary: vary || "all" };
+    const body = {
+      count: 4,
+      vary: vary || "all",
+      creationSelections: { ...(creator.look || CREATION_LOOK_DEFAULTS) },
+    };
+    if (creator.regenerate) body.regenerate = true;
     if (vary && vary !== "all" && creator.selectedId) body.anchorConceptId = creator.selectedId;
     if (creator.form.refine) body.refine = creator.form.refine;
     const concepts = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/pfp-concepts", {
@@ -1937,6 +1964,7 @@ async function confirmConcept() {
       primary: visual.primaryColor,
     };
     creator.step = 3;
+    creator.regenerate = false;
     await refreshLists();
   } catch (ex) {
     if (creator) creator.error = ex.message || "Could not lock that brand.";
@@ -1997,6 +2025,7 @@ function agentDetail(a) {
     <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="agents">All agents</button>
     <div class="agent-hero" data-cast="${esc(a.id)}"${brandStyle(a)}>${agentPortrait(a)}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
     ${a.roster === "user" && a.status && a.status !== "READY" ? `<button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-resume-agent="1">Continue branding</button>` : ""}
+    ${a.roster === "user" && a.brand ? `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-regenerate-pfp="1">Regenerate PFP</button>` : ""}
     ${a.roster === "user" && a.playable ? `<p class="fine">User roster. The show seats this agent against the house cast when a chair is free${a.seated ? ", and they are on the slate now" : ""}.</p>` : ""}
     <p class="fine">${esc(a.archetype)}</p>
     <div class="statgrid">
@@ -2490,6 +2519,18 @@ view.addEventListener("click", async (e) => {
   if (createBtn) { openCreator(); return; }
   const resumeBtn = e.target.closest("[data-resume-agent]");
   if (resumeBtn && focusAgent) { resumeCreator(focusAgent); return; }
+  const regenBtn = e.target.closest("[data-regenerate-pfp]");
+  if (regenBtn && focusAgent && focusAgent.roster === "user") {
+    resumeCreator(focusAgent);
+    if (creator) {
+      creator.regenerate = true;
+      creator.step = 1;
+      creator.concepts = [];
+      painted = "";
+      render();
+    }
+    return;
+  }
   if (creator) {
     const vary = e.target.closest("[data-creator-vary]");
     if (vary) { runConcepts(vary.dataset.creatorVary); return; }
@@ -2514,6 +2555,7 @@ view.addEventListener("click", async (e) => {
       }
       render();
       refreshCreationHero();
+      persistCreationSelections();
       return;
     }
     if (e.target.closest("[data-more-traits]")) {

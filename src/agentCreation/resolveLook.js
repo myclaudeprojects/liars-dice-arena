@@ -325,9 +325,61 @@ function visualPatchFromLook(look) {
   };
 }
 
+const HAIR_VARIANTS = Object.freeze({
+  swept: Object.freeze(["swept", "cropped", "crest", "asymmetric"]),
+  cropped: Object.freeze(["cropped", "swept", "asymmetric", "crest"]),
+  long: Object.freeze(["long", "asymmetric", "swept", "crest"]),
+  wild: Object.freeze(["wild", "asymmetric", "crest", "long"]),
+  crest: Object.freeze(["crest", "cropped", "asymmetric", "swept"]),
+  asymmetric: Object.freeze(["asymmetric", "wild", "crest", "cropped"]),
+  none: Object.freeze(["none", "none", "none", "none"]),
+});
+
+const POSE_VARIANTS = Object.freeze(["upright", "lean", "forward", "coiled", "relaxed"]);
+const JAW_SHIFTS = Object.freeze([-0.34, 0.24, -0.12, 0.42, 0.08, -0.22]);
+const SPANS = Object.freeze([0.86, 1.16, 0.94, 1.22, 0.9, 1.08]);
+const EYE_SCALES = Object.freeze([0.82, 1.18, 0.94, 1.28, 1.06, 0.88]);
+const NECK_SCALES = Object.freeze([0.78, 1.2, 0.92, 1.32, 1.08, 0.84]);
+const TURNS = Object.freeze([-1, 1, 0, -1, 1, 0]);
+
+function cloneLook(look) {
+  const next = { ...(look || {}) };
+  if (look && look.emotion) {
+    next.emotion = { ...look.emotion, brow: Array.isArray(look.emotion.brow) ? look.emotion.brow.slice() : [] };
+  }
+  if (look && Array.isArray(look.materials)) next.materials = look.materials.slice();
+  if (look && look.selections) next.selections = { ...look.selections };
+  return next;
+}
+
+// Same option set, different person. Face family, wardrobe, accent, background,
+// and accessory stay. Hair, jaw, pose, and proportion change per concept slot.
+function varyCreationLook(look, index, salt) {
+  const base = cloneLook(look);
+  const slot = Math.abs(Number(index) || 0);
+  const saltN = Math.abs(Number(salt) || 0);
+  const at = (list) => list[(slot + saltN) % list.length];
+  base.jaw = Math.max(-0.6, Math.min(0.85, (Number(base.jaw) || 0) + at(JAW_SHIFTS)));
+  base.pose = at(POSE_VARIANTS);
+  base.turn = at(TURNS);
+  base.span = at(SPANS);
+  base.eyeScale = Math.round((Number(base.eyeScale) || 1) * at(EYE_SCALES) * 100) / 100;
+  base.neck = Math.round((Number(base.neck) || 1) * at(NECK_SCALES) * 100) / 100;
+  const hair = base.hair || "swept";
+  const cycle = HAIR_VARIANTS[hair] || HAIR_VARIANTS.swept;
+  if (hair !== "none") base.hair = cycle[(slot + saltN) % cycle.length];
+  if (base.emotion && Array.isArray(base.emotion.brow)) {
+    const kick = [-10, 12, -4, 16, 6, -8][(slot + saltN) % 6];
+    base.emotion.brow = [base.emotion.brow[0] + kick, base.emotion.brow[1] - Math.round(kick / 2)];
+  }
+  base.conceptSlot = slot % 4;
+  return base;
+}
+
 module.exports = {
   EMOTIONS,
   normalizeSelections,
   resolveLook,
   visualPatchFromLook,
+  varyCreationLook,
 };

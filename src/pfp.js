@@ -349,6 +349,7 @@ function facePath(x, look) {
     return `M ${x} ${top} C ${x + 188} ${top + 16} ${x + FACE_HALF + 8} ${mid - 70} ${x + FACE_HALF - 6} ${mid} C ${x + 198} ${mid + 110} ${x + 128} ${bot - 18} ${x} ${bot} C ${x - 128} ${bot - 18} ${x - 198} ${mid + 110} ${x - FACE_HALF + 6} ${mid} C ${x - FACE_HALF - 8} ${mid - 70} ${x - 188} ${top + 16} ${x} ${top} Z`;
   }
   const jawN = Math.max(-0.6, Math.min(0.85, Number(look.jaw) || 0));
+  const span = Math.max(0.82, Math.min(1.24, Number(look.span) || 1));
   const profiles = {
     sharp: [150, 164, 92, 22],
     wide: [214, 240, 214, 8],
@@ -363,10 +364,10 @@ function facePath(x, look) {
     predatory: [198, 176, 148, 10],
   };
   const row = profiles[look.face] || profiles.sharp;
-  const brow = row[0];
-  const cheek = row[1] + Math.round(jawN * 36);
-  const jawW = Math.max(48, row[2] + Math.round(jawN * 48));
-  const chin = row[3];
+  const brow = Math.round(row[0] * span);
+  const cheek = Math.round((row[1] + Math.round(jawN * 36)) * span);
+  const jawW = Math.max(48, Math.round((row[2] + Math.round(jawN * 48)) * span));
+  const chin = Math.round(row[3] * (0.85 + 0.15 * span));
   if (look.face === "angular" || look.face === "synthetic" || look.face === "skull") {
     return `M ${x} ${top} L ${x + brow} ${top + 36} L ${x + cheek} ${mid - 40} L ${x + jawW} ${mid + 80} L ${x + chin} ${bot} L ${x - chin} ${bot} L ${x - jawW} ${mid + 80} L ${x - cheek} ${mid - 40} L ${x - brow} ${top + 36} Z`;
   }
@@ -377,9 +378,11 @@ function shoulderForLook(x, look) {
   const chest = CHARACTER_BOTTOM - 70;
   const pose = look.pose || "upright";
   const kind = look.shoulder || "structured";
+  const span = look.span ? Math.max(0.82, Math.min(1.24, Number(look.span) || 1)) : 1;
   if (kind === "mechanical") {
-    const w = 480;
-    return `M ${x - w} 1024 L ${x - w + 16} ${chest + 10} L ${x - 160} ${chest - 80} L ${x - 72} ${chest - 8} L ${x + 72} ${chest - 8} L ${x + 160} ${chest - 80} L ${x + w - 16} ${chest + 10} L ${x + w} 1024 Z`;
+    const w = Math.round(480 * span);
+    const drop = pose === "forward" ? 28 : pose === "coiled" ? 18 : pose === "lean" ? -16 : 0;
+    return `M ${x - w} 1024 L ${x - w + 16} ${chest + 10 + drop} L ${x - 160} ${chest - 80} L ${x - 72} ${chest - 8} L ${x + 72} ${chest - 8} L ${x + 160} ${chest - 80} L ${x + w - 16} ${chest + 10 + drop} L ${x + w} 1024 Z`;
   }
   let w = 360;
   let rise = 0;
@@ -393,6 +396,7 @@ function shoulderForLook(x, look) {
   if (pose === "coiled") rise += 34;
   if (pose === "forward") rise += 18;
   if (pose === "relaxed") drop += 22;
+  w = Math.round(w * span);
   return `M ${x - w - 24} 1024 L ${x - w} ${chest + 70 + drop} C ${x - w + 60} ${chest - 100 - rise} ${x - 160} ${chest - 30} ${x - 78} ${chest + 8} L ${x} ${chest + 36 + drop} L ${x + 78} ${chest + 8} C ${x + 160} ${chest - 10 + rise} ${x + w - 50} ${chest - 120} ${x + w} ${chest + 64} L ${x + w + 24} 1024 Z`;
 }
 
@@ -851,8 +855,10 @@ function renderPfp(recipe, opts) {
   ].join("");
   const eyesY = 430;
   const mouthY = 575;
-  const leftEye = eyeParts(x - 118, eyesY, face.squint + (face.wink || 0), face.wide, c, face.glow || 0);
-  const rightEye = eyeParts(x + 118, eyesY, face.squint, face.wide, c, face.glow || 0);
+  const eyeScale = row.look && row.look.eyeScale ? Number(row.look.eyeScale) : 1;
+  const eyeGap = Math.round(118 * Math.max(0.72, Math.min(1.4, eyeScale)));
+  const leftEye = eyeParts(x - eyeGap, eyesY, face.squint + (face.wink || 0), face.wide, c, face.glow || 0);
+  const rightEye = eyeParts(x + eyeGap, eyesY, face.squint, face.wide, c, face.glow || 0);
   const features = [
     el("ellipse", { cx: x, cy: 650, rx: 120, ry: 52, fill: c.skinDeep, opacity: "0.28" }),
     el("path", { fill: c.skinShadow, opacity: "0.55", d: `M ${x - 16} 500 L ${x + 18} 500 L ${x + 8} 560 L ${x - 8} 560 Z` }),
@@ -1028,6 +1034,19 @@ function assetUrls(agentId) {
   return { master: base, avatar: sizes["512"], sizes };
 }
 
+function cacheBust(url, version) {
+  if (!url) return url;
+  const v = Math.max(1, Math.floor(Number(version) || 1));
+  const text = String(url);
+  if (/[?&]v=\d+/.test(text)) return text.replace(/([?&])v=\d+/, `$1v=${v}`);
+  return `${text}${text.includes("?") ? "&" : "?"}v=${v}`;
+}
+
+function pfpLog(event, detail) {
+  if (process.env.LDA_PFP_DEBUG === "0") return;
+  console.log("[pfp]", event, detail);
+}
+
 function pathData(svg) {
   return [...String(svg || "").matchAll(/\sd="([^"]+)"/g)].map((m) => m[1]).join("|");
 }
@@ -1049,6 +1068,8 @@ module.exports = {
   compositionScale,
   promptFor,
   assetUrls,
+  cacheBust,
+  pfpLog,
   pathData,
   colorDistance,
 };

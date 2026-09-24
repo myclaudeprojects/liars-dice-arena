@@ -121,12 +121,13 @@
   function animatedPfpMeta(brand, previewUrl) {
     if (!brand || !previewUrl) return null;
     const motionProfile = profileForBrand(brand);
+    const version = Math.max(1, Math.floor(Number(brand.version) || 1));
     const layers = {};
     for (const key of ["bg", "bgGrid", "bgFx", "torso", "head", "hairFront", "eyesOpen", "eyesClosed", "pupils", "collarFx", "rimGlow", "aura", "particles", "scanFx"]) {
       layers[key] = "procedural";
     }
     return {
-      version: 1,
+      version,
       engine: "procedural-svg",
       styleId: "neon-competitive",
       manifestUrl: null,
@@ -135,7 +136,7 @@
       motionProfile,
       qualityTier: "LAYERED_2_5D",
       manifest: {
-        version: 1,
+        version,
         width: 1024,
         height: 1024,
         poster: previewUrl,

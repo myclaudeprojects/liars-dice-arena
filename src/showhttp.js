@@ -2,6 +2,7 @@
 // Test credits only. No wallet routes.
 
 const { ERROR_TEXT, DEFAULT_STAKE, THEORY_TAGS } = require("./simmarket");
+const { pfpLog } = require("./pfp");
 
 function send(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -68,7 +69,17 @@ async function handleShow(req, res, url, query, show) {
     const pfpGet = path.match(/^\/agents\/([^/]+)\/pfp\.svg$/);
     if (req.method === "GET" && pfpGet) {
       const size = query && query.get ? query.get("size") : "";
-      const svg = show.pfpSvgFor(decodeURIComponent(pfpGet[1]), size);
+      const version = query && query.get ? query.get("v") : "";
+      const agentId = decodeURIComponent(pfpGet[1]);
+      const svg = show.pfpSvgFor(agentId, size, version);
+      if (svg && version && (!size || String(size) === "320" || String(size) === "1024")) {
+        pfpLog("cache-busted render", {
+          agentId,
+          version,
+          size: size || 1024,
+          url: `/api/show/agents/${encodeURIComponent(agentId)}/pfp.svg?v=${version}`,
+        });
+      }
       if (!svg) { send(res, 404, { ok: false, error: "No portrait for that agent.", code: "unknown_agent" }); return true; }
       res.writeHead(200, {
         "content-type": "image/svg+xml; charset=utf-8",
@@ -116,6 +127,12 @@ async function handleShow(req, res, url, query, show) {
     if (req.method === "POST" && select) {
       const body = await readBody(req);
       send(res, 200, { ok: true, ...show.selectConcept(decodeURIComponent(select[1]), body.conceptId) });
+      return true;
+    }
+    const selections = path.match(/^\/agents\/([^/]+)\/brand\/selections$/);
+    if (req.method === "POST" && selections) {
+      const body = await readBody(req);
+      send(res, 200, { ok: true, ...show.updateSelections(decodeURIComponent(selections[1]), body.creationSelections || body.creationOptions || body) });
       return true;
     }
     const pfpConcepts = path.match(/^\/agents\/([^/]+)\/brand\/pfp-concepts$/);

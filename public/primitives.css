@@ -121,6 +121,7 @@ img.lda-avatar.lda-pfp {
 [data-cast="siren"] { --agent-accent: var(--agent-siren); --swatch-primary: var(--brand-siren-primary); --swatch-secondary: var(--brand-siren-secondary); --swatch-accent: var(--brand-siren-accent); --emblem-url: url("/static/emblems/siren.svg"); }
 [data-cast="miser"] { --agent-accent: var(--agent-miser); --swatch-primary: var(--brand-miser-primary); --swatch-secondary: var(--brand-miser-secondary); --swatch-accent: var(--brand-miser-accent); --emblem-url: url("/static/emblems/miser.svg"); }
 [data-cast="jester"] { --agent-accent: var(--agent-jester); --swatch-primary: var(--brand-jester-primary); --swatch-secondary: var(--brand-jester-secondary); --swatch-accent: var(--brand-jester-accent); --emblem-url: url("/static/emblems/jester.svg"); }
+[data-cast] { --agent-primary: var(--swatch-primary, var(--lda-surface-3)); }
 
 .lda-emblem {
   width: 16px;

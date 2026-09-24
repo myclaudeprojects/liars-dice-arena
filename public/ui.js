@@ -128,8 +128,8 @@
     const o = opts || {};
     const person = agent || {};
     const brand = person.brand || {};
-    const sizeName = o.size === "xs" || o.size === "sm" || o.size === "md" || o.size === "lg" ? o.size : "md";
-    const px = sizeName === "lg" ? 160 : sizeName === "sm" || sizeName === "xs" ? 48 : 96;
+    const sizeName = o.size === "xs" || o.size === "sm" || o.size === "md" || o.size === "lg" || o.size === "xl" ? o.size : "md";
+    const px = sizeName === "xl" ? 320 : sizeName === "lg" ? 160 : sizeName === "sm" || sizeName === "xs" ? 48 : 96;
     const primary = hexColor(o.primary || brand.primaryColor || person.primaryColor, "#666666");
     const accent = hexColor(o.accent || brand.accentColor || person.accentColor, "#ffffff");
     const face = avatar(person.name, person.hue, person.id || person.agentId, { src: o.src || "", size: px });

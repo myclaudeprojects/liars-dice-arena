@@ -9,7 +9,7 @@
 // Similarity embeddings are not computed; palette and title checks are local.
 
 const { CAST } = require("./characters");
-const { assetUrls, PFP_STYLE_VERSION, PFP_STYLE_ID, ASSET_TYPE } = require("./pfp");
+const { assetUrls, cacheBust, PFP_STYLE_VERSION, PFP_STYLE_ID, ASSET_TYPE } = require("./pfp");
 const { animatedPfpMeta } = require("./motionprofiles");
 
 const HOUSE_STYLE_VERSION = "lda-house-v1";
@@ -538,6 +538,13 @@ function versionKey(agentId, brandVersion) {
   return `${agentId}:${brandVersion}`;
 }
 
+function numericBrandVersion(brand) {
+  const explicit = Number(brand && brand.version);
+  if (explicit > 0) return Math.floor(explicit);
+  const n = Number(String((brand && brand.brandVersion) || "v1").replace(/\D/g, ""));
+  return n > 0 ? n : 1;
+}
+
 function nextVersionId(current) {
   const n = Number(String(current || "v0").replace(/\D/g, "")) || 0;
   return `v${n + 1}`;
@@ -617,6 +624,10 @@ class BrandBook {
       facialAttitude: visual.facialAttitude,
       motionLanguage: visual.motionLanguage,
       status: brand.generation.status,
+      version: numericBrandVersion(brand),
+      visualDirty: brand.visualDirty === true,
+      portraitStatus: brand.portraitStatus || (brand.visualDirty ? "AWAITING_REGENERATION" : "READY"),
+      creationSelections: brand.creationSelections || null,
       pfpUrl: null,
       pfpAssetType: null,
       primaryPfpAssetId: brand.primaryPfpAssetId || null,
@@ -626,21 +637,23 @@ class BrandBook {
     };
     if (visual.primaryColor) {
       const urls = assetUrls(brand.agentId);
-      view.pfpUrl = (brand.assets && brand.assets.pfpPortrait) || urls.master;
+      const version = view.version;
+      const bust = (url) => cacheBust(url, version);
+      view.pfpUrl = bust((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master);
       view.pfpAssetType = ASSET_TYPE;
       view.primaryPfpAssetId = brand.primaryPfpAssetId || `pfp_${brand.agentId}_canonical`;
       view.pfpStyleVersion = brand.pfpStyleVersion || PFP_STYLE_VERSION;
       view.pfpStyleId = PFP_STYLE_ID;
-      view.avatarUrl = (brand.assets && brand.assets.avatar) || urls.avatar;
+      view.avatarUrl = bust((brand.assets && brand.assets.avatar) || urls.avatar);
       view.avatarSizes = {
-        48: (brand.assets && brand.assets.avatar48) || urls.sizes["48"],
-        96: (brand.assets && brand.assets.avatar96) || urls.sizes["96"],
-        160: (brand.assets && brand.assets.avatar160) || urls.sizes["160"],
-        256: (brand.assets && brand.assets.avatar256) || urls.sizes["256"],
-        320: (brand.assets && brand.assets.avatar320) || urls.sizes["320"],
-        512: (brand.assets && brand.assets.avatar512) || urls.sizes["512"],
+        48: bust((brand.assets && brand.assets.avatar48) || urls.sizes["48"]),
+        96: bust((brand.assets && brand.assets.avatar96) || urls.sizes["96"]),
+        160: bust((brand.assets && brand.assets.avatar160) || urls.sizes["160"]),
+        256: bust((brand.assets && brand.assets.avatar256) || urls.sizes["256"]),
+        320: bust((brand.assets && brand.assets.avatar320) || urls.sizes["320"]),
+        512: bust((brand.assets && brand.assets.avatar512) || urls.sizes["512"]),
       };
-      const motion = animatedPfpMeta(brand, view.pfpUrl);
+      const motion = animatedPfpMeta({ ...brand, version }, view.pfpUrl);
       if (motion) view.animatedPfp = motion;
     }
     return view;
@@ -666,6 +679,16 @@ class BrandBook {
       if (brand && brand.status === "READY") out[row.agentId] = brand;
     }
     return out;
+  }
+
+  setPortraitFlag(agentId, dirty, brandVersion) {
+    const version = brandVersion || this._active.get(agentId);
+    if (!version) return null;
+    const row = this._versions.get(versionKey(agentId, version));
+    if (!row) return null;
+    row.visualDirty = dirty === true;
+    row.portraitStatus = dirty ? "AWAITING_REGENERATION" : "READY";
+    return clone(row);
   }
 
   appendVersion(brand, opts = {}) {
@@ -849,6 +872,7 @@ module.exports = {
   PROMPT_VERSION,
   SEED_BRANDS,
   generationStamp,
+  numericBrandVersion,
   BrandBook,
   validateBrand,
   paletteNear,

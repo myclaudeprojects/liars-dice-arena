@@ -906,6 +906,71 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   border-radius: var(--radius-pill);
   box-shadow: inset 0 0 0 1px var(--lda-line-strong);
 }
+.creation-look { display: grid; gap: 28px; }
+.creation-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+.creation-hero__frame {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--lda-pfp-shell-bottom);
+  border: 1px solid var(--lda-line);
+}
+.creation-hero__frame .pfp-frame { width: 100%; border-radius: 22px; }
+.creation-hero__frame--empty {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  padding: 12px;
+}
+.creation-hero__copy p { margin: 6px 0 0; }
+.creation-preview-grid { display: grid; gap: 28px; }
+.creation-preview-section { display: grid; gap: 14px; }
+.creation-preview-section__meta h2 { margin: 0; font-size: 1.05rem; }
+.creation-preview-section__meta p {
+  margin: 6px 0 0;
+  color: var(--lda-text-secondary);
+  font-size: 0.92rem;
+}
+.creation-preview-section__options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 14px;
+}
+.creation-preview-card {
+  background: var(--lda-pfp-shell-bottom);
+  border: 1px solid var(--lda-line);
+  border-radius: 18px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+.creation-preview-card.is-selected {
+  border-color: var(--lda-pfp-neon);
+  box-shadow: 0 0 0 1px var(--lda-pfp-neon);
+}
+.creation-preview-card__thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  overflow: hidden;
+  display: block;
+  background: var(--lda-avatar-bg);
+}
+.creation-preview-card__thumb svg { width: 100%; height: 100%; display: block; }
+.creation-preview-card span { font-size: 0.82rem; line-height: 1.2; }
+@media (max-width: 640px) {
+  .creation-hero { grid-template-columns: 1fr; }
+  .creation-hero__frame { max-width: 240px; }
+}
 .creator-actions { display: flex; flex-direction: column; gap: var(--space-2); }
 .creator-actions .ghost,
 .creator-actions .cta { margin-top: 0; }

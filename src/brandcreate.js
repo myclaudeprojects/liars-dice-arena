@@ -24,10 +24,15 @@ const {
   qualityCheck,
   promptFor,
   assetUrls,
+  pfpLog,
 } = require("./pfp");
 const { createImageProvider } = require("./imageprovider");
 const { PFP_STYLE_ID } = require("./branding/stylePresets");
 const { buildVisualDNA } = require("./branding/buildVisualDNA");
+const { normalizeSelections, resolveLook, visualPatchFromLook, varyCreationLook } = require("./agentCreation/resolveLook");
+const { seedFor, composedSeed } = require("./agentCreation/previewSeeds");
+const { buildOptionPreviewPrompt } = require("./agentCreation/buildOptionPreviewPrompt");
+const { HOUSE_STYLE_ID } = require("./agentCreation/optionRegistry");
 
 const imageProvider = createImageProvider();
 
@@ -400,8 +405,17 @@ function directionBias(text, fallbackHue) {
   return found;
 }
 
-function paletteAt(hue, balance) {
+function paletteAt(hue, balance, spread) {
   const accentHue = (hue + 28) % 360;
+  if (spread) {
+    const lift = balance === 1 ? 16 : balance === 2 ? 8 : 0;
+    const sat = balance === 2 ? 30 : balance === 1 ? 64 : 50;
+    return {
+      primaryColor: hslToHex(hue, sat, 14 + lift),
+      secondaryColor: hslToHex(hue + 150, 26, 7 + (balance === 1 ? 8 : 0)),
+      accentColor: hslToHex(accentHue, 92, 62),
+    };
+  }
   if (balance === 1) {
     return {
       primaryColor: hslToHex(hue, 42, 16),
@@ -452,10 +466,14 @@ function paletteFree(visual, occ, extra) {
 function conceptVariant(draft, index, salt, occ, vary, anchor) {
   const bias = ARCHETYPE_BIAS[draft.archetype];
   const hinted = directionBias(draft.visualDirection, bias.hue);
+  const selections = draft.creationSelections || draft.creationOptions || null;
+  const baseLook = selections ? resolveLook(selections) : null;
+  const look = baseLook ? varyCreationLook(baseLook, index, salt) : null;
   const rand = mulberry32(hashString([
     draft.name, draft.archetype, draft.shortDescription, draft.visualDirection,
     salt, index, vary || "all",
     anchor ? anchor.emblem : "",
+    selections ? JSON.stringify(selections) : "",
   ].join("|")));
   const keepColors = vary === "emblem" && anchor;
   const keepEmblem = vary === "colors" && anchor;
@@ -465,7 +483,9 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
   const usedTitles = [];
   const usedEmblems = new Set();
   const usedPalettes = [];
-  for (let attempt = 0; attempt < 36; attempt++) {
+  const spread = !!look;
+  const attempts = spread ? 80 : 36;
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const title = SAFE_TITLES[(hashString(draft.name) + index * 5 + salt * 3 + attempt) % SAFE_TITLES.length];
     const tagline = TAGLINES[(hashString(draft.shortDescription) + index + salt + attempt) % TAGLINES.length];
     const emblem = keepEmblem
@@ -477,7 +497,7 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
         secondaryColor: anchor.visualIdentity.secondaryColor,
         accentColor: anchor.visualIdentity.accentColor,
       }
-      : paletteAt((hue + attempt * 17) % 360, balance);
+      : paletteAt((hue + attempt * (spread ? 41 : 17) + (spread ? index * 53 : 0)) % 360, spread ? (index + attempt) % 3 : balance, spread);
     const silhouette = like && anchor
       ? anchor.visualIdentity.silhouette
       : SILHOUETTES[(SILHOUETTES.indexOf(bias.silhouette) + index + attempt) % SILHOUETTES.length];
@@ -499,6 +519,20 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
       signatureFeature: dna.signatureFeature,
       styleId: PFP_STYLE_ID,
     };
+    if (look) {
+      const patch = visualPatchFromLook(look);
+      visual.silhouette = patch.silhouette;
+      visual.bodyLanguage = patch.bodyLanguage;
+      visual.facialAttitude = patch.facialAttitude;
+      visual.accentColor = patch.accentColor;
+      visual.backgroundMotif = patch.backgroundMotif;
+      visual.lightingStyle = patch.lightingStyle;
+      visual.materialLanguage = patch.materialLanguage;
+      visual.signatureFeature = patch.signatureFeature;
+      visual.motionLanguage = patch.motionLanguage;
+      visual.creationLook = patch.creationLook;
+      visual.styleId = PFP_STYLE_ID;
+    }
     if (!titleFree(title, occ, usedTitles)) continue;
     if (!keepEmblem && (occ.emblems.has(emblem) || usedEmblems.has(emblem))) continue;
     if (!paletteFree(visual, occ, usedPalettes)) continue;
@@ -509,6 +543,7 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
     return {
       id: `c${index + 1}`,
       conceptNumber: index + 1,
+      seed: `${draft.id || "agent"}_c${index + 1}_s${salt}`,
       title,
       tagline,
       silhouette: visual.silhouette,
@@ -595,6 +630,7 @@ function userAssetRefs(agentId) {
     defeatCard: null,
     shareTemplate: null,
     pfpPortrait: urls.master,
+    canonicalPfp: urls.master,
     avatar48: urls.sizes["48"],
     avatar96: urls.sizes["96"],
     avatar160: urls.sizes["160"],
@@ -650,6 +686,8 @@ function createDraft(input, ctx) {
     throw creatorError("bad_archetype", "Pick an archetype from the list.");
   }
   const visualDirection = cleanDirection(body.visualDirection || body.direction || "");
+  const creationSelections = normalizeSelections(body.creationSelections || body.creationOptions, { allowEmpty: true });
+  const creationOptions = creationSelections;
   const names = ctx.names || [];
   if (displayNameTaken(name, names)) {
     throw creatorError("name_collision", "That name is already in the arena.", 409);
@@ -668,6 +706,9 @@ function createDraft(input, ctx) {
     archetype,
     archetypeLabel: copy.label,
     visualDirection,
+    creationOptions,
+    creationSelections,
+    visualDirty: !!creationSelections,
     personality,
     personalitySummary: copy.personalitySummary,
     playstyleSummary: copy.playstyleSummary,
@@ -677,7 +718,7 @@ function createDraft(input, ctx) {
     concepts: [],
     conceptSalt: 0,
     selectedConceptId: null,
-    status: "GENERATING_IDENTITY",
+    status: creationSelections ? "AWAITING_REGENERATION" : "GENERATING_IDENTITY",
     sheet: null,
     roster: "user",
     createdAt: now,
@@ -751,12 +792,58 @@ function sheetFor(draft, concept) {
   };
 }
 
-function lockBrand(draft, concept, at) {
+function plainSelections(draft) {
+  const chosen = draft && (draft.creationSelections || draft.creationOptions);
+  return normalizeSelections(chosen, { allowEmpty: true });
+}
+
+function rememberSelections(draft, input) {
+  const next = normalizeSelections(input);
+  const prev = plainSelections(draft);
+  const changed = JSON.stringify(prev) !== JSON.stringify(next);
+  draft.creationSelections = next;
+  draft.creationOptions = next;
+  if (changed) {
+    draft.visualDirty = true;
+    draft.status = "AWAITING_REGENERATION";
+  }
+  return { changed, selections: next, visualDirty: draft.visualDirty === true, status: draft.status };
+}
+
+function creationRecord(draft) {
+  const chosen = plainSelections(draft);
+  if (!chosen) return null;
+  const seeds = {};
+  for (const key of Object.keys(chosen)) seeds[key] = seedFor(key, chosen[key]);
+  seeds.composed = composedSeed(chosen);
+  return {
+    ...chosen,
+    houseStyleId: HOUSE_STYLE_ID,
+    seeds,
+    model: "procedural-svg",
+    renderer: "lda-pfp-v2",
+    prompt: buildOptionPreviewPrompt({
+      category: "composed",
+      optionId: seeds.composed,
+      lockedSelections: chosen,
+    }),
+  };
+}
+
+function lockBrand(draft, concept, at, opts = {}) {
   const stamp = at || new Date().toISOString();
+  const prior = opts.prior || null;
+  const priorNumber = prior ? (Number(prior.version) || Number(String(prior.brandVersion || "v1").replace(/\D/g, "")) || 1) : 0;
+  const version = prior ? priorNumber + 1 : 1;
+  const brandVersion = `v${version}`;
   const portrait = concept.pfp || attachPfp(draft, concept, Math.max(0, (concept.conceptNumber || 1) - 1), "standard").pfp;
+  const selections = plainSelections(draft);
   const brand = {
     agentId: draft.id,
-    brandVersion: "v1",
+    brandVersion,
+    version,
+    visualDirty: false,
+    portraitStatus: "READY",
     name: draft.name,
     title: concept.title,
     tagline: concept.tagline,
@@ -779,6 +866,8 @@ function lockBrand(draft, concept, at) {
     },
     pfpRecipe: portrait.recipe,
     assets: userAssetRefs(draft.id),
+    creationSelections: selections,
+    creationOptions: creationRecord(draft),
     generation: generationStamp({
       status: "READY",
       at: stamp,
@@ -792,6 +881,16 @@ function lockBrand(draft, concept, at) {
     err.errors = check.errors;
     throw err;
   }
+  pfpLog("concept selection saved", {
+    agentId: draft.id,
+    conceptId: concept.id,
+    styleId: "neon-competitive",
+    selections,
+    brandVersion,
+    version,
+    canonicalPfp: brand.assets.canonicalPfp,
+    visualDirty: false,
+  });
   return { brand, sheet: sheetFor(draft, concept) };
 }
 
@@ -804,6 +903,9 @@ function publicDraft(draft) {
     archetype: draft.archetype,
     archetypeLabel: draft.archetypeLabel,
     visualDirection: draft.visualDirection,
+    creationOptions: draft.creationOptions || null,
+    creationSelections: draft.creationSelections || draft.creationOptions || null,
+    visualDirty: draft.visualDirty === true,
     personality: draft.personality,
     personalitySummary: draft.personalitySummary,
     playstyleSummary: draft.playstyleSummary,
@@ -834,6 +936,8 @@ module.exports = {
   buildConcepts,
   retouchConcepts,
   lockBrand,
+  rememberSelections,
+  plainSelections,
   publicDraft,
   creatorError,
   hexHue,

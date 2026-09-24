@@ -19,7 +19,7 @@ const { MatchIntegrity } = require("./integrity");
 const { OracleService } = require("./oracle");
 const { OracleKeyStore } = require("./oraclekeys");
 const { SettlementGate } = require("./settlementgate");
-const { BrandBook } = require("./brands");
+const { BrandBook, numericBrandVersion } = require("./brands");
 const {
   ARCHETYPE_IDS,
   SLIDER_KEYS,
@@ -30,12 +30,14 @@ const {
   buildConcepts,
   retouchConcepts,
   lockBrand,
+  rememberSelections,
   publicDraft,
   emblemSvg,
   creatorError,
   humanize,
 } = require("./brandcreate");
-const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls } = require("./pfp");
+const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls, cacheBust, pfpLog } = require("./pfp");
+const { sectionPreviews, composedPreview } = require("./agentCreation/creationPreview");
 const { animatedPfpMeta } = require("./motionprofiles");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
@@ -1583,9 +1585,26 @@ class Show {
   generateConcepts(agentId, opts = {}) {
     const draft = this.userAgents.get(agentId);
     if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
-    if (draft.status === "READY") {
+    if (opts.creationSelections || opts.creationOptions) {
+      rememberSelections(draft, opts.creationSelections || opts.creationOptions);
+    }
+    const reopening = opts.regenerate === true || draft.visualDirty === true;
+    if (draft.status === "READY" && !reopening) {
       throw creatorError("brand_locked", "This brand is already locked.", 409);
     }
+    if (draft.status === "READY" && reopening) {
+      draft.visualDirty = true;
+      draft.status = "AWAITING_REGENERATION";
+    }
+    if (draft.visualDirty) this.brands.setPortraitFlag(agentId, true);
+    const active = this.brands.full(agentId);
+    pfpLog("Generating agent PFP", {
+      agentId,
+      styleId: "neon-competitive",
+      selections: draft.creationSelections || null,
+      brandVersion: active ? (active.version || active.brandVersion) : 0,
+      visualDirty: draft.visualDirty === true,
+    });
     const vary = ["all", "colors", "emblem", "like", ...PFP_TOUCHES].includes(opts.vary) ? opts.vary : "all";
     if (PFP_TOUCHES.includes(vary) && (draft.concepts || []).length >= 3) {
       draft.concepts = retouchConcepts(draft, vary);
@@ -1621,12 +1640,13 @@ class Show {
   selectConcept(agentId, conceptId) {
     const draft = this.userAgents.get(agentId);
     if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
-    if (draft.status === "READY") {
+    if (draft.status === "READY" && draft.visualDirty !== true) {
       throw creatorError("brand_locked", "This brand is already locked.", 409);
     }
     const concept = (draft.concepts || []).find((row) => row.id === conceptId);
     if (!concept) throw creatorError("unknown_concept", "Pick one of the concepts.", 404);
-    const locked = lockBrand(draft, concept);
+    const prior = this.brands.full(agentId);
+    const locked = lockBrand(draft, concept, null, { prior });
     try {
       this.brands.appendVersion(locked.brand);
     } catch (e) {
@@ -1635,8 +1655,10 @@ class Show {
       }
       throw e;
     }
+    if (prior) this.brands.setPortraitFlag(agentId, false, prior.brandVersion);
     draft.sheet = locked.sheet;
     draft.selectedConceptId = concept.id;
+    draft.visualDirty = false;
     draft.status = "READY";
     draft.identity = {
       ...draft.identity,
@@ -1647,8 +1669,21 @@ class Show {
     draft.updatedAt = locked.brand.generation.approvedAt;
     this.records.ensure(draft.id);
     this.seatGuest(draft.id);
+    this.pointActiveBrand(draft.id);
     this.persist();
     this.emitState();
+    const view = this.brands.publicOf(draft.id);
+    pfpLog("animated portrait", {
+      agentId: draft.id,
+      version: view && view.version,
+      previewUrl: view && view.animatedPfp ? view.animatedPfp.previewUrl : null,
+      motionProfile: view && view.animatedPfp ? view.animatedPfp.motionProfile : null,
+    });
+    pfpLog("cache-busted render", {
+      agentId: draft.id,
+      pfpUrl: view && view.pfpUrl,
+      version: view && view.version,
+    });
     return {
       agent: this.agentSummary(draft),
       brand: this.brands.full(draft.id),
@@ -1673,8 +1708,10 @@ class Show {
     return emblem ? emblemSvg(emblem) : null;
   }
 
-  pfpSvgFor(agentId, size) {
-    const brand = this.brands.full(agentId);
+  pfpSvgFor(agentId, size, version) {
+    const tag = Number(version) > 0 ? `v${Math.floor(Number(version))}` : "";
+    const pinned = tag ? this.brands.full(agentId, tag) : null;
+    const brand = pinned && pinned.visualIdentity ? pinned : this.brands.full(agentId);
     if (!brand || !brand.visualIdentity) return null;
     const recipe = brand.pfpRecipe && brand.pfpRecipe.colors ? brand.pfpRecipe : recipeFromBrand(brand);
     return renderPfp(recipe, { size, nonce: agentId });
@@ -1687,20 +1724,24 @@ class Show {
     }
     const urls = assetUrls(agentId);
     const assets = brand.assets || {};
+    const version = numericBrandVersion(brand);
+    const bust = (url) => cacheBust(url, version);
     return {
       agentId,
+      version,
       assetType: ASSET_TYPE,
       primaryPfpAssetId: brand.primaryPfpAssetId || `pfp_${agentId}_canonical`,
       pfpStyleVersion: brand.pfpStyleVersion || PFP_STYLE_VERSION,
       assets: {
-        pfpPortrait: assets.pfpPortrait || urls.master,
-        avatar: assets.avatar || urls.avatar,
-        avatar48: assets.avatar48 || urls.sizes["48"],
-        avatar96: assets.avatar96 || urls.sizes["96"],
-        avatar160: assets.avatar160 || urls.sizes["160"],
-        avatar256: assets.avatar256 || urls.sizes["256"],
-        avatar320: assets.avatar320 || urls.sizes["320"],
-        avatar512: assets.avatar512 || urls.sizes["512"],
+        pfpPortrait: bust(assets.pfpPortrait || urls.master),
+        canonicalPfp: bust(assets.canonicalPfp || assets.pfpPortrait || urls.master),
+        avatar: bust(assets.avatar || urls.avatar),
+        avatar48: bust(assets.avatar48 || urls.sizes["48"]),
+        avatar96: bust(assets.avatar96 || urls.sizes["96"]),
+        avatar160: bust(assets.avatar160 || urls.sizes["160"]),
+        avatar256: bust(assets.avatar256 || urls.sizes["256"]),
+        avatar320: bust(assets.avatar320 || urls.sizes["320"]),
+        avatar512: bust(assets.avatar512 || urls.sizes["512"]),
         emblem: assets.emblem || null,
         heroPortrait: assets.heroPortrait || null,
         introCard: assets.introCard || null,
@@ -1720,6 +1761,14 @@ class Show {
       roster: "user",
       houseCast: CAST.length,
     };
+  }
+
+  creationPreviews() {
+    return sectionPreviews();
+  }
+
+  creationPreview(selections) {
+    return composedPreview(selections);
   }
 
   agentList() {
@@ -1780,7 +1829,46 @@ class Show {
       personality: draft ? draft.personality : null,
       personalitySummary: draft ? draft.personalitySummary : null,
       visualDirection: draft ? draft.visualDirection : null,
+      creationOptions: draft ? (draft.creationOptions || null) : (this.brands.full(c.id) && this.brands.full(c.id).creationOptions) || null,
+      creationSelections: draft
+        ? (draft.creationSelections || draft.creationOptions || null)
+        : ((this.brands.full(c.id) && this.brands.full(c.id).creationSelections) || null),
+      visualDirty: draft ? draft.visualDirty === true : false,
     };
+  }
+
+  updateSelections(agentId, selections) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
+    const saved = rememberSelections(draft, selections);
+    if (draft.visualDirty) this.brands.setPortraitFlag(agentId, true);
+    draft.updatedAt = new Date().toISOString();
+    this.persist();
+    pfpLog("visual options changed", {
+      agentId,
+      styleId: "neon-competitive",
+      selections: saved.selections,
+      visualDirty: draft.visualDirty === true,
+      status: draft.status,
+    });
+    return {
+      agent: this.agentSummary(draft),
+      creationSelections: draft.creationSelections,
+      visualDirty: draft.visualDirty === true,
+      status: draft.status,
+    };
+  }
+
+  pointActiveBrand(agentId) {
+    const version = this.brands.activeVersion(agentId);
+    if (!version) return;
+    const touch = (card) => {
+      for (const seat of (card && card.seats) || []) {
+        if (seat && seat.id === agentId) seat.brandVersion = version;
+      }
+    };
+    touch(this.current);
+    for (const card of this.upcoming || []) touch(card);
   }
 
   brandView(id) {
@@ -1791,7 +1879,9 @@ class Show {
       throw err;
     }
     const urls = assetUrls(id);
-    const preview = (brand.assets && brand.assets.pfpPortrait) || urls.master;
+    const version = numericBrandVersion(brand);
+    const bust = (url) => cacheBust(url, version);
+    const preview = bust((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master);
     const view = {
       ...brand,
       pfpAssetType: ASSET_TYPE,
@@ -1803,19 +1893,24 @@ class Show {
         sourceAssetType: ASSET_TYPE,
         method: "uniform-scale",
       },
+      version,
+      visualDirty: brand.visualDirty === true,
+      portraitStatus: brand.portraitStatus || (brand.visualDirty ? "AWAITING_REGENERATION" : "READY"),
+      creationSelections: brand.creationSelections || null,
       assets: {
         ...brand.assets,
         pfpPortrait: preview,
-        avatar: (brand.assets && brand.assets.avatar) || urls.avatar,
-        avatar48: (brand.assets && brand.assets.avatar48) || urls.sizes["48"],
-        avatar96: (brand.assets && brand.assets.avatar96) || urls.sizes["96"],
-        avatar160: (brand.assets && brand.assets.avatar160) || urls.sizes["160"],
-        avatar256: (brand.assets && brand.assets.avatar256) || urls.sizes["256"],
-        avatar320: (brand.assets && brand.assets.avatar320) || urls.sizes["320"],
-        avatar512: (brand.assets && brand.assets.avatar512) || urls.sizes["512"],
+        canonicalPfp: preview,
+        avatar: bust((brand.assets && brand.assets.avatar) || urls.avatar),
+        avatar48: bust((brand.assets && brand.assets.avatar48) || urls.sizes["48"]),
+        avatar96: bust((brand.assets && brand.assets.avatar96) || urls.sizes["96"]),
+        avatar160: bust((brand.assets && brand.assets.avatar160) || urls.sizes["160"]),
+        avatar256: bust((brand.assets && brand.assets.avatar256) || urls.sizes["256"]),
+        avatar320: bust((brand.assets && brand.assets.avatar320) || urls.sizes["320"]),
+        avatar512: bust((brand.assets && brand.assets.avatar512) || urls.sizes["512"]),
       },
     };
-    const motion = animatedPfpMeta(brand, preview);
+    const motion = animatedPfpMeta({ ...brand, version }, preview);
     if (motion) view.animatedPfp = motion;
     return view;
   }

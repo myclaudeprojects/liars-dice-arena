@@ -774,6 +774,10 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
     transform: none !important;
     opacity: 1;
   }
+  .animated-pfp [data-layer] {
+    animation: none !important;
+    transform: none !important;
+  }
   .stage-roll .dice-tray::before { opacity: 0; animation: none !important; }
 }
 
@@ -847,6 +851,39 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   background: var(--lda-avatar-bg);
   border: 1px solid var(--lda-line);
   box-shadow: var(--lda-shadow-2);
+}
+.animated-pfp {
+  position: relative;
+  display: block;
+  overflow: hidden;
+}
+.animated-pfp.agent-pfp > img,
+.animated-pfp.agent-pfp > svg,
+.animated-pfp svg,
+.portrait-plate .animated-pfp .agent-avatar > svg,
+.agent-portrait-wrap .animated-pfp svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  margin: 0;
+  border: 0;
+  border-radius: inherit;
+  box-shadow: none;
+  object-fit: cover;
+}
+.portrait-plate > .animated-pfp,
+.agent-portrait-wrap > .animated-pfp {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+.animated-pfp[data-state="winner"] {
+  filter: saturate(1.08) brightness(1.04);
+}
+.animated-pfp[data-state="loser"] {
+  filter: saturate(0.82) brightness(0.85);
 }
 .agent-hero .pfp-sizes { justify-content: center; margin-bottom: var(--space-3); }
 .swatches { display: flex; gap: var(--space-1); }
@@ -1038,16 +1075,19 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   letter-spacing: .18em;
 }
 .agent-face.is-thinking img,
+.agent-face.is-thinking svg,
 .agent-face.is-thinking .mark {
   transform: scale(1.025);
   filter: saturate(.92) brightness(.93);
 }
 .agent-face.is-confident img,
+.agent-face.is-confident svg,
 .agent-face.is-confident .mark {
   transform: scale(1.04);
   filter: saturate(1.08) contrast(1.03);
 }
 .agent-face.is-under-pressure img,
+.agent-face.is-under-pressure svg,
 .agent-face.is-under-pressure .mark {
   transform: scale(1.015);
   filter: saturate(.82) brightness(.84);
@@ -1460,7 +1500,8 @@ body {
 }
 .portrait-plate .mark,
 .portrait-plate .agent-avatar > .mark,
-.portrait-plate .agent-avatar > img {
+.portrait-plate .agent-avatar > img,
+.portrait-plate .agent-avatar > svg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1676,7 +1717,8 @@ body {
 .arena-shell .agent-portrait-wrap .agent-avatar,
 .arena-shell .agent-portrait-wrap .mark,
 .arena-shell .agent-portrait-wrap .agent-avatar > .mark,
-.arena-shell .agent-portrait-wrap .agent-avatar > img {
+.arena-shell .agent-portrait-wrap .agent-avatar > img,
+.arena-shell .agent-portrait-wrap .agent-avatar > svg {
   width: 100%;
   height: 100%;
   margin: 0;

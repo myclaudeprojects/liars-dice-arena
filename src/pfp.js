@@ -94,6 +94,11 @@ function el(name, obj, inner) {
   return `${open}>${inner}</${name}>`;
 }
 
+function layer(name, inner, extra) {
+  if (!inner) return "";
+  return el("g", Object.assign({ "data-layer": name }, extra || {}), inner);
+}
+
 function skinKey(archetype, emblem, name) {
   const a = String(archetype || "").toUpperCase();
   const e = String(emblem || "").toUpperCase();
@@ -412,7 +417,7 @@ function helmPath(x) {
   return `M ${x - 210} 400 C ${x - 228} ${CHARACTER_TOP + 80} ${x - 90} ${CHARACTER_TOP + 20} ${x} ${CHARACTER_TOP + 12} C ${x + 110} ${CHARACTER_TOP + 24} ${x + 230} ${CHARACTER_TOP + 90} ${x + 212} 400 L ${x + 156} 362 C ${x + 70} 300 ${x - 70} 300 ${x - 156} 362 Z`;
 }
 
-function motifMarkup(motif, colors, cleaner) {
+function motifParts(motif, colors, cleaner) {
   const opacity = cleaner ? 0.05 : 0.14;
   const fill = colors.trim;
   const ring = el("circle", { cx: 512, cy: 430, r: 300, fill: "none", stroke: fill, "stroke-width": 28, opacity });
@@ -431,22 +436,37 @@ function motifMarkup(motif, colors, cleaner) {
       opacity: 0.35,
     }));
   }
-  return ring + bloom + dots.join("");
+  return { fx: ring + bloom, particles: dots.join("") };
 }
 
-function eyeMarkup(cx, cy, squint, wide, colors, glow) {
+function eyeParts(cx, cy, squint, wide, colors, glow) {
   const rx = 108;
   const ry = Math.max(46, 78 * (1 + wide) * (1 - Math.min(0.4, squint)));
   const ix = 50;
   const iy = Math.max(34, ry * 0.72);
-  return [
+  const open = [
     el("ellipse", { cx, cy, rx: rx + 12, ry: ry + 10, fill: "#1A1412" }),
     el("ellipse", { cx, cy, rx, ry, fill: colors.sclera }),
     el("ellipse", { cx, cy: cy + 2, rx: ix, ry: iy, fill: colors.iris }),
     glow ? el("ellipse", { cx, cy: cy + 2, rx: ix * 0.78, ry: iy * 0.78, fill: colors.trim, opacity: glow }) : "",
+  ].join("");
+  const pupils = [
     el("ellipse", { cx, cy: cy + 3, rx: 18, ry: 18, fill: "#120E0C" }),
     el("ellipse", { cx: cx - 18, cy: cy - 14, rx: 11, ry: 11, fill: "#F8F6F2" }),
   ].join("");
+  const lidTop = Math.round(cy - ry * 0.08);
+  const lidBot = Math.round(cy + ry * 0.42);
+  const closed = [
+    el("path", {
+      fill: colors.skin,
+      d: `M ${cx - rx} ${cy + 8} Q ${cx} ${lidTop} ${cx + rx} ${cy + 8} Q ${cx} ${lidBot} ${cx - rx} ${cy + 8} Z`,
+    }),
+    el("path", {
+      fill: "#1A1412",
+      d: `M ${cx - rx + 10} ${cy + 6} Q ${cx} ${cy - 8} ${cx + rx - 10} ${cy + 6} Q ${cx} ${cy + 18} ${cx - rx + 10} ${cy + 6} Z`,
+    }),
+  ].join("");
+  return { open, pupils, closed };
 }
 
 function browMarkup(cx, cy, raise, angry) {
@@ -522,11 +542,14 @@ function renderPfp(recipe, opts) {
   ].join("");
   const eyesY = 430;
   const mouthY = 575;
+  const leftEye = eyeParts(x - 118, eyesY, face.squint + (face.wink || 0), face.wide, c, face.glow || 0);
+  const rightEye = eyeParts(x + 118, eyesY, face.squint, face.wide, c, face.glow || 0);
   const features = [
     el("ellipse", { cx: x, cy: 650, rx: 120, ry: 52, fill: c.skinDeep, opacity: "0.28" }),
     el("path", { fill: c.skinShadow, opacity: "0.55", d: `M ${x - 16} 500 L ${x + 18} 500 L ${x + 8} 560 L ${x - 8} 560 Z` }),
-    eyeMarkup(x - 118, eyesY, face.squint + (face.wink || 0), face.wide, c, face.glow || 0),
-    eyeMarkup(x + 118, eyesY, face.squint, face.wide, c, face.glow || 0),
+    layer("eyesOpen", leftEye.open + rightEye.open),
+    layer("pupils", leftEye.pupils + rightEye.pupils),
+    layer("eyesClosed", leftEye.closed + rightEye.closed, { opacity: "0" }),
     browMarkup(x - 118, 340, face.brow[0] * (row.intensity || 1), face.brow[0] < 0),
     browMarkup(x + 118, 340, face.brow[1] * (row.intensity || 1), face.brow[1] < 0),
     mouthMarkup(x + (face.mouth === "smirk" ? 8 : 0), mouthY, face.mouth, c.lip, row.intensity),
@@ -574,16 +597,15 @@ function renderPfp(recipe, opts) {
     el("ellipse", { cx: x - 230, cy: 860, rx: 90, ry: 48, fill: shade(c.cloth, 0.12) }),
     el("ellipse", { cx: x + 230, cy: 860, rx: 90, ry: 48, fill: shade(c.cloth, -0.08) }),
   ].join("") : "";
-  const body = [
-    el("rect", { width: 1024, height: 1024, fill: `url(#${id("bg")})` }),
-    motifMarkup(row.motif, c, row.cleaner),
-    el("ellipse", { cx: 512, cy: 760, rx: 340, ry: 180, fill: c.primary, opacity: row.cleaner ? "0.04" : "0.08" }),
-    el("rect", { width: 1024, height: 1024, fill: `url(#${id("vig")})` }),
-    wear.join(""),
+  const motif = motifParts(row.motif, c, row.cleaner);
+  const torso = [
     plates,
     el("path", { fill: c.cloth, d: shoulderPath(x, row.silhouette) }),
     el("path", { fill: shade(c.cloth, 0.08), d: `M ${x - 78} 760 L ${x + 78} 760 L ${x + 96} 900 L ${x - 96} 900 Z` }),
     el("path", { fill: c.skinShadow, d: `M ${x - 58} 690 L ${x + 58} 690 L ${x + 46} 860 L ${x - 46} 860 Z` }),
+    el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 10, opacity: "0.55" }),
+  ].join("");
+  const head = [
     ears,
     beast,
     el("g", { "clip-path": `url(#${id("face")})` }, [
@@ -592,14 +614,22 @@ function renderPfp(recipe, opts) {
       features,
     ].join("")),
     el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim + 16, opacity: "0.45", filter: `url(#${id("rim")})` }),
-    el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 10, opacity: "0.55" }),
     el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim, opacity: row.darker ? "0.55" : "0.9" }),
-    front.join(""),
-    collar,
-    gem,
+    layer("hairFront", front.join("")),
+  ].join("");
+  const body = [
+    layer("bg", el("rect", { width: 1024, height: 1024, fill: `url(#${id("bg")})` })),
+    layer("bgFx", motif.fx),
+    layer("particles", motif.particles),
+    layer("aura", el("ellipse", { cx: 512, cy: 760, rx: 340, ry: 180, fill: c.primary, opacity: row.cleaner ? "0.04" : "0.08" })),
+    el("rect", { width: 1024, height: 1024, fill: `url(#${id("vig")})` }),
+    layer("hairBack", wear.join("")),
+    layer("torso", torso),
+    layer("head", head),
+    layer("collarFx", collar + gem),
   ].join("");
   const scale = compositionScale();
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" data-signature="${row.signature || "COLLAR"}" data-character-scale="${scale.characterHeight}" data-face-scale="${scale.faceHeight}" aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" data-engine="procedural-svg" data-layered="1" data-signature="${row.signature || "COLLAR"}" data-character-scale="${scale.characterHeight}" data-face-scale="${scale.faceHeight}" aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
 }
 
 function normalizeSize(value) {

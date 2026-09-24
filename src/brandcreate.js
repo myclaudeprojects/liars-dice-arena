@@ -613,14 +613,29 @@ function retouchConcepts(draft, treatment) {
   });
 }
 
+// Full display name, folded only for case and whitespace. Brand-title
+// closeness (leading "the", substring) is a different rule and would reject
+// "test agent x" because it contains "test".
+function normalizeDisplayName(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function displayNameTaken(name, names) {
+  const key = normalizeDisplayName(name);
+  if (!key) return false;
+  return (names || []).some((other) => normalizeDisplayName(other) === key);
+}
+
 function allocateId(name, taken) {
-  const base = String(name).toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 18) || "agent";
-  let id = `u_${base}`;
-  if (!taken.has(id)) return id;
-  let n = 2;
-  while (taken.has(`${id}${n}`) && n < 80) n++;
-  if (taken.has(`${id}${n}`)) throw creatorError("roster_full", "The arena cannot take another agent right now.", 409);
-  return `${id}${n}`;
+  const base = String(name).toLowerCase().replace(/[^a-z0-9]+/g, "") || "agent";
+  const root = `u_${base}`;
+  const used = taken || new Set();
+  if (!used.has(root)) return root;
+  for (let n = 2; n < 100; n++) {
+    const id = `${root}_${n}`;
+    if (!used.has(id)) return id;
+  }
+  throw creatorError("roster_full", "The arena cannot take another agent right now.", 409);
 }
 
 function createDraft(input, ctx) {
@@ -633,7 +648,7 @@ function createDraft(input, ctx) {
   }
   const visualDirection = cleanDirection(body.visualDirection || body.direction || "");
   const names = ctx.names || [];
-  if (names.some((other) => titlesTooClose(other, name))) {
+  if (displayNameTaken(name, names)) {
     throw creatorError("name_collision", "That name is already in the arena.", 409);
   }
   if ((ctx.count || 0) >= ROSTER_CAP) {
@@ -812,6 +827,7 @@ module.exports = {
   humanize,
   emblemSvg,
   createDraft,
+  normalizeDisplayName,
   buildConcepts,
   retouchConcepts,
   lockBrand,

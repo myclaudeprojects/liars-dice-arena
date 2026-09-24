@@ -79,6 +79,37 @@ function signatures(concepts) {
   catch (e) { collided = e.code === "name_collision"; }
   assert(collided, "house names are rejected");
 
+  const fileC = path.join(dir, "c.json");
+  const showC = boot(fileC);
+  const short = showC.createAgent({ ...INPUT, name: "Test" });
+  eq(short.agent.id, "u_test", "short name uses the full slug");
+  showC.userAgents.get(short.agent.id).status = "READY";
+  let caseHit = false;
+  try { showC.createAgent({ ...INPUT, name: "test" }); }
+  catch (e) { caseHit = e.code === "name_collision"; }
+  assert(caseHit, "Test blocks test");
+  let spaced = false;
+  try { showC.createAgent({ ...INPUT, name: "  TeSt  " }); }
+  catch (e) { spaced = e.code === "name_collision"; }
+  assert(spaced, "whitespace and case still collide");
+  const longer = showC.createAgent({ ...INPUT, name: "test agent x" });
+  eq(longer.agent.id, "u_testagentx", "full display name slugs in full");
+  assert(longer.agent.id !== "u_test", "test agent x is distinct from u_test");
+  showC.userAgents.get(longer.agent.id).status = "READY";
+  let fullCase = false;
+  try { showC.createAgent({ ...INPUT, name: "Test Agent X" }); }
+  catch (e) { fullCase = e.code === "name_collision"; }
+  assert(fullCase, "the same full name collides");
+  const suffixed = showC.createAgent({ ...INPUT, name: "Test-Agent-X" });
+  eq(suffixed.agent.id, "u_testagentx_2", "a taken slug gets a short suffix");
+  assert(suffixed.agent.id !== "u_test" && suffixed.agent.id !== "u_testagentx", "suffix id is distinct");
+  for (const house of ["Caesar", "The Shark", "the shark"]) {
+    let blocked = false;
+    try { showC.createAgent({ ...INPUT, name: house }); }
+    catch (e) { blocked = e.code === "name_collision"; }
+    assert(blocked, house + " stays reserved");
+  }
+
   const picked = again.concepts[1];
   const locked = showA.selectConcept(a.agent.id, picked.id);
   eq(locked.brand.brandVersion, "v1", "v1");

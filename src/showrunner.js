@@ -26,6 +26,7 @@ const {
   OPTIONAL_SLIDERS,
   PFP_TOUCHES,
   createDraft,
+  normalizeDisplayName,
   buildConcepts,
   retouchConcepts,
   lockBrand,
@@ -1561,7 +1562,8 @@ class Show {
   createAgent(input) {
     const body = input && typeof input === "object" ? input : {};
     const name = String(body.name || "").replace(/\s+/g, " ").trim();
-    const existing = [...this.userAgents.values()].find((row) => row.name.toLowerCase() === name.toLowerCase());
+    const nameKey = normalizeDisplayName(name);
+    const existing = [...this.userAgents.values()].find((row) => normalizeDisplayName(row.name) === nameKey);
     if (existing && existing.status !== "READY") {
       return { agent: this.agentSummary(existing), identity: existing.identity, resumed: true };
     }

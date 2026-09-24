@@ -196,6 +196,23 @@ function boot(file) {
   eq(reloaded.brands.full(id).version, 2, "version reloads");
   eq(reloaded.userAgents.get(id).creationSelections.archetype, "robot_ai", "selections reload");
   eq(reloaded.brands.full(id, "v1").version, 1, "v1 reloads");
+
+  const second = show.createAgent({
+    name: "Vale",
+    shortDescription: "A quiet closer who spends one lie and waits.",
+    archetype: "ASSASSIN",
+    creationSelections: A,
+  });
+  const retired = show.brands.full(id, "v1");
+  const draft = show.userAgents.get(second.agent.id);
+  draft.identity.visualIdentity.primaryColor = retired.visualIdentity.primaryColor;
+  draft.identity.visualIdentity.secondaryColor = retired.visualIdentity.secondaryColor;
+  draft.identity.visualIdentity.accentColor = "#5182F6";
+  const red = await show.generatePortrait(second.agent.id, { creationSelections: A });
+  eq(red.brand.version, 1, "second red executive still locks");
+  assert(red.svg.includes('data-species="human"'), "second portrait is human");
+  const { paletteNear } = require("../src/brands");
+  assert(!paletteNear(red.brand, retired), "accent moves off the retired red palette");
   console.log("creation pfp ok");
 })().catch((err) => {
   console.error(err);

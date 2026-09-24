@@ -595,6 +595,12 @@ class BrandBook {
     return rows;
   }
 
+  // Every stored version, including ones that are no longer active.
+  // Portrait uniqueness has to clear retired palettes too.
+  everyVersion() {
+    return [...this._versions.values()].map((row) => clone(row));
+  }
+
   list() {
     return CAST.map((c) => this.full(c.id)).filter(Boolean);
   }

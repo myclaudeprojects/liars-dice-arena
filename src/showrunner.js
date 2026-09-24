@@ -1727,7 +1727,7 @@ class Show {
     try {
       portrait = await renderCanonicalPortrait(draft, {
         selections,
-        brands: this.brandPool(),
+        brands: this.brands.everyVersion(),
         currentVersion: Number(previous && previous.version || 0),
         provider: input.provider,
       });

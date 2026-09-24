@@ -1096,6 +1096,7 @@ body {
 .brand { font-size: clamp(18px, 2vw, 24px); }
 .arena-shell {
   position: relative;
+  isolation: isolate;
   width: 100%;
   max-width: 1040px;
   margin: 0 auto;
@@ -1443,15 +1444,30 @@ body {
   display: block;
   aspect-ratio: 1;
   margin: 0 auto;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
 }
 .portrait-plate .agent-avatar,
-.portrait-plate .brand-lockup,
+.portrait-plate .brand-lockup {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border-radius: inherit;
+}
 .portrait-plate .mark,
 .portrait-plate .agent-avatar > .mark,
 .portrait-plate .agent-avatar > img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  border-radius: var(--radius-xl);
+  margin: 0;
+  border: 0;
+  border-radius: inherit;
   object-fit: cover;
 }
 .portrait-plate--hero { width: clamp(100px, 34vw, 140px); }
@@ -1520,7 +1536,7 @@ body {
   font-size: clamp(1.2rem, 4vw, 2.2rem);
   opacity: .72;
 }
-.matchup-hero__watch { margin-top: var(--space-4); min-height: var(--tap-lg); }
+.matchup-hero .matchup-hero__watch.lda-btn { margin-top: var(--space-4); min-height: 52px; }
 .upcard .matchup-name,
 .picker .matchup-name,
 .rivalry-card .matchup-name {
@@ -1612,6 +1628,8 @@ body {
 .agent-card__portrait img {
   width: 100%;
   height: 100%;
+  margin: 0;
+  border: 0;
   border-radius: 0;
   object-fit: cover;
 }
@@ -1661,6 +1679,8 @@ body {
 .arena-shell .agent-portrait-wrap .agent-avatar > img {
   width: 100%;
   height: 100%;
+  margin: 0;
+  border: 0;
   border-radius: var(--radius-xl);
   object-fit: cover;
 }

@@ -1,9 +1,13 @@
 // pfp.js — Procedural square PFP portraits.
 //
 // There is no image-generation provider in this process. These portraits are
-// deterministic SVG illustrations: one bust, one face, brand palette, simple
-// background. Avatar sizes reuse the same paths. Only the root width and
-// height change. Nothing here calls a diffusion model or invents a photo URL.
+// deterministic SVG illustrations: one bust, one face, brand palette, dark
+// premium background, controlled neon accent. The locked art direction is
+// neon-competitive. The drawing engine stays lda-pfp-v2. Avatar sizes reuse
+// the same paths. Only the root width and height change.
+
+const { PFP_STYLE_ID } = require("./branding/stylePresets");
+const { buildPfpPrompt } = require("./branding/buildPfpPrompt");
 
 const PFP_STYLE_VERSION = "lda-pfp-v2";
 const PFP_PROMPT_VERSION = "agent-pfp-v2";
@@ -152,9 +156,9 @@ function buildRecipe(input) {
   const visual = src.visual && typeof src.visual === "object" ? src.visual : {};
   const treatment = TREATMENTS.includes(src.treatment) ? src.treatment : "standard";
   const variation = Math.abs(Math.floor(Number(src.variation) || 0));
-  const primary = validHex(visual.primaryColor) || "#6D0F1F";
-  const secondary = validHex(visual.secondaryColor) || "#14110E";
-  const accent = validHex(visual.accentColor) || "#E8DDD0";
+  const primary = validHex(visual.primaryColor) || "#101216";
+  const secondary = validHex(visual.secondaryColor) || "#1F232A";
+  const accent = validHex(visual.accentColor) || "#4AD7FF";
   const tone = skinKey(src.archetype, visual.emblem, src.name);
   let pack = SKIN[tone];
   const attitude = ATTITUDES.includes(visual.facialAttitude) ? visual.facialAttitude : "STOIC";
@@ -162,9 +166,11 @@ function buildRecipe(input) {
   const cleaner = treatment === "cleaner" || treatment === "minimal";
   const minimal = treatment === "minimal";
   const premium = treatment === "premium";
-  let edge = darker ? mix(secondary, "#000000", 0.5) : shade(secondary, -0.18);
+  // Neon only reads on a controlled dark field. Secondary stays a support
+  // color; it does not lighten the backdrop.
+  let edge = "#07080C";
   if (colorDistance(pack[0], edge) < 78) pack = SKIN.porcelain;
-  if (colorDistance(pack[0], edge) < 78) edge = "#100E0C";
+  if (colorDistance(pack[0], edge) < 78) edge = "#07080C";
   const hair = luma(primary) < 0.18 ? mix(primary, "#120E10", 0.4) : shade(primary, -0.28);
   const iris = tone === "ash"
     ? mix(accent, "#F7F4FF", 0.45)
@@ -175,6 +181,7 @@ function buildRecipe(input) {
   const headwear = forced || headwearFor(visual.emblem, src.archetype, variation);
   return {
     styleVersion: PFP_STYLE_VERSION,
+    styleId: PFP_STYLE_ID,
     promptVersion: PFP_PROMPT_VERSION,
     treatment,
     variation,
@@ -184,8 +191,9 @@ function buildRecipe(input) {
     headwear,
     hair: hairUnder(headwear),
     silhouette: visual.silhouette || "SLIM_ELEGANT",
-    motif: visual.backgroundMotif || "VOID_ARCH",
-    lighting: visual.lightingStyle || "CONTROLLED_KEY",
+    bodyLanguage: visual.bodyLanguage || "",
+    motif: visual.backgroundMotif || "SIGNAL_HALO",
+    lighting: visual.lightingStyle || "COOL_NEON_EDGE",
     emblem: visual.emblem || "",
     ornament: minimal ? 0.12 : cleaner ? 0.28 : Math.max(0, Math.min(1, Number(visual.ornamentationLevel) || 0.45)),
     darker,
@@ -206,11 +214,12 @@ function buildRecipe(input) {
       clothDeep: shade(primary, -0.32),
       trim: accent,
       edge,
-      mid: darker ? mix(primary, "#000000", 0.62) : mix(primary, secondary, 0.78),
-      glow: darker ? mix(primary, "#000000", 0.35) : mix(primary, accent, 0.28),
+      mid: darker ? "#07080C" : mix("#0C0E14", secondary, 0.22),
+      glow: darker ? mix("#0C0E14", accent, 0.12) : mix("#12141A", accent, 0.3),
       iris,
     },
     signature: signatureOf(headwear),
+    signatureFeature: visual.signatureFeature || signatureOf(headwear),
     scale: compositionScale(),
     safeZone: {
       circle: 0.86,
@@ -285,77 +294,33 @@ function compositionScale() {
 }
 
 function promptFor(recipe) {
-  const id = recipe.identity || {};
-  const c = recipe.colors || {};
-  return [
-    "Create a premium square profile-picture portrait for a competitor in Liar's Dice Arena.",
-    "",
-    "LDA HOUSE STYLE:",
-    "premium competitive game roster portrait,",
-    "collectible avatar composition,",
-    "polished stylized digital illustration,",
-    "cinematic but controlled lighting,",
-    "bold graphic silhouette,",
-    "expressive face,",
-    "limited deliberate palette,",
-    "clean simple background,",
-    "readable at 48px,",
-    "square composition,",
-    "designed to sit beside another competitor in a VS screen.",
-    "",
-    "COMPOSITION:",
-    "exact 1:1 square,",
-    "one character only,",
-    "tight head-and-shoulders,",
-    "face occupies a large portion of the image,",
-    "front-facing or subtle 3/4 angle,",
-    "eyes clearly visible,",
-    "crop-safe for a circular avatar,",
-    "no text,",
-    "no watermark,",
-    "no frame baked into the image,",
-    "no full-body pose,",
-    "no landscape scene,",
-    "no busy environment.",
-    "",
-    "IDENTITY:",
-    `Name: ${id.name || "Competitor"}`,
-    `Title: ${id.title || ""}`,
-    `Archetype: ${id.archetype || ""}`,
-    `Facial attitude: ${recipe.attitude || ""}`,
-    `Signature silhouette: ${recipe.signature || ""}`,
-    `Primary color: ${c.primary || ""}`,
-    `Secondary color: ${c.secondary || ""}`,
-    `Accent color: ${c.accent || ""}`,
-    `Silhouette: ${recipe.silhouette || ""}`,
-    `Headwear: ${recipe.headwear || ""}`,
-    `Background motif: ${recipe.motif || ""}`,
-    `Lighting style: ${recipe.lighting || ""}`,
-    `Emblem concept: ${recipe.emblem || ""}`,
-    "",
-    "SIGNATURE:",
-    "exactly one primary visual signature,",
-    `signature feature: ${recipe.signature || "COLLAR"},`,
-    "tight competitive game roster portrait,",
-    "face dominant in frame,",
-    "head-and-shoulders crop,",
-    "bold silhouette,",
-    "strong readable expression,",
-    "simple premium background,",
-    "controlled rim lighting,",
-    "collectible profile-picture composition,",
-    "designed to be recognizable at 48px,",
-    "no full body,",
-    "no environmental scene,",
-    "no movie poster layout,",
-    "no text,",
-    "no watermark,",
-    "",
-    "AVOID:",
-    "generic fantasy portrait, movie poster composition, tiny face, bland symmetrical model face.",
-    "",
-    "RENDERER: procedural SVG, lda-pfp-v2. No external image model.",
-  ].join("\n");
+  const row = recipe || {};
+  const id = row.identity || {};
+  const c = row.colors || {};
+  const body = buildPfpPrompt({
+    styleId: row.styleId || PFP_STYLE_ID,
+    agent: {
+      name: id.name || "Competitor",
+      title: id.title || "",
+      archetype: id.archetype || "",
+      brand: {
+        visualDNA: {
+          silhouette: row.silhouette || "",
+          facialAttitude: row.attitude || "",
+          bodyLanguage: row.bodyLanguage || "",
+          primaryColor: c.primary || "",
+          secondaryColor: c.secondary || "",
+          accentColor: c.accent || "",
+          emblem: row.emblem || "",
+          materials: [],
+          backgroundMotif: row.motif || "",
+          lightingStyle: row.lighting || "",
+          signatureFeature: row.signatureFeature || row.signature || "",
+        },
+      },
+    },
+  });
+  return `${body}\n\nRENDERER: procedural SVG, lda-pfp-v2. No external image model.`;
 }
 
 function facePath(x) {
@@ -418,25 +383,38 @@ function helmPath(x) {
 }
 
 function motifParts(motif, colors, cleaner) {
-  const opacity = cleaner ? 0.05 : 0.14;
+  const opacity = cleaner ? 0.08 : 0.22;
   const fill = colors.trim;
-  const ring = el("circle", { cx: 512, cy: 430, r: 300, fill: "none", stroke: fill, "stroke-width": 28, opacity });
-  const bloom = el("circle", { cx: 512, cy: 400, r: 220, fill, opacity: cleaner ? 0.04 : 0.08 });
+  const ring = el("circle", { cx: 512, cy: 420, r: 286, fill: "none", stroke: fill, "stroke-width": 10, opacity });
+  const bloom = el("circle", { cx: 512, cy: 400, r: 180, fill, opacity: cleaner ? 0.04 : 0.1 });
   const dots = [];
-  const n = cleaner ? 0 : 4;
-  const seed = hashString(motif);
+  const n = cleaner ? 0 : 5;
+  const seed = hashString(motif || "SIGNAL_HALO");
   for (let i = 0; i < n; i++) {
     const ang = ((seed + i * 97) % 360) * Math.PI / 180;
-    const rad = 250 + (seed + i * 13) % 40;
+    const rad = 250 + (seed + i * 13) % 48;
     dots.push(el("circle", {
       cx: Math.round(512 + Math.cos(ang) * rad),
-      cy: Math.round(390 + Math.sin(ang) * rad * 0.72),
-      r: 5 + (i % 2) * 2,
+      cy: Math.round(390 + Math.sin(ang) * rad * 0.7),
+      r: 4 + (i % 3),
       fill,
-      opacity: 0.35,
+      opacity: 0.85,
     }));
   }
   return { fx: ring + bloom, particles: dots.join("") };
+}
+
+function neonGrid(colors) {
+  const stroke = colors.trim;
+  const lines = [
+    el("circle", { cx: 512, cy: 430, r: 248, fill: "none", stroke, "stroke-width": 2, opacity: "0.7" }),
+    el("circle", { cx: 512, cy: 430, r: 332, fill: "none", stroke, "stroke-width": 1.5, opacity: "0.45" }),
+  ];
+  for (let i = 1; i <= 3; i++) {
+    const y = 210 + i * 170;
+    lines.push(el("line", { x1: 96, y1: y, x2: 928, y2: y, stroke, "stroke-width": 2, opacity: "0.4" }));
+  }
+  return lines.join("");
 }
 
 function eyeParts(cx, cy, squint, wide, colors, glow) {
@@ -448,7 +426,7 @@ function eyeParts(cx, cy, squint, wide, colors, glow) {
     el("ellipse", { cx, cy, rx: rx + 12, ry: ry + 10, fill: "#1A1412" }),
     el("ellipse", { cx, cy, rx, ry, fill: colors.sclera }),
     el("ellipse", { cx, cy: cy + 2, rx: ix, ry: iy, fill: colors.iris }),
-    glow ? el("ellipse", { cx, cy: cy + 2, rx: ix * 0.78, ry: iy * 0.78, fill: colors.trim, opacity: glow }) : "",
+    el("ellipse", { cx, cy: cy + 2, rx: ix * 0.62, ry: iy * 0.62, fill: colors.trim, opacity: glow ? Math.min(0.85, glow) : 0.42 }),
   ].join("");
   const pupils = [
     el("ellipse", { cx, cy: cy + 3, rx: 18, ry: 18, fill: "#120E0C" }),
@@ -518,7 +496,8 @@ function renderPfp(recipe, opts) {
   const lean = row.turn * 36;
   const face = expressionOf(row.attitude, row.intensity || 1);
   const id = (name) => `${nonce}_${name}`;
-  const rim = row.lighting === "DRAMATIC_RIM_LIGHT" || row.premium ? 26 : 18;
+  const neonLight = /NEON|RIM|GLOW|EDGE/.test(String(row.lighting || ""));
+  const rim = neonLight || row.premium ? 22 : 16;
   const keyX = row.turn >= 0 ? x - 70 : x + 70;
   const beard = !row.cleaner && (row.attitude === "REGAL" || row.attitude === "STOIC") && (row.headwear === "crown" || row.headwear === "laurel");
   const pauldrons = row.silhouette === "HEAVY_ARMORED" || row.silhouette === "MECHANICAL";
@@ -529,8 +508,15 @@ function renderPfp(recipe, opts) {
       el("stop", { offset: "100%", "stop-color": c.edge }),
     ].join("")),
     el("radialGradient", { id: id("vig"), cx: "50%", cy: "46%", r: "62%" }, [
-      el("stop", { offset: "62%", "stop-color": "#000000", "stop-opacity": "0" }),
-      el("stop", { offset: "100%", "stop-color": "#000000", "stop-opacity": row.darker ? "0.72" : "0.5" }),
+      el("stop", { offset: "58%", "stop-color": "#000000", "stop-opacity": "0" }),
+      el("stop", { offset: "100%", "stop-color": "#000000", "stop-opacity": row.darker ? "0.78" : "0.66" }),
+    ].join("")),
+    el("linearGradient", { id: id("scan"), x1: "0", y1: "0", x2: "0", y2: "1" }, [
+      el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": "0" }),
+      el("stop", { offset: "47%", "stop-color": c.trim, "stop-opacity": "0" }),
+      el("stop", { offset: "50%", "stop-color": c.trim, "stop-opacity": "0.9" }),
+      el("stop", { offset: "53%", "stop-color": c.trim, "stop-opacity": "0" }),
+      el("stop", { offset: "100%", "stop-color": c.trim, "stop-opacity": "0" }),
     ].join("")),
     el("linearGradient", { id: id("skin"), x1: keyX, y1: "280", x2: row.turn >= 0 ? x + 180 : x - 180, y2: "700", gradientUnits: "userSpaceOnUse" }, [
       el("stop", { offset: "0%", "stop-color": shade(c.skin, 0.14) }),
@@ -567,7 +553,7 @@ function renderPfp(recipe, opts) {
   ].join("") : "";
   const wear = [];
   if (row.headwear === "hood" || row.headwear === "cowl") {
-    wear.push(el("path", { fill: luma(c.cloth) < 0.08 ? mix(c.trim, "#1A1020", 0.55) : c.clothDeep, stroke: c.trim, "stroke-width": 14, d: hoodPath(x) }));
+    wear.push(el("path", { fill: luma(c.cloth) < 0.12 ? mix(c.trim, "#120814", 0.72) : c.clothDeep, stroke: c.trim, "stroke-width": 18, d: hoodPath(x) }));
   }
   if (row.headwear === "halo") {
     wear.push(el("ellipse", { cx: x, cy: 430, rx: 310, ry: 250, fill: "none", stroke: c.trim, "stroke-width": 28, opacity: "0.9" }));
@@ -598,12 +584,16 @@ function renderPfp(recipe, opts) {
     el("ellipse", { cx: x + 230, cy: 860, rx: 90, ry: 48, fill: shade(c.cloth, -0.08) }),
   ].join("") : "";
   const motif = motifParts(row.motif, c, row.cleaner);
+  const rimGlow = [
+    el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim + 30, opacity: "0.95", filter: `url(#${id("rim")})` }),
+    el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 22, opacity: "0.7", filter: `url(#${id("rim")})` }),
+  ].join("");
   const torso = [
     plates,
     el("path", { fill: c.cloth, d: shoulderPath(x, row.silhouette) }),
     el("path", { fill: shade(c.cloth, 0.08), d: `M ${x - 78} 760 L ${x + 78} 760 L ${x + 96} 900 L ${x - 96} 900 Z` }),
     el("path", { fill: c.skinShadow, d: `M ${x - 58} 690 L ${x + 58} 690 L ${x + 46} 860 L ${x - 46} 860 Z` }),
-    el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 10, opacity: "0.55" }),
+    el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 16, opacity: "0.82" }),
   ].join("");
   const head = [
     ears,
@@ -619,17 +609,23 @@ function renderPfp(recipe, opts) {
   ].join("");
   const body = [
     layer("bg", el("rect", { width: 1024, height: 1024, fill: `url(#${id("bg")})` })),
+    layer("bgGrid", neonGrid(c), { opacity: row.cleaner ? "0.1" : "0.22" }),
     layer("bgFx", motif.fx),
-    layer("particles", motif.particles),
-    layer("aura", el("ellipse", { cx: 512, cy: 760, rx: 340, ry: 180, fill: c.primary, opacity: row.cleaner ? "0.04" : "0.08" })),
+    layer("particles", motif.particles, { opacity: "0.52" }),
+    layer("aura", [
+      el("ellipse", { cx: 512, cy: 410, rx: 290, ry: 240, fill: c.trim, opacity: "0.46" }),
+      el("ellipse", { cx: 512, cy: 760, rx: 340, ry: 160, fill: c.primary, opacity: "0.28" }),
+    ].join(""), { opacity: row.cleaner ? "0.34" : "0.7" }),
     el("rect", { width: 1024, height: 1024, fill: `url(#${id("vig")})` }),
     layer("hairBack", wear.join("")),
     layer("torso", torso),
     layer("head", head),
+    layer("rimGlow", rimGlow, { opacity: "0.78" }),
+    layer("scanFx", el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("scan")})` }), { opacity: row.cleaner ? "0.05" : "0.12" }),
     layer("collarFx", collar + gem),
   ].join("");
   const scale = compositionScale();
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" data-engine="procedural-svg" data-layered="1" data-signature="${row.signature || "COLLAR"}" data-character-scale="${scale.characterHeight}" data-face-scale="${scale.faceHeight}" aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" data-pfp-style="${row.styleId || PFP_STYLE_ID}" data-engine="procedural-svg" data-layered="1" data-signature="${row.signature || "COLLAR"}" data-character-scale="${scale.characterHeight}" data-face-scale="${scale.faceHeight}" aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
 }
 
 function normalizeSize(value) {
@@ -697,6 +693,7 @@ function pathData(svg) {
 
 module.exports = {
   PFP_STYLE_VERSION,
+  PFP_STYLE_ID,
   PFP_PROMPT_VERSION,
   ASSET_TYPE,
   MASTER_SIZE,

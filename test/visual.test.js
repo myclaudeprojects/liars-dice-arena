@@ -47,7 +47,7 @@ const required = [
 ];
 for (const name of required) assert(tokens.includes(name + ":"), "token " + name);
 
-assert(tokens.includes("--brand-dracula-accent: #E8DDD0"), "dracula brand accent token");
+assert(tokens.includes("--brand-dracula-accent: #F43B5F"), "dracula brand accent token");
 assert(tokens.includes("--agent-dracula: var(--brand-dracula-accent)"), "cast accent aliases the brand accent");
 assert(tokens.includes("--bg: var(--lda-bg)"), "legacy background alias");
 

@@ -1,9 +1,10 @@
 // Layered idle motion for procedural SVG portraits.
 //
-// House cast and created agents are lda-pfp-v2 drawings, not webp layer packs.
-// Groups in the SVG (bg, torso, head, eyes, pupils, aura) are the rig.
-// This runtime moves those groups. It does not load Pixi or Live2D.
-// List rows never opt in: only mounts marked .animated-pfp with a hero context play.
+// House cast and created agents are lda-pfp-v2 drawings in the neon-competitive
+// style, not webp layer packs and not a Pixi/GSAP stage. Groups in the SVG
+// (bg, grid, torso, head, eyes, pupils, rim, aura, scan) are the rig.
+// This runtime moves those groups. List rows never opt in: only mounts marked
+// .animated-pfp with a hero context play.
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -40,6 +41,23 @@
       auraDrift: 20,
       particleSpeed: 0.28,
     }),
+    // Locked neon roster motion. House cast and created agents use this rig.
+    NEON_COMPETITIVE: Object.freeze({
+      floatY: 3.2,
+      headDriftX: 1.8,
+      headDriftY: 1.4,
+      pupilRange: 1.8,
+      blinkMinMs: 2600,
+      blinkMaxMs: 5800,
+      auraDrift: 8,
+      particleSpeed: 0.16,
+      pulseMin: 0.82,
+      pulseMax: 1.0,
+      glowDuration: 1.9,
+      scanDriftY: 10,
+      particleAlphaMin: 0.38,
+      particleAlphaMax: 0.66,
+    }),
   });
 
   const MOTION_TO_PROFILE = Object.freeze({
@@ -61,9 +79,17 @@
 
   const HERO_CONTEXTS = Object.freeze(["watch", "profile", "reveal", "hero"]);
   const LAYER_KEYS = Object.freeze([
-    "bg", "bgFx", "torso", "head", "hairFront", "hairBack",
-    "eyesOpen", "eyesClosed", "pupils", "collarFx", "aura", "particles",
+    "bg", "bgGrid", "bgFx", "torso", "head", "hairFront", "hairBack",
+    "eyesOpen", "eyesClosed", "pupils", "collarFx", "rimGlow", "aura", "particles", "scanFx",
   ]);
+  const POSTER_OPACITY = Object.freeze({
+    eyesClosed: "0",
+    bgGrid: "0.22",
+    rimGlow: "0.78",
+    aura: "0.7",
+    particles: "0.52",
+    scanFx: "0.12",
+  });
   const MAX_PLAYING = 4;
   const USER = 1024 / 256;
 
@@ -85,29 +111,24 @@
 
   function profileForBrand(brand) {
     const row = brand && typeof brand === "object" ? brand : {};
-    const visual = row.visualIdentity && typeof row.visualIdentity === "object" ? row.visualIdentity : {};
     const named = row.animatedPfp && MOTION_PROFILES[row.animatedPfp.motionProfile];
     if (named) return row.animatedPfp.motionProfile;
-    const motion = String(row.motionLanguage || visual.motionLanguage || "");
-    if (MOTION_TO_PROFILE[motion]) return MOTION_TO_PROFILE[motion];
-    const archetype = String(row.archetype || "").toUpperCase();
-    if (/REAPER|SPECTRAL|MADMAN|JESTER|TRICKSTER|PHANTOM|PIRATE|SORCERER/.test(archetype)) return "CHAOTIC_SPECTRAL";
-    if (/COMMANDER|EMPEROR|NOBLE|MONK|ORACLE|MACHINE|STRATEGIST|JUDGE|IMPERIAL|AEGIS|GRINDER/.test(archetype)) return "REGAL_STEADY";
-    const chaos = row.personality && Number(row.personality.chaos);
-    if (chaos >= 0.72) return "CHAOTIC_SPECTRAL";
-    return "ELEGANT_SMOKE";
+    // Style lock. Motion language stays on the brand for identity, and every
+    // current portrait plays the same neon competitive rig.
+    return "NEON_COMPETITIVE";
   }
 
   function animatedPfpMeta(brand, previewUrl) {
     if (!brand || !previewUrl) return null;
     const motionProfile = profileForBrand(brand);
     const layers = {};
-    for (const key of ["bg", "bgFx", "torso", "head", "hairFront", "eyesOpen", "eyesClosed", "pupils", "collarFx", "aura", "particles"]) {
+    for (const key of ["bg", "bgGrid", "bgFx", "torso", "head", "hairFront", "eyesOpen", "eyesClosed", "pupils", "collarFx", "rimGlow", "aura", "particles", "scanFx"]) {
       layers[key] = "procedural";
     }
     return {
       version: 1,
       engine: "procedural-svg",
+      styleId: "neon-competitive",
       manifestUrl: null,
       previewUrl,
       enabled: true,
@@ -190,19 +211,30 @@
     return from;
   }
 
+  function unitWave(t, ms) {
+    return Math.sin((t / ms) * Math.PI * 2) * 0.5 + 0.5;
+  }
+
   function poseAt(elapsedMs, profileName, state, seed) {
-    const profile = MOTION_PROFILES[profileName] || MOTION_PROFILES.REGAL_STEADY;
+    const profile = MOTION_PROFILES[profileName] || MOTION_PROFILES.NEON_COMPETITIVE;
     const mod = STATE_MOD[state] || STATE_MOD.idle;
     const t = Math.max(0, Number(elapsedMs) || 0) * mod.speed;
     const amp = mod.amp;
     const period = breathPeriod(profile);
-    const wild = profile.particleSpeed >= 0.2 ? 1 : 0;
+    const speed = Number(profile.particleSpeed) > 0 ? profile.particleSpeed : 0.12;
+    const wild = speed >= 0.2 ? 1 : 0;
     const breathe = (Math.sin((t / period) * Math.PI * 2) + 1) / 2;
     const floatY = breathe * profile.floatY * amp;
     const headX = (Math.sin((t / 3800) * Math.PI * 2) + wild * 0.4 * Math.sin((t / 1100) * Math.PI * 2)) * profile.headDriftX * amp / (1 + wild * 0.4);
     const headY = Math.sin((t / 3200) * Math.PI * 2) * profile.headDriftY * amp + floatY * 0.55;
     const pupil = pupilOffset(t, profile, seed >>> 0);
     const auraWave = Math.sin((t / 2200) * Math.PI * 2) * 0.5 + 0.5;
+    const glowMs = (profile.glowDuration || 1.9) * 1000;
+    const pulseMin = profile.pulseMin == null ? 0.9 : profile.pulseMin;
+    const pulseMax = profile.pulseMax == null ? 1 : profile.pulseMax;
+    const particleMin = profile.particleAlphaMin == null ? 0.45 : profile.particleAlphaMin;
+    const particleMax = profile.particleAlphaMax == null ? 0.75 : profile.particleAlphaMax;
+    const scanDrift = profile.scanDriftY == null ? 6 : profile.scanDriftY;
     return {
       floatY,
       headX,
@@ -210,11 +242,16 @@
       pupilX: pupil.x * amp,
       pupilY: pupil.y * amp,
       breath: breathe,
-      auraAlpha: (0.72 + 0.28 * auraWave) * Math.min(1.15, mod.aura),
-      auraRot: Math.sin((t / 5500) * Math.PI * 2) * 0.012 * (profile.auraDrift / 12),
+      auraAlpha: (0.62 + 0.38 * auraWave) * Math.min(1.15, mod.aura),
+      auraRot: Math.sin((t / 5200) * Math.PI * 2) * 0.008 * (profile.auraDrift / 8),
       auraDrift: profile.auraDrift * amp,
-      particleY: Math.sin((t / (7000 / Math.max(profile.particleSpeed, 0.05))) * Math.PI * 2) * profile.auraDrift * amp,
-      particleAlpha: 0.55 + 0.3 * (Math.sin((t / 1900) * Math.PI * 2) * 0.5 + 0.5),
+      particleY: Math.sin((t / (7000 / Math.max(speed, 0.05))) * Math.PI * 2) * profile.auraDrift * amp,
+      particleAlpha: particleMin + (particleMax - particleMin) * unitWave(t, 1800),
+      rimAlpha: pulseMin + (pulseMax - pulseMin) * unitWave(t, glowMs),
+      scanY: Math.sin((t / 4800) * Math.PI * 2) * scanDrift,
+      scanAlpha: 0.08 + 0.1 * unitWave(t, 2400),
+      gridAlpha: 0.16 + 0.12 * unitWave(t, 3000),
+      gridRot: Math.sin((t / 6800) * Math.PI * 2) * -0.34,
       eyesClosed: blinkClosed(t, profile, seed >>> 0),
     };
   }
@@ -230,7 +267,7 @@
       nodes.forEach((node) => {
         node.removeAttribute("transform");
         const name = node.getAttribute("data-layer");
-        if (name === "eyesClosed") node.setAttribute("opacity", "0");
+        if (Object.prototype.hasOwnProperty.call(POSTER_OPACITY, name)) node.setAttribute("opacity", POSTER_OPACITY[name]);
         else if (name === "eyesOpen" || name === "pupils") node.removeAttribute("opacity");
       });
       return;
@@ -247,6 +284,7 @@
     const scaleY = 1 + pose.breath * 0.014;
     set("torso", `translate(0 940) scale(1 ${fmt(scaleY)}) translate(0 -940) translate(0 ${fmt(dy)})`);
     set("head", `translate(${fmt(pose.headX * USER)} ${fmt(pose.headY * USER)})`);
+    set("rimGlow", `translate(${fmt(pose.headX * USER)} ${fmt(pose.headY * USER)})`, fmt(pose.rimAlpha == null ? 0.78 : pose.rimAlpha));
     set("hairFront", `translate(${fmt(pose.headX * 0.4 * USER)} ${fmt(-pose.floatY * 0.12 * USER)})`);
     set("hairBack", `translate(${fmt(pose.headX * 0.25 * USER)} ${fmt(pose.headY * 0.35 * USER)})`);
     set("collarFx", `translate(0 ${fmt(dy * 0.8)})`);
@@ -257,8 +295,10 @@
     const drift = pose.particleY * USER * 0.22;
     const fx = pose.auraDrift * USER * 0.08;
     set("bgFx", `translate(${fmt(Math.sin(pose.auraRot * 80) * fx)} ${fmt(drift * 0.35)})`);
-    set("aura", `rotate(${fmt(pose.auraRot * (180 / Math.PI))} 512 512)`, String(Math.max(0.55, Math.min(1, pose.auraAlpha))));
-    set("particles", `translate(${fmt(drift * 0.25)} ${fmt(-pose.particleY * USER * 0.45)})`, String(Math.max(0.4, Math.min(1, pose.particleAlpha))));
+    set("bgGrid", `rotate(${fmt(pose.gridRot || 0)} 512 512)`, fmt(pose.gridAlpha == null ? 0.22 : pose.gridAlpha));
+    set("aura", `rotate(${fmt(pose.auraRot * (180 / Math.PI))} 512 512)`, String(Math.max(0.45, Math.min(1, pose.auraAlpha))));
+    set("particles", `translate(${fmt(drift * 0.25)} ${fmt(-pose.particleY * USER * 0.45)})`, String(Math.max(0.3, Math.min(1, pose.particleAlpha))));
+    set("scanFx", `translate(0 ${fmt((pose.scanY || 0) * USER)})`, fmt(pose.scanAlpha == null ? 0.12 : pose.scanAlpha));
   }
 
   const readyText = new Map();
@@ -497,6 +537,7 @@
     STATE_MOD,
     HERO_CONTEXTS,
     LAYER_KEYS,
+    POSTER_OPACITY,
     MAX_PLAYING,
     profileForBrand,
     animatedPfpMeta,

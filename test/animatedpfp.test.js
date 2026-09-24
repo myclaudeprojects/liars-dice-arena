@@ -24,11 +24,28 @@ assert(MOTION_PROFILES.CHAOTIC_SPECTRAL.floatY > MOTION_PROFILES.ELEGANT_SMOKE.f
 assert(MOTION_PROFILES.CHAOTIC_SPECTRAL.blinkMinMs < MOTION_PROFILES.REGAL_STEADY.blinkMinMs, "spectral blinks sooner");
 
 const book = new BrandBook();
-eq(profileForBrand(book.full("dracula")), "ELEGANT_SMOKE", "dracula profile");
-eq(profileForBrand(book.full("caesar")), "REGAL_STEADY", "caesar profile");
-eq(profileForBrand(book.full("reaper")), "CHAOTIC_SPECTRAL", "reaper profile");
-eq(book.publicOf("athena").animatedPfp.motionProfile, "REGAL_STEADY", "precise motion stays steady");
-eq(book.publicOf("jester").animatedPfp.motionProfile, "CHAOTIC_SPECTRAL", "jester profile");
+const neon = MOTION_PROFILES.NEON_COMPETITIVE;
+assert(neon, "neon profile");
+eq(neon.floatY, 3.2, "neon float");
+eq(neon.headDriftX, 1.8, "neon head drift");
+eq(neon.pupilRange, 1.8, "neon pupils");
+eq(neon.blinkMinMs, 2600, "neon blink min");
+eq(neon.blinkMaxMs, 5800, "neon blink max");
+eq(neon.auraDrift, 8, "neon aura");
+eq(neon.pulseMin, 0.82, "neon pulse min");
+eq(neon.pulseMax, 1, "neon pulse max");
+eq(neon.glowDuration, 1.9, "neon glow");
+eq(neon.scanDriftY, 10, "neon scan");
+eq(neon.particleAlphaMin, 0.38, "neon particle min");
+eq(neon.particleAlphaMax, 0.66, "neon particle max");
+assert(neon.blinkMaxMs > neon.blinkMinMs, "neon blink window");
+
+eq(profileForBrand(book.full("dracula")), "NEON_COMPETITIVE", "dracula profile");
+eq(profileForBrand(book.full("caesar")), "NEON_COMPETITIVE", "caesar profile");
+eq(profileForBrand(book.full("reaper")), "NEON_COMPETITIVE", "reaper profile");
+eq(book.publicOf("athena").animatedPfp.motionProfile, "NEON_COMPETITIVE", "athena uses the neon rig");
+eq(book.publicOf("jester").animatedPfp.motionProfile, "NEON_COMPETITIVE", "jester profile");
+eq(profileForBrand({ animatedPfp: { motionProfile: "REGAL_STEADY" } }), "REGAL_STEADY", "explicit profile still wins");
 
 for (const id of ["dracula", "caesar", "reaper"]) {
   const view = book.publicOf(id);
@@ -41,13 +58,16 @@ for (const id of ["dracula", "caesar", "reaper"]) {
   eq(motion.manifest.poster, motion.previewUrl, id + " poster fallback");
   eq(motion.manifest.source, "procedural-svg", id + " synthetic manifest");
   assert(motion.manifest.layers.eyesOpen === "procedural" && motion.manifest.layers.pupils === "procedural", id + " layers");
+  assert(motion.manifest.layers.bgGrid === "procedural" && motion.manifest.layers.rimGlow === "procedural" && motion.manifest.layers.scanFx === "procedural", id + " neon layers");
+  eq(motion.styleId, "neon-competitive", id + " style id");
+  eq(view.pfpStyleId, "neon-competitive", id + " public style");
   assert(!book.full(id).animatedPfp, id + " disk record stays free of the view field");
 }
 
 const meta = animatedPfpMeta({ motionLanguage: "FAST_CONFIDENT", archetype: "GAMBLER" }, "/api/show/agents/u_vesper/pfp.svg");
-eq(meta.motionProfile, "ELEGANT_SMOKE", "created agent maps motion language");
-eq(profileForBrand({ archetype: "TRICKSTER", visualIdentity: { motionLanguage: "CHAOTIC_UNEVEN" } }), "CHAOTIC_SPECTRAL", "trickster concept");
-eq(profileForBrand({ archetype: "MACHINE", visualIdentity: { motionLanguage: "MECHANICAL_PRECISE" } }), "REGAL_STEADY", "machine concept");
+eq(meta.motionProfile, "NEON_COMPETITIVE", "created agent uses the neon rig");
+eq(profileForBrand({ archetype: "TRICKSTER", visualIdentity: { motionLanguage: "CHAOTIC_UNEVEN" } }), "NEON_COMPETITIVE", "trickster concept");
+eq(profileForBrand({ archetype: "MACHINE", visualIdentity: { motionLanguage: "MECHANICAL_PRECISE" } }), "NEON_COMPETITIVE", "machine concept");
 
 for (const context of ["watch", "profile", "reveal", "hero"]) {
   assert(shouldAnimate({ context }), context + " plays");
@@ -66,6 +86,14 @@ const first = blinkWindow(MOTION_PROFILES.CHAOTIC_SPECTRAL, 7, 0);
 assert(!blinkClosed(0, MOTION_PROFILES.CHAOTIC_SPECTRAL, 7), "eyes start open");
 assert(blinkClosed(first.gap + 20, MOTION_PROFILES.CHAOTIC_SPECTRAL, 7), "a blink closes the eyes");
 assert(!blinkClosed(first.gap + first.hold + 80, MOTION_PROFILES.CHAOTIC_SPECTRAL, 7), "the blink opens again");
+
+const neonPose = poseAt(1400, "NEON_COMPETITIVE", "idle", 3);
+assert(neonPose.floatY <= MOTION_PROFILES.NEON_COMPETITIVE.floatY, "neon float stays inside the profile");
+assert(neonPose.rimAlpha >= 0.82 && neonPose.rimAlpha <= 1, "rim glow stays in the pulse window");
+assert(neonPose.particleAlpha >= 0.38 && neonPose.particleAlpha <= 0.66, "particle alpha stays in the neon window");
+assert(Math.abs(neonPose.scanY) <= 10, "scan drift stays in the profile");
+const neonGaps = [0, 1, 2, 3, 4].map((i) => blinkWindow(MOTION_PROFILES.NEON_COMPETITIVE, 9, i).gap);
+assert(neonGaps.every((n) => n >= 2600 && n <= 5800), "neon blink gaps stay in the profile window");
 
 const elegant = poseAt(1400, "ELEGANT_SMOKE", "idle", 3);
 const regal = poseAt(1400, "REGAL_STEADY", "idle", 3);
@@ -115,9 +143,10 @@ for (const brand of SEED_BRANDS) {
   eq(pathData(drawn), pathData(small), brand.agentId + " sizes still share paths");
   assert(drawn.includes('data-layered="1"'), brand.agentId + " layered hook");
   assert(drawn.includes('data-engine="procedural-svg"'), brand.agentId + " engine");
-  for (const layer of ["bg", "torso", "head", "eyesOpen", "eyesClosed", "pupils", "aura"]) {
+  for (const layer of ["bg", "bgGrid", "torso", "head", "eyesOpen", "eyesClosed", "pupils", "rimGlow", "aura", "scanFx"]) {
     assert(drawn.includes(`data-layer="${layer}"`), brand.agentId + " layer " + layer);
   }
+  assert(drawn.includes('data-pfp-style="neon-competitive"'), brand.agentId + " neon style");
   assert(/data-layer="eyesClosed"[^>]*opacity="0"/.test(drawn), brand.agentId + " closed eyes stay hidden on the poster");
   assert(!/<animate[\s>]|script|foreignObject/i.test(drawn), brand.agentId + " poster does not run its own timeline");
 }

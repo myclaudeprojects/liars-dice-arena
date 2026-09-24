@@ -125,11 +125,14 @@
     for (const key of ["bg", "bgGrid", "bgFx", "torso", "head", "hairFront", "eyesOpen", "eyesClosed", "pupils", "collarFx", "rimGlow", "aura", "particles", "scanFx"]) {
       layers[key] = "procedural";
     }
+    const row = brand && typeof brand === "object" ? brand : {};
+    const canonical = (row.assets && row.assets.canonicalPfp) || previewUrl;
     return {
-      version: 1,
+      version: Number(row.version) || 1,
       engine: "procedural-svg",
       styleId: "neon-competitive",
       manifestUrl: null,
+      sourceCanonicalPfp: canonical,
       previewUrl,
       enabled: true,
       motionProfile,
@@ -138,7 +141,7 @@
         version: 1,
         width: 1024,
         height: 1024,
-        poster: previewUrl,
+        poster: canonical,
         source: "procedural-svg",
         layers,
         anchors: {

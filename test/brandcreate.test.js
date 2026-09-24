@@ -165,9 +165,9 @@ function signatures(concepts) {
   assert(app.includes("Create agent"), "agents tab labels the action");
   assert(app.includes("data-create-agent"), "empty and list states can open the wizard");
   assert(app.includes("/api/show/agents/brand/create"), "wizard calls create");
-  assert(app.includes("/brand/pfp-concepts"), "wizard calls pfp concepts");
-  assert(app.includes("/brand/pfp-select"), "wizard calls pfp select");
-  assert(app.includes("Regenerate all"), "wizard can regenerate portraits");
+  assert(app.includes("/brand/generate"), "wizard generates one portrait");
+  assert(app.includes("agent-visual-options"), "wizard shows character options");
+  assert(app.includes("Regenerate PFP"), "an agent can regenerate its portrait");
   assert(app.includes("pfp-frame"), "wizard shows square portraits");
   assert(app.includes("agent-reveal"), "lock ends on a reveal");
   assert(app.includes("Advanced / Developer Options"), "developer options stay collapsed");

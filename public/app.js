@@ -20,6 +20,7 @@ let me = null;
 let position = null;
 let focusAgent = null;
 let creator = null;
+let portraitEdit = null;
 let creatorBeat = null;
 let focusMatch = null;
 let agents = [];
@@ -355,7 +356,7 @@ function personTitle(person) {
 }
 function pfpPath(url) {
   const text = String(url || "");
-  if (/^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?size=(?:48|96|160|256|320|512|1024))?$/i.test(text)) return text;
+  if (/^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?(?:size=(?:48|96|160|256|320|512|1024)|v=\d+)(?:&(?:size=(?:48|96|160|256|320|512|1024)|v=\d+))?)?$/i.test(text)) return text;
   return "";
 }
 function pfpSrc(brand, size) {
@@ -1572,7 +1573,49 @@ function blankCreator() {
     draft: null,
     concepts: [],
     selectedId: null,
+    selections: defaultVisualSelections(),
   };
+}
+
+const VISUAL_GROUPS = [
+  ["archetype", "Archetype", ["executive", "street", "athlete", "celebrity", "tech", "criminal", "antihero", "comedian", "animal", "primal", "robot_ai", "experimental"]],
+  ["bodyType", "Body type", ["male_lean", "male_muscular", "female_lean", "female_athletic", "androgynous", "heavy_set", "elder", "young_adult", "non_human", "full_robot", "skeletal_synthetic"]],
+  ["expression", "Expression", ["calm", "confident", "aggressive", "playful", "mysterious", "intense", "intellectual", "laid_back", "cocky", "serious", "unhinged"]],
+  ["attire", "Attire", ["formal", "casual", "streetwear", "sports", "tactical", "luxury", "business", "hood_mask", "performance_costume", "cyber_gear", "minimal"]],
+  ["colorPalette", "Color palette", ["red", "blue", "purple", "pink", "green", "orange", "gold", "cyan", "yellow", "monochrome", "multi"]],
+  ["background", "Background", ["city_night", "underground", "club", "casino", "studio", "tech_lab", "vault", "arena", "space", "abstract", "custom"]],
+  ["accessories", "Accessories", ["glasses", "hat_cap", "mask", "headphones", "smoke", "jewelry", "scar_tattoo", "pet", "prop", "unique_fx", "none"]],
+];
+
+function defaultVisualSelections() {
+  return {
+    archetype: "executive",
+    bodyType: "male_lean",
+    expression: "confident",
+    attire: "formal",
+    colorPalette: "cyan",
+    background: "abstract",
+    accessories: "none",
+  };
+}
+
+function optionLabel(id) {
+  return String(id || "").replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function visualOptionGrids(selections) {
+  const current = selections || defaultVisualSelections();
+  return VISUAL_GROUPS.map(([group, label, ids]) => `<section class="visual-group">
+      <h2>${esc(label)}</h2>
+      <div class="agent-visual-options">${ids.map((id) => {
+        const on = current[group] === id;
+        const src = `/assets/agent-creation-previews/${group}/${id}.svg`;
+        return `<button class="option-card${on ? " is-selected" : ""}" type="button" data-opt-group="${esc(group)}" data-opt-id="${esc(id)}" aria-pressed="${on ? "true" : "false"}">
+          <img src="${esc(src)}" alt="" width="96" height="96">
+          <span>${esc(optionLabel(id))}</span>
+        </button>`;
+      }).join("")}</div>
+    </section>`).join("");
 }
 
 function createAgentButton() {
@@ -1597,6 +1640,7 @@ function creatorPayload() {
     shortDescription: f.shortDescription,
     archetype: f.archetype,
     visualDirection: f.visualDirection,
+    creationSelections: creator.selections || defaultVisualSelections(),
     personality: {
       aggression: f.aggression,
       bluffing: f.bluffing,
@@ -1650,22 +1694,14 @@ function creatorView() {
         </div>
       </details>`;
   } else if (step === 2) {
-    const cards = (creator.concepts || []).map((c) => conceptPortrait(c)).join("");
-    body = `<section class="brand-concepts">
+    body = `<section class="brand-options">
       <div class="brand-concepts__header">
-        <span class="kicker">Choose their look</span>
-        <h2>This becomes your agent’s identity.</h2>
-        <p class="fine">Four square portraits. Pick the face that should be canonical. You can regenerate before you lock it.</p>
+        <span class="kicker">Character options</span>
+        <h2>One portrait. These choices build it.</h2>
+        <p class="fine">Previews are examples. Generate agent locks one neon-competitive identity.</p>
       </div>
-      <div class="concept-grid pfp-concept-grid" id="pfpConceptGrid">${cards || `<p class="fine">No portraits yet.</p>`}</div>
-      <label>Refine<textarea name="refine" maxlength="160" placeholder="More like the quiet one, different metal.">${esc(f.refine)}</textarea></label>
-      <div class="creator-actions concept-actions">
-        <button class="ghost" type="button" data-creator-vary="all"${creator.busy ? " disabled" : ""}>Regenerate all</button>
-        <button class="ghost" type="button" data-creator-vary="expression"${creator.busy ? " disabled" : ""}>Stronger expression</button>
-        <button class="ghost" type="button" data-creator-vary="darker"${creator.busy ? " disabled" : ""}>Darker version</button>
-        <button class="ghost" type="button" data-creator-vary="cleaner"${creator.busy ? " disabled" : ""}>Cleaner background</button>
-        <button class="ghost" type="button" data-creator-vary="like"${creator.busy ? " disabled" : ""}>More like this</button>
-      </div>
+      ${visualOptionGrids(creator.selections)}
+      <label>Refine<textarea name="refine" maxlength="160" placeholder="Optional note. The options above decide the portrait.">${esc(f.refine)}</textarea></label>
     </section>`;
   } else {
     const reveal = creator.reveal || {};
@@ -1693,10 +1729,16 @@ function creatorView() {
       </div>
       <span class="pfp-sizes" aria-label="Small-size check">${pfpMini(reveal.svg || (c && c.pfpSvg), 48)}${pfpMini(reveal.svg || (c && c.pfpSvg), 96)}</span>
       <button class="cta lda-btn lda-btn-primary lda-btn-block agent-reveal__enter" type="button" data-enter-arena="1"${creator.busy ? " disabled" : ""}>Enter the Arena</button>
+      ${pfpDebugPanel({
+        id: revealId,
+        creationSelections: reveal.selections || creator.selections,
+        brand: { version: reveal.version, styleId: "neon-competitive", assets: { canonicalPfp: reveal.canonicalPfp || "" }, animatedPfp: { manifestUrl: "" } },
+        visualDirty: false,
+      })}
     </section>`;
   }
-  const nextLabel = step === 1 ? "Generate portraits" : step === 2 ? "Lock this portrait" : "Enter the Arena";
-  const nextAttr = step === 1 ? "data-creator-generate" : step === 2 ? "data-creator-confirm" : "data-enter-arena";
+  const nextLabel = step === 1 ? "Choose look" : step === 2 ? "Generate agent" : "Enter the Arena";
+  const nextAttr = step === 1 ? "data-creator-next" : step === 2 ? "data-creator-generate" : "data-enter-arena";
   const working = creator.statusLabel || "Working.";
   return `<div class="creator">
     <p class="kicker">${esc(kicker)}</p>
@@ -1743,12 +1785,92 @@ function resumeCreator(agent) {
   creator.draft = { agent: { id: agent.id, name: agent.name, status: agent.status } };
   creator.concepts = agent.concepts || [];
   creator.selectedId = agent.selectedConceptId || (creator.concepts[0] && creator.concepts[0].id) || null;
-  creator.step = creator.concepts.length ? 2 : 1;
+  creator.selections = Object.assign(defaultVisualSelections(), agent.creationSelections || {});
+  creator.step = agent.status === "READY" ? 1 : 2;
   focusAgent = null;
   tab = "agents";
   painted = "";
   paintTabs();
   render();
+}
+
+function chooseLook() {
+  if (!creator || creator.busy) return;
+  syncCreatorFromDom();
+  if (creator.form.name.trim().length < 2 || creator.form.shortDescription.trim().length < 8) {
+    creator.error = "Add a name, and a short description of at least 8 characters under Advanced.";
+    painted = "";
+    render();
+    return;
+  }
+  creator.error = "";
+  creator.step = 2;
+  painted = "";
+  render();
+}
+
+async function generateAgent() {
+  if (!creator || creator.busy) return;
+  syncCreatorFromDom();
+  if (creator.form.name.trim().length < 2 || creator.form.shortDescription.trim().length < 8) {
+    creator.error = "Add a name, and a short description of at least 8 characters under Advanced.";
+    creator.step = 1;
+    painted = "";
+    render();
+    return;
+  }
+  creator.busy = true;
+  creator.error = "";
+  startCreatorBeat();
+  painted = "";
+  render();
+  try {
+    if (!creator.draft) {
+      const created = await api("/api/show/agents/brand/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(creatorPayload()),
+      });
+      creator.draft = created;
+    }
+    const id = creator.draft.agent.id;
+    const generated = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ creationSelections: creator.selections || defaultVisualSelections() }),
+    });
+    const brand = generated.brand || {};
+    const visual = brand.visualIdentity || {};
+    creator.reveal = {
+      name: creator.form.name,
+      title: brand.title,
+      tagline: brand.tagline,
+      svg: generated.svg,
+      emblem: "",
+      accent: visual.accentColor,
+      primary: visual.primaryColor,
+      version: brand.version,
+      canonicalPfp: brand.assets && brand.assets.canonicalPfp,
+      selections: generated.creationSelections || creator.selections,
+      agentId: id,
+    };
+    creator.step = 3;
+    await refreshLists();
+  } catch (ex) {
+    if (creator) {
+      creator.error = creator.draft
+        ? "Portrait generation failed. The last portrait was kept."
+        : (ex.message || "Could not generate that portrait.");
+      creator.step = 2;
+    }
+  } finally {
+    stopCreatorBeat();
+    if (creator) {
+      creator.busy = false;
+      painted = "";
+      render();
+    }
+  }
 }
 
 async function runConcepts(vary) {
@@ -1871,6 +1993,91 @@ function agentsView() {
     }).join("") + `</div>`;
 }
 
+function pfpDebugOn() {
+  try { return new URLSearchParams(location.search).get("debug") === "1"; }
+  catch { return false; }
+}
+
+function pfpDebugPanel(info) {
+  if (!pfpDebugOn() || !info) return "";
+  const brand = info.brandRecord || info.brand || info;
+  const sel = info.creationSelections || info.selections || brand.creationSelections || {};
+  const assets = brand.assets || {};
+  const motion = brand.animatedPfp || {};
+  const rows = [
+    ["Agent ID", info.agentId || info.id || brand.agentId || ""],
+    ["Brand version", brand.version || ""],
+    ["Visual dirty", String(info.visualDirty === true || brand.visualDirty === true)],
+    ["Style ID", brand.styleId || brand.pfpStyleId || "neon-competitive"],
+    ["Archetype", sel.archetype || ""],
+    ["Body type", sel.bodyType || ""],
+    ["Expression", sel.expression || ""],
+    ["Attire", sel.attire || ""],
+    ["Palette", sel.colorPalette || ""],
+    ["Background", sel.background || ""],
+    ["Accessory", sel.accessories || ""],
+    ["Canonical PFP URL", assets.canonicalPfp || brand.canonicalPfp || info.canonicalPfp || ""],
+    ["Animated manifest URL", motion.manifestUrl || ""],
+  ];
+  return `<aside class="pfp-debug" data-pfp-debug>${rows.map(([key, value]) => `<p><b>${esc(key)}</b> <span>${esc(value == null ? "" : String(value))}</span></p>`).join("")}</aside>`;
+}
+
+function portraitEditor(agent) {
+  if (!agent || agent.roster !== "user") return "";
+  const edit = portraitEdit && portraitEdit.id === agent.id ? portraitEdit : null;
+  const selections = (edit && edit.selections) || agent.creationSelections || defaultVisualSelections();
+  return `<details class="portrait-editor"${edit && edit.open ? " open" : ""}>
+    <summary>Regenerate PFP</summary>
+    <p class="fine">Same generator. A new version replaces the canonical portrait only after it saves.</p>
+    ${visualOptionGrids(selections)}
+    <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-regenerate-pfp="${esc(agent.id)}"${edit && edit.busy ? " disabled" : ""}>Regenerate PFP</button>
+    ${edit && edit.error ? `<div class="err lda-error" role="alert">${esc(edit.error)}</div>` : ""}
+    ${edit && edit.ok ? `<p class="fine" role="status">Portrait saved. Version ${esc(String(edit.version || ""))}.</p>` : ""}
+  </details>`;
+}
+
+async function regeneratePortrait(id) {
+  const agent = focusAgent && focusAgent.id === id ? focusAgent : (agents.find((row) => row.id === id) || null);
+  if (!portraitEdit || portraitEdit.id !== id) {
+    portraitEdit = {
+      id,
+      selections: Object.assign(defaultVisualSelections(), (agent && agent.creationSelections) || {}),
+      open: true,
+      error: "",
+      busy: false,
+      ok: false,
+    };
+  }
+  portraitEdit.busy = true;
+  portraitEdit.error = "";
+  portraitEdit.ok = false;
+  portraitEdit.open = true;
+  painted = "";
+  render();
+  try {
+    const generated = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/regenerate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ creationSelections: portraitEdit.selections }),
+    });
+    portraitEdit.busy = false;
+    portraitEdit.ok = true;
+    portraitEdit.version = generated.brand && generated.brand.version;
+    await refreshLists();
+    const detail = await api("/api/show/agents/" + encodeURIComponent(id));
+    if (detail && detail.agent && focusAgent && focusAgent.id === id) focusAgent = detail.agent;
+  } catch (ex) {
+    if (portraitEdit) {
+      portraitEdit.busy = false;
+      portraitEdit.ok = false;
+      portraitEdit.open = true;
+      portraitEdit.error = "Portrait generation failed. The last portrait was kept.";
+    }
+  }
+  painted = "";
+  render();
+}
+
 function agentDetail(a) {
   const mine = (me && me.theories && me.theories[a.id]) || [];
   const tags = ["Aggressive", "Conservative", "Bluffer", "Risk-taker", "Pressure player", "Unpredictable"];
@@ -1891,6 +2098,8 @@ function agentDetail(a) {
   return `
     <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="agents">All agents</button>
     <div class="agent-hero" data-cast="${esc(a.id)}"${brandStyle(a)}>${agentPortrait(a)}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
+    ${portraitEditor(a)}
+    ${pfpDebugPanel(a)}
     ${a.roster === "user" && a.status && a.status !== "READY" ? `<button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-resume-agent="1">Continue branding</button>` : ""}
     ${a.roster === "user" && a.playable ? `<p class="fine">User roster. The show seats this agent against the house cast when a chair is free${a.seated ? ", and they are on the slate now" : ""}.</p>` : ""}
     <p class="fine">${esc(a.archetype)}</p>
@@ -2385,11 +2594,40 @@ view.addEventListener("click", async (e) => {
   if (createBtn) { openCreator(); return; }
   const resumeBtn = e.target.closest("[data-resume-agent]");
   if (resumeBtn && focusAgent) { resumeCreator(focusAgent); return; }
+  const detailOpt = e.target.closest("[data-opt-group]");
+  if (detailOpt && focusAgent && !creator && focusAgent.roster === "user") {
+    if (!portraitEdit || portraitEdit.id !== focusAgent.id) {
+      portraitEdit = {
+        id: focusAgent.id,
+        selections: Object.assign(defaultVisualSelections(), focusAgent.creationSelections || {}),
+        open: true,
+        error: "",
+        busy: false,
+        ok: false,
+      };
+    }
+    portraitEdit.selections[detailOpt.dataset.optGroup] = detailOpt.dataset.optId;
+    portraitEdit.open = true;
+    portraitEdit.ok = false;
+    portraitEdit.error = "";
+    painted = "";
+    render();
+    return;
+  }
+  const regen = e.target.closest("[data-regenerate-pfp]");
+  if (regen) { regeneratePortrait(regen.dataset.regeneratePfp); return; }
   if (creator) {
-    const vary = e.target.closest("[data-creator-vary]");
-    if (vary) { runConcepts(vary.dataset.creatorVary); return; }
-    if (e.target.closest("[data-creator-generate]")) { runConcepts("all"); return; }
-    if (e.target.closest("[data-creator-confirm]")) { confirmConcept(); return; }
+    const opt = e.target.closest("[data-opt-group]");
+    if (opt) {
+      creator.selections = Object.assign(defaultVisualSelections(), creator.selections);
+      creator.selections[opt.dataset.optGroup] = opt.dataset.optId;
+      creator.error = "";
+      painted = "";
+      render();
+      return;
+    }
+    if (e.target.closest("[data-creator-next]")) { chooseLook(); return; }
+    if (e.target.closest("[data-creator-generate]")) { generateAgent(); return; }
     if (e.target.closest("[data-enter-arena]")) {
       stopCreatorBeat();
       creator = null;

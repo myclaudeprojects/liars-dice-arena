@@ -19,6 +19,7 @@ const { Stats } = require("./src/stats");
 const { Show } = require("./src/showrunner");
 const { defaultShowPath } = require("./src/showstore");
 const { handleShow, handleVerifyMatch } = require("./src/showhttp");
+const { previewSvg } = require("./src/branding/creationPreviews");
 const stats = new Stats();
 const TABLE_SIZE = Math.max(2, Math.min(4, Math.round(Number(process.env.TABLE_SIZE) || 3)));
 const registry = new Registry({ allowLocal: process.env.ALLOW_LOCAL_AGENTS === "1" || !process.env.RENDER });
@@ -273,6 +274,16 @@ const server = http.createServer(async (req, res) => {
   }
   if (url === "/api/leaderboard") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(stats.leaderboard())); }
   if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(publicState())); }
+  const preview = url.match(/^\/assets\/agent-creation-previews\/([A-Za-z]+)\/([A-Za-z0-9_]+)\.svg$/);
+  if (req.method === "GET" && preview) {
+    const svg = previewSvg(preview[1], preview[2]);
+    if (!svg) { res.writeHead(404); return res.end("not found"); }
+    res.writeHead(200, {
+      "content-type": "image/svg+xml; charset=utf-8",
+      "cache-control": "public, max-age=86400",
+    });
+    return res.end(svg);
+  }
   if (url.startsWith("/static/")) return sendFile(res, url.slice("/static/".length));
   if (url.startsWith("/api/agents")) return agentsApi(req, res, url);
   if (url === "/api/pool") return json(res, 200, { walletKind: wallet.kind, poolAddress: pool?.poolWallet?.address || null, open: !!(pool && pool.open), closeAt: state.betCloseAt, matchNo: state.matchNo, chain: wallet.chainInfo ? wallet.chainInfo() : null, minStake: MIN_STAKE });

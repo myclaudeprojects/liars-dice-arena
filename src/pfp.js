@@ -7,7 +7,8 @@
 // the same paths. Only the root width and height change.
 
 const { PFP_STYLE_ID } = require("./branding/stylePresets");
-const { buildPfpPrompt } = require("./branding/buildPfpPrompt");
+const { buildPfpPrompt, buildNeonPfpVisualInstruction } = require("./branding/buildPfpPrompt");
+const { mapSelections } = require("./branding/creationSelections");
 
 const PFP_STYLE_VERSION = "lda-pfp-v2";
 const PFP_PROMPT_VERSION = "agent-pfp-v2";
@@ -156,12 +157,26 @@ function buildRecipe(input) {
   const visual = src.visual && typeof src.visual === "object" ? src.visual : {};
   const treatment = TREATMENTS.includes(src.treatment) ? src.treatment : "standard";
   const variation = Math.abs(Math.floor(Number(src.variation) || 0));
+  const mapped = (src.selections || src.creationSelections)
+    ? mapSelections(src.selections || src.creationSelections)
+    : null;
   const primary = validHex(visual.primaryColor) || "#101216";
   const secondary = validHex(visual.secondaryColor) || "#1F232A";
-  const accent = validHex(visual.accentColor) || "#4AD7FF";
+  let accent = validHex(visual.accentColor) || "#4AD7FF";
   const tone = skinKey(src.archetype, visual.emblem, src.name);
   let pack = SKIN[tone];
-  const attitude = ATTITUDES.includes(visual.facialAttitude) ? visual.facialAttitude : "STOIC";
+  let attitude = ATTITUDES.includes(visual.facialAttitude) ? visual.facialAttitude : "STOIC";
+  if (mapped) {
+    accent = validHex(mapped.accent) || accent;
+    attitude = ATTITUDES.includes(mapped.attitude) ? mapped.attitude : attitude;
+    if (mapped.species === "robot" || mapped.species === "skeletal") pack = SKIN.metal;
+    else if (mapped.species === "animal" || mapped.species === "primal") pack = SKIN.ember;
+    else if (mapped.age === "elder") pack = SKIN.ash;
+    else if (mapped.faceKind === "female_lean" || mapped.faceKind === "female_athletic") pack = SKIN.porcelain;
+    else if (mapped.faceKind === "heavy_set") pack = SKIN.deep;
+    else if (mapped.faceKind === "male_muscular") pack = SKIN.warm;
+    else pack = SKIN.olive;
+  }
   const darker = treatment === "darker";
   const cleaner = treatment === "cleaner" || treatment === "minimal";
   const minimal = treatment === "minimal";
@@ -175,22 +190,37 @@ function buildRecipe(input) {
   const iris = tone === "ash"
     ? mix(accent, "#F7F4FF", 0.45)
     : (luma(shade(primary, -0.5)) < 0.2 ? shade(primary, -0.35) : "#241814");
-  const forced = ["crown", "laurel", "crest", "hood", "cowl", "long", "helm", "cropped", "halfmask", "asymmetric", "swept", "ears", "wild", "halo"].includes(src.headwear)
+  const forced = ["crown", "laurel", "crest", "hood", "cowl", "long", "helm", "cropped", "halfmask", "asymmetric", "swept", "ears", "wild", "halo", "cap"].includes(src.headwear)
     ? src.headwear
     : "";
-  const headwear = forced || headwearFor(visual.emblem, src.archetype, variation);
+  const headwear = mapped
+    ? (mapped.headwear || "")
+    : (forced || headwearFor(visual.emblem, src.archetype, variation));
+  const hairKind = mapped ? mapped.hair : hairUnder(headwear);
   return {
     styleVersion: PFP_STYLE_VERSION,
     styleId: PFP_STYLE_ID,
     promptVersion: PFP_PROMPT_VERSION,
     treatment,
     variation,
-    turn: (variation % 3) - 1,
+    turn: mapped ? mapped.turn : (variation % 3) - 1,
     attitude,
-    intensity: treatment === "expression" ? 1.7 : 1.2,
+    intensity: mapped ? mapped.intensity : (treatment === "expression" ? 1.7 : 1.2),
     headwear,
-    hair: hairUnder(headwear),
-    silhouette: visual.silhouette || "SLIM_ELEGANT",
+    hair: hairKind,
+    silhouette: mapped ? mapped.silhouette : (visual.silhouette || "SLIM_ELEGANT"),
+    species: mapped ? mapped.species : "human",
+    faceKind: mapped ? mapped.faceKind : "",
+    archetypeId: mapped ? mapped.archetype : "",
+    attire: mapped ? mapped.attire : "",
+    accessory: mapped ? mapped.accessory : "",
+    background: mapped ? mapped.background : "",
+    expression: mapped ? mapped.expression : "",
+    age: mapped ? mapped.age : "",
+    augment: mapped ? mapped.augment === true : false,
+    palette: mapped ? mapped.palette : "",
+    secondaryAccent: mapped ? mapped.secondaryAccent : "",
+    selections: mapped ? mapped.selections : null,
     bodyLanguage: visual.bodyLanguage || "",
     motif: visual.backgroundMotif || "SIGNAL_HALO",
     lighting: visual.lightingStyle || "COOL_NEON_EDGE",
@@ -208,15 +238,15 @@ function buildRecipe(input) {
       skinShadow: pack[1],
       skinDeep: pack[2],
       lip: mix(pack[3], "#241014", 0.42),
-      sclera: tone === "ash" || tone === "metal" ? "#E7E4F2" : "#F6F1EA",
-      hair,
+      hair: mapped && mapped.age === "elder" ? "#C9C3BA" : hair,
       cloth: primary,
       clothDeep: shade(primary, -0.32),
       trim: accent,
       edge,
       mid: darker ? "#07080C" : mix("#0C0E14", secondary, 0.22),
       glow: darker ? mix("#0C0E14", accent, 0.12) : mix("#12141A", accent, 0.3),
-      iris,
+      iris: mapped && (mapped.species === "robot" || mapped.species === "skeletal") ? accent : iris,
+      sclera: mapped && (mapped.species === "robot" || mapped.species === "skeletal") ? "#10141C" : (tone === "ash" || tone === "metal" ? "#E7E4F2" : "#F6F1EA"),
     },
     signature: signatureOf(headwear),
     signatureFeature: visual.signatureFeature || signatureOf(headwear),
@@ -320,7 +350,48 @@ function promptFor(recipe) {
       },
     },
   });
-  return `${body}\n\nRENDERER: procedural SVG, lda-pfp-v2. No external image model.`;
+  const instruction = row.selections
+    ? buildNeonPfpVisualInstruction({
+      name: id.name,
+      archetype: id.archetype,
+      creationSelections: row.selections,
+    })
+    : "";
+  return [body, instruction, "RENDERER: procedural SVG, lda-pfp-v2. No external image model."].filter(Boolean).join("\n\n");
+}
+
+function jawWidth(body, archetype) {
+  if (body === "heavy_set") return 248;
+  if (body === "male_muscular") return 230;
+  if (body === "female_athletic") return 196;
+  if (body === "female_lean") return 168;
+  if (body === "young_adult") return 188;
+  if (body === "elder") return 176;
+  if (body === "androgynous") return 186;
+  if (archetype === "criminal" || archetype === "street") return 214;
+  if (archetype === "executive") return 184;
+  return 200;
+}
+
+function humanFacePath(x, body, archetype) {
+  const jaw = jawWidth(body, archetype);
+  const cheek = body === "heavy_set" ? jaw + 18 : body === "female_lean" ? jaw - 6 : jaw + 8;
+  const chin = body === "female_lean" || body === "female_athletic" ? Math.round(jaw * 0.62) : body === "male_muscular" ? Math.round(jaw * 0.92) : Math.round(jaw * 0.78);
+  const top = 176;
+  const bot = 708;
+  const browDrop = body === "elder" ? 18 : body === "young_adult" ? -8 : 0;
+  return `M ${x} ${top} C ${x + cheek} ${top + 24 + browDrop} ${x + cheek} 390 ${x + jaw} 500 C ${x + chin + 24} 630 ${x + Math.round(chin * 0.45)} ${bot - 16} ${x} ${bot} C ${x - Math.round(chin * 0.45)} ${bot - 16} ${x - chin - 24} 630 ${x - jaw} 500 C ${x - cheek} 390 ${x - cheek} ${top + 24 + browDrop} ${x} ${top} Z`;
+}
+
+function robotFacePath(x, skeletal) {
+  if (skeletal) {
+    return `M ${x} 176 L ${x + 132} 248 L ${x + 118} 470 L ${x + 36} 708 L ${x - 36} 708 L ${x - 118} 470 L ${x - 132} 248 Z`;
+  }
+  return `M ${x - 36} 176 L ${x + 196} 230 L ${x + 214} 470 L ${x + 150} 620 L ${x + 48} 708 L ${x - 48} 708 L ${x - 150} 620 L ${x - 214} 470 L ${x - 196} 230 Z`;
+}
+
+function animalFacePath(x) {
+  return `M ${x} 176 C ${x + 168} 214 ${x + 150} 340 ${x + 78} 470 C ${x + 150} 560 ${x + 86} 650 ${x} 708 C ${x - 86} 650 ${x - 150} 560 ${x - 78} 470 C ${x - 150} 340 ${x - 168} 214 ${x} 176 Z`;
 }
 
 function facePath(x) {
@@ -487,6 +558,251 @@ function leaves(x, y, color) {
   return bits.join("");
 }
 
+function selectionOutline(row, x) {
+  if (row.species === "robot") return robotFacePath(x, false);
+  if (row.species === "skeletal") return robotFacePath(x, true);
+  if (row.species === "animal") return animalFacePath(x);
+  return humanFacePath(x, row.faceKind, row.archetypeId);
+}
+
+function opticParts(cx, cy, colors) {
+  const open = [
+    el("rect", { x: cx - 70, y: cy - 22, width: 140, height: 44, rx: 8, fill: "#0C1016" }),
+    el("rect", { x: cx - 54, y: cy - 10, width: 108, height: 18, rx: 4, fill: colors.trim }),
+  ].join("");
+  const pupils = el("rect", { x: cx - 16, y: cy - 6, width: 22, height: 10, fill: "#F7FBFF" });
+  const closed = el("rect", { x: cx - 70, y: cy - 8, width: 140, height: 16, rx: 4, fill: "#1A2030" });
+  return { open, pupils, closed };
+}
+
+function backgroundMarkup(kind, colors) {
+  const fill = colors.trim;
+  if (kind === "city_night") {
+    return [180, 280, 390, 640, 760, 860].map((bx, i) => el("rect", {
+      x: bx, y: 520 - (i % 3) * 70, width: 70, height: 280 + (i % 3) * 70, fill, opacity: "0.28",
+    })).join("");
+  }
+  if (kind === "underground") {
+    return [0, 1, 2, 3].map((i) => el("line", {
+      x1: 80, y1: 180 + i * 48, x2: 944, y2: 220 + i * 48, stroke: fill, "stroke-width": 8, opacity: "0.35",
+    })).join("");
+  }
+  if (kind === "club") {
+    return [220, 400, 700, 820].map((cx, i) => el("circle", {
+      cx, cy: 220 + (i % 2) * 80, r: 36 + i * 6, fill, opacity: "0.35",
+    })).join("");
+  }
+  if (kind === "casino") {
+    return el("path", { fill, opacity: "0.4", d: "M 512 120 L 560 210 L 470 210 Z M 250 260 L 300 340 L 210 340 Z M 760 240 L 820 330 L 710 330 Z" });
+  }
+  if (kind === "studio") {
+    return el("ellipse", { cx: 512, cy: 300, rx: 220, ry: 80, fill, opacity: "0.2" });
+  }
+  if (kind === "tech_lab") {
+    return el("path", { fill: "none", stroke: fill, "stroke-width": 6, opacity: "0.45", d: "M 160 180 H 864 M 160 180 V 520 M 864 180 V 520" });
+  }
+  if (kind === "vault") {
+    return el("path", { fill: "none", stroke: fill, "stroke-width": 14, opacity: "0.4", d: "M 220 760 V 280 H 804 V 760" });
+  }
+  if (kind === "arena") {
+    return el("path", { fill: "none", stroke: fill, "stroke-width": 16, opacity: "0.55", d: "M 140 260 L 360 420 L 140 580 M 884 260 L 664 420 L 884 580" });
+  }
+  if (kind === "space") {
+    return [200, 340, 700, 840, 512].map((cx, i) => el("circle", {
+      cx, cy: 160 + (i * 37) % 180, r: 4 + (i % 3) * 2, fill, opacity: "0.8",
+    })).join("");
+  }
+  if (kind === "custom") {
+    return el("path", { fill, opacity: "0.35", d: "M 120 160 L 420 900 L 470 900 L 180 160 Z" });
+  }
+  return "";
+}
+
+function attireMarkup(row, x, colors) {
+  const attire = row.attire;
+  if (!attire || attire === "minimal") return "";
+  if (attire === "formal" || attire === "business") {
+    return [
+      el("path", { fill: shade(colors.cloth, 0.22), d: `M ${x - 170} 760 L ${x - 8} 900 L ${x - 70} 1000 L ${x - 230} 860 Z` }),
+      el("path", { fill: colors.clothDeep, d: `M ${x + 170} 760 L ${x + 8} 900 L ${x + 70} 1000 L ${x + 230} 860 Z` }),
+      el("path", { fill: colors.trim, d: `M ${x - 18} 860 H ${x + 18} L ${x + 26} 1000 H ${x - 26} Z` }),
+    ].join("");
+  }
+  if (attire === "streetwear") {
+    return [
+      el("path", { fill: colors.clothDeep, d: `M ${x - 200} 740 Q ${x} 680 ${x + 200} 740 L ${x + 160} 860 Q ${x} 820 ${x - 160} 860 Z` }),
+      el("path", { fill: colors.trim, d: `M ${x - 10} 800 V 980 M ${x + 10} 800 V 980`, "stroke-width": 6, stroke: colors.trim }),
+    ].join("");
+  }
+  if (attire === "sports") {
+    return [
+      el("path", { fill: colors.trim, d: `M ${x - 200} 800 H ${x + 200} V 860 H ${x - 200} Z` }),
+      el("path", { fill: shade(colors.trim, -0.25), d: `M ${x - 200} 900 H ${x + 200} V 940 H ${x - 200} Z` }),
+    ].join("");
+  }
+  if (attire === "tactical") {
+    return [
+      el("path", { fill: "#1A1E24", d: `M ${x - 150} 780 H ${x + 150} V 980 H ${x - 150} Z` }),
+      el("path", { fill: colors.trim, d: `M ${x - 90} 760 V 980 M ${x + 90} 760 V 980`, stroke: colors.trim, "stroke-width": 10 }),
+    ].join("");
+  }
+  if (attire === "luxury") {
+    return [
+      el("path", { fill: colors.trim, d: `M ${x - 180} 760 L ${x} 900 L ${x + 180} 760 L ${x + 80} 1000 L ${x} 940 L ${x - 80} 1000 Z` }),
+      el("circle", { cx: x, cy: 900, r: 12, fill: "#F6F1EA" }),
+    ].join("");
+  }
+  if (attire === "performance_costume") {
+    return el("path", { fill: colors.trim, d: `M ${x - 40} 760 L ${x - 220} 980 L ${x - 120} 1000 L ${x} 820 L ${x + 120} 1000 L ${x + 220} 980 L ${x + 40} 760 Z` });
+  }
+  if (attire === "cyber_gear") {
+    return [
+      el("rect", { x: x - 70, y: 800, width: 140, height: 36, fill: colors.trim }),
+      el("rect", { x: x - 120, y: 860, width: 50, height: 80, fill: shade(colors.cloth, 0.18) }),
+      el("rect", { x: x + 70, y: 860, width: 50, height: 80, fill: shade(colors.cloth, 0.08) }),
+    ].join("");
+  }
+  if (attire === "casual") {
+    return el("path", { fill: shade(colors.cloth, 0.12), d: `M ${x - 90} 790 Q ${x} 860 ${x + 90} 790 V 860 Q ${x} 900 ${x - 90} 860 Z` });
+  }
+  return "";
+}
+
+function accessoryMarkup(row, x, colors) {
+  const kind = row.accessory;
+  if (!kind || kind === "none") return "";
+  if (kind === "glasses") {
+    return [
+      el("circle", { cx: x - 110, cy: 430, r: 42, fill: "none", stroke: "#F4F7FB", "stroke-width": 10 }),
+      el("circle", { cx: x + 110, cy: 430, r: 42, fill: "none", stroke: "#F4F7FB", "stroke-width": 10 }),
+      el("path", { d: `M ${x - 68} 430 H ${x + 68}`, fill: "none", stroke: "#F4F7FB", "stroke-width": 8 }),
+    ].join("");
+  }
+  if (kind === "hat_cap" || row.headwear === "cap") {
+    return [
+      el("path", { fill: colors.clothDeep, d: `M ${x - 190} 250 Q ${x} 90 ${x + 170} 230 L ${x + 150} 300 L ${x - 170} 300 Z` }),
+      el("path", { fill: colors.trim, d: `M ${x - 20} 280 L ${x + 250} 330 L ${x + 40} 360 Z` }),
+    ].join("");
+  }
+  if (kind === "mask") {
+    return el("path", { fill: colors.clothDeep, opacity: "0.94", d: `M ${x - 160} 490 Q ${x} 450 ${x + 160} 490 L ${x + 140} 690 Q ${x} 760 ${x - 140} 690 Z` });
+  }
+  if (kind === "headphones") {
+    return [
+      el("path", { d: `M ${x - 200} 460 Q ${x} 180 ${x + 200} 460`, fill: "none", stroke: colors.trim, "stroke-width": 16 }),
+      el("rect", { x: x - 230, y: 420, width: 48, height: 90, rx: 12, fill: colors.clothDeep }),
+      el("rect", { x: x + 182, y: 420, width: 48, height: 90, rx: 12, fill: colors.clothDeep }),
+    ].join("");
+  }
+  if (kind === "smoke") {
+    return el("path", { fill: "none", stroke: "#D9D3CB", "stroke-width": 8, opacity: "0.8", d: `M ${x + 180} 620 C ${x + 240} 560 ${x + 200} 500 ${x + 280} 440` });
+  }
+  if (kind === "jewelry") {
+    return [
+      el("path", { d: `M ${x - 70} 760 Q ${x} 860 ${x + 70} 760`, fill: "none", stroke: colors.trim, "stroke-width": 8 }),
+      el("circle", { cx: x, cy: 790, r: 10, fill: colors.trim }),
+    ].join("");
+  }
+  if (kind === "scar_tattoo") {
+    return el("path", { d: `M ${x - 150} 390 L ${x - 70} 520`, fill: "none", stroke: "#8E2E2E", "stroke-width": 8 });
+  }
+  if (kind === "pet") {
+    return [
+      el("circle", { cx: x + 230, cy: 860, r: 36, fill: colors.trim }),
+      el("circle", { cx: x + 214, cy: 832, r: 12, fill: colors.trim }),
+      el("circle", { cx: x + 246, cy: 832, r: 12, fill: colors.trim }),
+    ].join("");
+  }
+  if (kind === "prop") {
+    return el("rect", { x: x - 280, y: 700, width: 28, height: 180, rx: 6, fill: colors.trim });
+  }
+  if (kind === "unique_fx") {
+    return [
+      el("circle", { cx: x, cy: 430, r: 250, fill: "none", stroke: colors.trim, "stroke-width": 4, opacity: "0.7" }),
+      el("circle", { cx: x, cy: 430, r: 300, fill: "none", stroke: colors.secondaryAccent || colors.trim, "stroke-width": 3, opacity: "0.5" }),
+    ].join("");
+  }
+  return "";
+}
+
+function selectionCostume(row, x, colors, face) {
+  const robot = row.species === "robot" || row.species === "skeletal";
+  const animal = row.species === "animal";
+  const eyesY = animal ? 390 : robot ? 430 : 430;
+  const mouthY = animal ? 620 : robot ? 600 : 575;
+  const gap = animal ? 78 : robot ? 0 : (row.faceKind === "female_lean" ? 100 : row.faceKind === "male_muscular" || row.faceKind === "heavy_set" ? 132 : 118);
+  let eyes = "";
+  if (robot) {
+    const visor = opticParts(x, eyesY, colors);
+    eyes = [
+      layer("eyesOpen", visor.open),
+      layer("pupils", visor.pupils),
+      layer("eyesClosed", visor.closed, { opacity: "0" }),
+      el("path", { fill: colors.trim, d: `M ${x - 70} ${mouthY} H ${x + 90} V ${mouthY + 10} H ${x - 70} Z` }),
+    ].join("");
+  } else {
+    const left = eyeParts(x - gap, eyesY, face.squint + (face.wink || 0), face.wide, colors, face.glow || 0);
+    const right = eyeParts(x + gap, eyesY, face.squint, face.wide, colors, face.glow || 0);
+    const wrinkles = row.age === "elder" ? [
+      el("path", { d: `M ${x - 90} 300 Q ${x} 328 ${x + 90} 300`, fill: "none", stroke: colors.skinDeep, "stroke-width": 5 }),
+      el("path", { d: `M ${x - 36} 560 Q ${x - 78} 630 ${x - 20} 690`, fill: "none", stroke: colors.skinDeep, "stroke-width": 5 }),
+      el("path", { d: `M ${x + 36} 560 Q ${x + 78} 630 ${x + 20} 690`, fill: "none", stroke: colors.skinDeep, "stroke-width": 5 }),
+    ].join("") : "";
+    const snout = animal ? el("ellipse", { cx: x, cy: 640, rx: 36, ry: 22, fill: "#24110C" }) : "";
+    const augment = row.augment ? [
+      el("rect", { x: x + 70, y: 340, width: 70, height: 10, fill: colors.trim }),
+      el("circle", { cx: x + 150, cy: 346, r: 16, fill: colors.trim }),
+    ].join("") : "";
+    eyes = [
+      el("ellipse", { cx: x, cy: animal ? 680 : 650, rx: animal ? 70 : 120, ry: animal ? 28 : 52, fill: colors.skinDeep, opacity: "0.28" }),
+      animal ? "" : el("path", { fill: colors.skinShadow, opacity: "0.55", d: `M ${x - 16} 500 L ${x + 18} 500 L ${x + 8} 560 L ${x - 8} 560 Z` }),
+      layer("eyesOpen", left.open + right.open),
+      layer("pupils", left.pupils + right.pupils),
+      layer("eyesClosed", left.closed + right.closed, { opacity: "0" }),
+      robot ? "" : browMarkup(x - gap, animal ? 310 : 340, face.brow[0] * (row.intensity || 1), face.brow[0] < 0),
+      robot ? "" : browMarkup(x + gap, animal ? 310 : 340, face.brow[1] * (row.intensity || 1), face.brow[1] < 0),
+      mouthMarkup(x + (face.mouth === "smirk" ? 8 : 0), mouthY, face.mouth, colors.lip, row.intensity),
+      wrinkles,
+      snout,
+      augment,
+    ].join("");
+  }
+  const ears = robot || animal ? "" : [
+    el("ellipse", { cx: x - 214, cy: 500, rx: row.faceKind === "heavy_set" ? 36 : 28, ry: 46, fill: colors.skinShadow }),
+    el("ellipse", { cx: x + 214, cy: 500, rx: row.faceKind === "heavy_set" ? 36 : 28, ry: 46, fill: colors.skin }),
+  ].join("");
+  const beast = animal ? [
+    el("path", { fill: colors.skinShadow, d: `M ${x - 120} 230 L ${x - 250} 40 L ${x - 20} 190 Z` }),
+    el("path", { fill: colors.skinShadow, d: `M ${x + 120} 230 L ${x + 260} 30 L ${x + 30} 190 Z` }),
+    el("path", { fill: colors.skin, d: `M ${x - 100} 210 L ${x - 190} 80 L ${x - 40} 190 Z` }),
+    el("path", { fill: colors.skin, d: `M ${x + 100} 210 L ${x + 200} 70 L ${x + 46} 190 Z` }),
+  ].join("") : "";
+  const front = [];
+  if (robot) {
+    front.push(el("rect", { x: x - 10, y: 48, width: 20, height: 130, fill: colors.skinShadow }));
+    front.push(el("circle", { cx: x, cy: 46, r: 22, fill: colors.trim }));
+    front.push(el("path", { fill: "none", stroke: shade(colors.skin, -0.25), "stroke-width": 6, d: `M ${x - 160} 360 H ${x + 160} M ${x} 250 V 520` }));
+  }
+  if (row.hair && row.hair !== "none") front.push(hairPath(row.hair, x, row.turn * 36, colors.hair));
+  if (row.faceKind === "female_athletic" && row.attire === "sports") {
+    front.push(el("path", { fill: colors.trim, d: `M ${x - 150} 250 H ${x + 170} V 286 H ${x - 150} Z` }));
+  }
+  if (row.headwear === "cap" || row.accessory === "hat_cap") {
+    front.push(accessoryMarkup({ accessory: "hat_cap", headwear: "cap" }, x, colors));
+  }
+  const collar = attireMarkup(row, x, colors);
+  const accessory = (row.accessory === "hat_cap") ? "" : accessoryMarkup(row, x, colors);
+  return {
+    features: eyes,
+    ears,
+    beast,
+    front,
+    collar,
+    accessory,
+    background: backgroundMarkup(row.background, colors),
+  };
+}
+
 function renderPfp(recipe, opts) {
   const row = recipe && recipe.colors ? recipe : buildRecipe(recipe);
   const size = normalizeSize(opts && opts.size);
@@ -499,8 +815,9 @@ function renderPfp(recipe, opts) {
   const neonLight = /NEON|RIM|GLOW|EDGE/.test(String(row.lighting || ""));
   const rim = neonLight || row.premium ? 22 : 16;
   const keyX = row.turn >= 0 ? x - 70 : x + 70;
-  const beard = !row.cleaner && (row.attitude === "REGAL" || row.attitude === "STOIC") && (row.headwear === "crown" || row.headwear === "laurel");
+  const beard = !row.faceKind && !row.cleaner && (row.attitude === "REGAL" || row.attitude === "STOIC") && (row.headwear === "crown" || row.headwear === "laurel");
   const pauldrons = row.silhouette === "HEAVY_ARMORED" || row.silhouette === "MECHANICAL";
+  const outline = row.faceKind ? selectionOutline(row, x) : facePath(x);
   const defs = [
     el("radialGradient", { id: id("bg"), cx: "50%", cy: "40%", r: "68%" }, [
       el("stop", { offset: "0%", "stop-color": c.glow }),
@@ -523,7 +840,7 @@ function renderPfp(recipe, opts) {
       el("stop", { offset: "48%", "stop-color": c.skin }),
       el("stop", { offset: "100%", "stop-color": c.skinShadow }),
     ].join("")),
-    el("clipPath", { id: id("face") }, el("path", { d: facePath(x) })),
+    el("clipPath", { id: id("face") }, el("path", { d: outline })),
     el("filter", { id: id("rim"), x: "-20%", y: "-20%", width: "140%", height: "140%" }, el("feGaussianBlur", { stdDeviation: "6" })),
   ].join("");
   const eyesY = 430;
@@ -571,11 +888,12 @@ function renderPfp(recipe, opts) {
   if (row.headwear === "cowl") {
     front.push(el("path", { fill: c.cloth, d: `M ${x - 120} 700 Q ${x} 640 ${x + 120} 700 Q ${x} 780 ${x - 120} 700 Z` }));
   }
-  const collar = row.minimal ? "" : el("path", {
+  const costume = row.faceKind ? selectionCostume(row, x, c, face) : null;
+  const collar = costume ? costume.collar : (row.minimal ? "" : el("path", {
     fill: c.trim,
     opacity: "0.92",
     d: `M ${x - 150} 760 L ${x} 860 L ${x + 156} 748 L ${x + 86} 900 L ${x} 868 L ${x - 86} 908 Z`,
-  });
+  }));
   const gem = row.premium && !row.minimal
     ? el("path", { fill: c.trim, d: `M ${x} 868 L ${x + 14} 886 L ${x} 904 L ${x - 14} 886 Z` })
     : "";
@@ -585,7 +903,7 @@ function renderPfp(recipe, opts) {
   ].join("") : "";
   const motif = motifParts(row.motif, c, row.cleaner);
   const rimGlow = [
-    el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim + 30, opacity: "0.95", filter: `url(#${id("rim")})` }),
+    el("path", { d: outline, fill: "none", stroke: c.trim, "stroke-width": rim + 30, opacity: "0.95", filter: `url(#${id("rim")})` }),
     el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 22, opacity: "0.7", filter: `url(#${id("rim")})` }),
   ].join("");
   const torso = [
@@ -596,21 +914,21 @@ function renderPfp(recipe, opts) {
     el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 16, opacity: "0.82" }),
   ].join("");
   const head = [
-    ears,
-    beast,
+    costume ? costume.ears : ears,
+    costume ? layer("earsFront", costume.beast) : beast,
     el("g", { "clip-path": `url(#${id("face")})` }, [
-      el("path", { fill: `url(#${id("skin")})`, d: facePath(x) }),
+      el("path", { fill: `url(#${id("skin")})`, d: outline }),
       el("ellipse", { cx: keyX, cy: 400, rx: 140, ry: 180, fill: "#FFFFFF", opacity: row.darker ? "0.06" : "0.14" }),
-      features,
+      costume ? costume.features : features,
     ].join("")),
-    el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim + 16, opacity: "0.45", filter: `url(#${id("rim")})` }),
-    el("path", { d: facePath(x), fill: "none", stroke: c.trim, "stroke-width": rim, opacity: row.darker ? "0.55" : "0.9" }),
-    layer("hairFront", front.join("")),
+    el("path", { d: outline, fill: "none", stroke: c.trim, "stroke-width": rim + 16, opacity: "0.45", filter: `url(#${id("rim")})` }),
+    el("path", { d: outline, fill: "none", stroke: c.trim, "stroke-width": rim, opacity: row.darker ? "0.55" : "0.9" }),
+    layer("hairFront", (costume ? costume.front : front).join("")),
   ].join("");
   const body = [
     layer("bg", el("rect", { width: 1024, height: 1024, fill: `url(#${id("bg")})` })),
     layer("bgGrid", neonGrid(c), { opacity: row.cleaner ? "0.1" : "0.22" }),
-    layer("bgFx", motif.fx),
+    layer("bgFx", motif.fx + (costume ? costume.background : "")),
     layer("particles", motif.particles, { opacity: "0.52" }),
     layer("aura", [
       el("ellipse", { cx: 512, cy: 410, rx: 290, ry: 240, fill: c.trim, opacity: "0.46" }),
@@ -623,9 +941,11 @@ function renderPfp(recipe, opts) {
     layer("rimGlow", rimGlow, { opacity: "0.78" }),
     layer("scanFx", el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("scan")})` }), { opacity: row.cleaner ? "0.05" : "0.12" }),
     layer("collarFx", collar + gem),
+    layer("accessory", costume ? costume.accessory : ""),
   ].join("");
   const scale = compositionScale();
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" data-pfp-style="${row.styleId || PFP_STYLE_ID}" data-engine="procedural-svg" data-layered="1" data-signature="${row.signature || "COLLAR"}" data-character-scale="${scale.characterHeight}" data-face-scale="${scale.faceHeight}" aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
+  const speciesAttr = row.faceKind ? ` data-species="${row.species || "human"}" data-face="${row.faceKind}" data-age="${row.age || "adult"}" data-archetype="${row.archetypeId || ""}"` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" data-pfp-style="${row.styleId || PFP_STYLE_ID}" data-engine="procedural-svg" data-layered="1" data-signature="${row.signature || "COLLAR"}" data-character-scale="${scale.characterHeight}" data-face-scale="${scale.faceHeight}"${speciesAttr} aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
 }
 
 function normalizeSize(value) {
@@ -691,6 +1011,35 @@ function pathData(svg) {
   return [...String(svg || "").matchAll(/\sd="([^"]+)"/g)].map((m) => m[1]).join("|");
 }
 
+function withBrandVersion(url, agent) {
+  if (!url) return url;
+  const row = agent && typeof agent === "object" ? agent : {};
+  const brand = row.brand && typeof row.brand === "object" ? row.brand : row;
+  const version = Number(brand.version || row.version || 1);
+  const n = Number.isFinite(version) && version > 0 ? version : 1;
+  const text = String(url);
+  if (/[?&]v=\d+/.test(text)) return text;
+  return `${text}${text.includes("?") ? "&" : "?"}v=${n}`;
+}
+
+function getAgentPfpUrl(agent, preferredSize = 256) {
+  const row = agent && typeof agent === "object" ? agent : {};
+  const brand = row.brand && typeof row.brand === "object" ? row.brand : row;
+  const assets = brand.assets || {};
+  const sized = assets[`avatar${preferredSize}`];
+  const base = sized
+    || assets.canonicalPfp
+    || row.avatarUrl
+    || brand.avatarUrl
+    || row.pfpUrl
+    || brand.pfpUrl
+    || row.imageUrl
+    || brand.imageUrl
+    || null;
+  if (!base) return null;
+  return withBrandVersion(base, brand.version ? brand : row);
+}
+
 module.exports = {
   PFP_STYLE_VERSION,
   PFP_STYLE_ID,
@@ -710,4 +1059,7 @@ module.exports = {
   assetUrls,
   pathData,
   colorDistance,
+  withBrandVersion,
+  getAgentPfpUrl,
+  buildNeonPfpVisualInstruction,
 };

@@ -24,10 +24,17 @@ const {
   qualityCheck,
   promptFor,
   assetUrls,
+  withBrandVersion,
+  buildNeonPfpVisualInstruction,
 } = require("./pfp");
 const { createImageProvider } = require("./imageprovider");
 const { PFP_STYLE_ID } = require("./branding/stylePresets");
 const { buildVisualDNA } = require("./branding/buildVisualDNA");
+const {
+  normalizeSelections,
+  mapSelections,
+  visualOptionGroups,
+} = require("./branding/creationSelections");
 
 const imageProvider = createImageProvider();
 
@@ -674,6 +681,9 @@ function createDraft(input, ctx) {
     strength: copy.strength,
     weakness: copy.weakness,
     identity: null,
+    creationSelections: normalizeSelections(body.creationSelections),
+    visualDirty: true,
+    pfpStatus: "AWAITING_REGENERATION",
     concepts: [],
     conceptSalt: 0,
     selectedConceptId: null,
@@ -751,6 +761,209 @@ function sheetFor(draft, concept) {
   };
 }
 
+function shiftHex(hex, step) {
+  const raw = String(hex || "").replace("#", "");
+  const n = parseInt(raw, 16);
+  if (!Number.isFinite(n)) return "#4AD7FF";
+  const channels = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const t = 0.16 + step * 0.07;
+  const next = channels.map((c) => {
+    const target = step % 2 ? 255 : 0;
+    return Math.max(0, Math.min(255, Math.round(c + (target - c) * t)));
+  });
+  return "#" + next.map((c) => c.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
+function nextBrandVersion(current) {
+  const n = Number(String(current || "v0").replace(/\D/g, "")) || 0;
+  return `v${n + 1}`;
+}
+
+function visualForPortrait(draft, selections, pool) {
+  const base = { ...((draft.identity && draft.identity.visualIdentity) || {}) };
+  const mapped = mapSelections(selections);
+  const visual = {
+    ...base,
+    silhouette: mapped.silhouette,
+    facialAttitude: mapped.attitude,
+    accentColor: mapped.accent,
+  };
+  const others = Array.isArray(pool) ? pool : [];
+  for (let i = 0; i < 8; i++) {
+    visual.accentColor = i === 0 ? mapped.accent : shiftHex(mapped.accent, i);
+    const near = others.some((brand) => brand && brand.agentId !== draft.id && paletteNear(brand, { visualIdentity: visual }));
+    if (!near) return visual;
+  }
+  return visual;
+}
+
+function portraitAssets(agentId, version) {
+  const urls = assetUrls(agentId);
+  const stamp = (url) => withBrandVersion(url, { version });
+  return {
+    heroPortrait: null,
+    avatar: stamp(urls.avatar),
+    emblem: `/api/show/agents/${encodeURIComponent(agentId)}/emblem.svg`,
+    introCard: null,
+    victoryCard: null,
+    defeatCard: null,
+    shareTemplate: null,
+    pfpPortrait: stamp(urls.master),
+    canonicalPfp: stamp(urls.master),
+    avatar48: stamp(urls.sizes["48"]),
+    avatar96: stamp(urls.sizes["96"]),
+    avatar160: stamp(urls.sizes["160"]),
+    avatar256: stamp(urls.sizes["256"]),
+    avatar320: stamp(urls.sizes["320"]),
+    avatar512: stamp(urls.sizes["512"]),
+  };
+}
+
+async function renderCanonicalPortrait(draft, opts = {}) {
+  if (!draft || !draft.identity || !draft.identity.visualIdentity) {
+    throw creatorError("brand_not_ready", "Create the agent before generating a portrait.", 409);
+  }
+  const selections = normalizeSelections(opts.selections || draft.creationSelections);
+  const currentBrandVersion = Number(opts.currentVersion || 0);
+  console.log("PFP_GENERATION_START", {
+    agentId: draft.id,
+    selections,
+    currentBrandVersion,
+  });
+  const visual = visualForPortrait(draft, selections, opts.brands || []);
+  const recipe = buildRecipe({
+    name: draft.name,
+    title: draft.identity.title,
+    archetype: draft.archetype,
+    visual,
+    variation: 1,
+    treatment: "standard",
+    selections,
+  });
+  const instruction = buildNeonPfpVisualInstruction({ ...draft, creationSelections: selections });
+  const identityPrompt = promptFor(recipe);
+  const finalPrompt = [identityPrompt, instruction].filter(Boolean).join("\n\n");
+  const provider = opts.provider || imageProvider;
+  let generated = null;
+  try {
+    generated = await provider.generate({
+      prompt: finalPrompt,
+      recipe,
+      size: "1024x1024",
+      nonce: draft.id,
+    });
+  } catch (err) {
+    const error = creatorError("generation_failed", "Portrait generation failed. The last portrait was kept.", 502);
+    error.cause = err;
+    throw error;
+  }
+  const svg = generated && generated.svg;
+  console.log("PFP_GENERATOR_RESULT", {
+    agentId: draft.id,
+    hasImage: Boolean(svg),
+    existingProviderMetadata: generated ? {
+      provider: generated.provider || null,
+      mime: generated.mime || null,
+      width: generated.width || null,
+      height: generated.height || null,
+    } : null,
+  });
+  if (!svg) {
+    throw creatorError("generation_failed", "PFP generation did not produce a persisted canonical image.", 502);
+  }
+  const quality = qualityCheck(recipe, svg);
+  if (!quality.ok) {
+    throw creatorError("generation_failed", "Portrait generation failed. The last portrait was kept.", 502);
+  }
+  return {
+    svg,
+    recipe,
+    visual,
+    prompt: finalPrompt,
+    quality,
+    selections,
+    metadata: {
+      provider: generated.provider || "procedural-svg",
+      mime: generated.mime || "image/svg+xml",
+      width: generated.width || null,
+      height: generated.height || null,
+    },
+  };
+}
+
+function buildPortraitBrand(draft, portrait, previous) {
+  const selections = portrait.selections || normalizeSelections(draft.creationSelections);
+  const version = Number(previous && previous.version || 0) + 1;
+  const stamp = new Date().toISOString();
+  const assetId = `pfp_${draft.id}_v${version}`;
+  const assets = portraitAssets(draft.id, version);
+  const material = portrait.visual.materialLanguage || ["carbon", "glass"];
+  const brand = {
+    agentId: draft.id,
+    brandVersion: previous ? nextBrandVersion(previous.brandVersion) : "v1",
+    version,
+    name: draft.name,
+    title: draft.identity.title,
+    tagline: draft.identity.tagline,
+    archetype: draft.archetype,
+    personality: { ...draft.personality },
+    visualIdentity: {
+      ...portrait.visual,
+      materialLanguage: material.slice(),
+    },
+    creationSelections: { ...selections },
+    styleId: PFP_STYLE_ID,
+    styleVersion: "v1",
+    visualDirty: false,
+    status: "READY",
+    primaryPfpAssetId: assetId,
+    selectedConceptId: draft.selectedConceptId || null,
+    pfpStyleVersion: PFP_STYLE_VERSION,
+    pfpPromptVersion: "neon-character-v1",
+    pfpSafeZone: portrait.recipe.safeZone,
+    avatarCrop: {
+      sizes: AVATAR_SIZES.slice(),
+      sourceAssetType: ASSET_TYPE,
+      sourceAssetId: assetId,
+      method: "uniform-scale",
+    },
+    pfpRecipe: portrait.recipe,
+    assets,
+    generation: {
+      ...generationStamp({
+        status: "READY",
+        at: stamp,
+        modelVersion: MODEL_VERSION,
+        assetStatus: { pfpPortrait: "READY", avatar: "READY" },
+      }),
+      styleId: PFP_STYLE_ID,
+      styleVersion: "v1",
+      promptVersion: "neon-character-v1",
+      selections: { ...selections },
+      generatedAt: Date.now(),
+      ...(portrait.metadata || {}),
+    },
+    animatedPfp: {
+      version,
+      engine: "procedural-svg",
+      enabled: true,
+      sourceCanonicalPfp: assets.canonicalPfp,
+      manifestUrl: null,
+      motionProfile: "NEON_COMPETITIVE",
+    },
+  };
+  const check = validateBrand(brand);
+  if (!check.ok) {
+    const err = creatorError("invalid_brand", "The portrait could not be saved.");
+    err.errors = check.errors;
+    throw err;
+  }
+  if (!brand.assets.canonicalPfp) {
+    throw creatorError("generation_failed", "PFP generation did not produce a persisted canonical image.", 502);
+  }
+  return { brand, sheet: sheetFor(draft, { visualIdentity: brand.visualIdentity, title: brand.title, tagline: brand.tagline }) };
+}
+
 function lockBrand(draft, concept, at) {
   const stamp = at || new Date().toISOString();
   const portrait = concept.pfp || attachPfp(draft, concept, Math.max(0, (concept.conceptNumber || 1) - 1), "standard").pfp;
@@ -810,6 +1023,9 @@ function publicDraft(draft) {
     status: draft.status,
     roster: "user",
     identity: draft.identity,
+    creationSelections: draft.creationSelections || normalizeSelections(null),
+    visualDirty: draft.visualDirty === true,
+    pfpStatus: draft.pfpStatus || null,
     concepts: draft.concepts,
     selectedConceptId: draft.selectedConceptId,
     createdAt: draft.createdAt,
@@ -834,6 +1050,10 @@ module.exports = {
   buildConcepts,
   retouchConcepts,
   lockBrand,
+  renderCanonicalPortrait,
+  buildPortraitBrand,
+  visualOptionGroups,
+  normalizeSelections,
   publicDraft,
   creatorError,
   hexHue,

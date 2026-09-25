@@ -354,10 +354,15 @@ function personTitle(person) {
   const brand = brandFor(person);
   return (brand && brand.title) || (person && person.archetype) || "";
 }
+// Accept only our own portrait route. Query may carry size=, v= (brand version) and
+// s= (style stamp) in any order; anything else is refused and the letter fallback shows.
 function pfpPath(url) {
   const text = String(url || "");
-  if (/^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?(?:size=(?:48|96|160|256|320|512|1024)|v=\d+)(?:&(?:size=(?:48|96|160|256|320|512|1024)|v=\d+))?)?$/i.test(text)) return text;
-  return "";
+  const m = text.match(/^(\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg)(?:\?(.*))?$/i);
+  if (!m) return "";
+  if (!m[2]) return text;
+  const ok = m[2].split("&").every((kv) => /^size=(?:48|96|160|256|320|512|1024)$/.test(kv) || /^v=\d+$/.test(kv) || /^s=\d+$/.test(kv));
+  return ok ? text : "";
 }
 function pfpSrc(brand, size) {
   if (!brand) return "";

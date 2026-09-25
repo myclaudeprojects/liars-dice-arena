@@ -541,6 +541,7 @@ class Show {
       seq: this.seq,
       pairIdx: this.pairIdx,
       bootstrapDone: this.bootstrapDone,
+      pfpMigration: this.pfpMigration || 0,
       records: this.records.agents,
       history: this.history,
       market: book,
@@ -615,6 +616,7 @@ class Show {
       this.seq = data.seq || 0;
       this.pairIdx = data.pairIdx || 0;
       this.bootstrapDone = !!data.bootstrapDone;
+    this.pfpMigration = Number(data.pfpMigration) || 0;
       this.history = Array.isArray(data.history) ? data.history : [];
       this.records = Records.load(data.records, this.recordIds());
       this.market.importState(data.market || {});
@@ -1737,6 +1739,46 @@ class Show {
       visualDirty: true,
       status: "AWAITING_REGENERATION",
     };
+  }
+
+  // Which agents still render through the pre-selection pipeline.
+  legacyPortraitAgents() {
+    const out = [];
+    for (const [id, draft] of this.userAgents) {
+      if (draft.status !== "READY") continue;
+      const brand = this.brands.full(id);
+      if (!brand) continue;
+      const hasSelections = brand.creationSelections && brand.creationSelections.archetype;
+      const hasVariant = Number.isFinite(Number(brand.pfpVariation));
+      if (!hasSelections || !hasVariant) out.push(id);
+    }
+    return out;
+  }
+
+  // One-time migration to the current portrait design. Every legacy user brand gets a NEW
+  // version rendered from inferred selections; old versions stay reachable by ?v=. Runs in
+  // the background after boot, sequentially, and records completion so it never re-runs.
+  async migrateLegacyPortraits(force = false) {
+    const TARGET = 2;
+    if (!force && this.pfpMigration >= TARGET) return { migrated: 0, skipped: "done" };
+    const ids = this.legacyPortraitAgents();
+    let migrated = 0; const failed = [];
+    for (const id of ids) {
+      try {
+        const brand = this.brands.full(id);
+        const inferred = inferSelectionsFromBrand(brand);
+        await this.generatePortrait(id, { creationSelections: inferred });
+        migrated++;
+        console.log("PFP_MIGRATED", { agentId: id, version: (this.brands.full(id) || {}).version, selections: inferred });
+      } catch (e) {
+        failed.push({ id, error: (e && e.message) || String(e) });
+        console.error("PFP_MIGRATE_FAILED", { agentId: id, error: (e && e.message) || String(e) });
+      }
+    }
+    this.pfpMigration = TARGET;
+    this.persist();
+    console.log("PFP_MIGRATION_DONE", { migrated, failed: failed.length, candidates: ids.length });
+    return { migrated, failed, candidates: ids.length };
   }
 
   async generatePortrait(agentId, input = {}) {

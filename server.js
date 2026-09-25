@@ -129,6 +129,8 @@ const show = new Show({
   dataPath: LEGACY_USDC ? null : defaultShowPath(),
   sleep,
 });
+// Migrate pre-selection agents to the current portrait design (one-time, background).
+setTimeout(() => { show.migrateLegacyPortraits().catch((e) => console.error("pfp migration:", e && e.message)); }, 3000);
 
 let lastError = null;
 async function cycle() {

@@ -8,7 +8,7 @@
 
 const { PFP_STYLE_ID } = require("./branding/stylePresets");
 const { buildPfpPrompt, buildNeonPfpVisualInstruction } = require("./branding/buildPfpPrompt");
-const { mapSelections, conceptVariantFor } = require("./branding/creationSelections");
+const { mapSelections, conceptVariantFor, inferSelectionsFromBrand } = require("./branding/creationSelections");
 
 const PFP_STYLE_VERSION = "lda-pfp-v2";
 const PFP_PROMPT_VERSION = "agent-pfp-v2";
@@ -197,7 +197,7 @@ function buildRecipe(input) {
     ? src.headwear
     : "";
   const headwear = mapped
-    ? (mapped.headwear || "")
+    ? (forced || mapped.headwear || "")          // house signature headwear survives the new style
     : (forced || headwearFor(visual.emblem, src.archetype, variation));
   const hairKind = mapped ? (cv ? cv.hair : mapped.hair) : hairUnder(headwear);
   return {
@@ -296,17 +296,23 @@ function recipeFromBrand(brand) {
   // The stored creation selections are the authoritative visual inputs. A brand
   // that has them renders from them (plus its chosen concept variant); only
   // legacy/house brands fall back to archetype + visualIdentity defaults.
-  const selections = row.creationSelections || (row.generation && row.generation.selections) || null;
-  const hasSelections = selections && typeof selections === "object" && selections.archetype;
+  let selections = row.creationSelections || (row.generation && row.generation.selections) || null;
+  let hasSelections = !!(selections && typeof selections === "object" && selections.archetype);
+  const stored = hasSelections;
+  // Brands from before the selection pipeline (house cast, early user agents) carry no
+  // selections. Infer them so those portraits render in the current style too.
+  if (!hasSelections && process.env.PFP_LEGACY_FALLBACK !== "1") {
+    try { const inferred = inferSelectionsFromBrand(row); if (inferred && inferred.archetype) { selections = inferred; hasSelections = true; } } catch { /* keep legacy path */ }
+  }
   const variant = Number.isFinite(Number(row.pfpVariation)) ? Number(row.pfpVariation) : null;
   return buildRecipe({
     name: row.name,
     title: row.title,
     archetype: row.archetype,
     visual: row.visualIdentity || {},
-    variation: hasSelections ? (variant != null ? variant : 0) : (variant != null ? variant : hashString(row.agentId || row.name) % 5),
+    variation: variant != null ? variant : (stored ? 0 : 1 + hashString(row.agentId || row.name) % 19),
     treatment: "standard",
-    headwear: hasSelections ? "" : (HOUSE_HEADWEAR[row.agentId] || ""),
+    headwear: stored ? "" : (HOUSE_HEADWEAR[row.agentId] || ""),
     selections: hasSelections ? selections : undefined,
   });
 }

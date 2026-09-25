@@ -3236,6 +3236,11 @@ async function poll() {
   try {
     const j = await api("/api/show?predictor=" + encodeURIComponent(me.id));
     if (gen !== pollGen) return;
+    // A new build deployed under us: reload once so this page never runs stale code.
+    if (j && j.build) {
+      if (window.__ldaBuild && window.__ldaBuild !== j.build && !creatorSession()) { location.reload(); return; }
+      window.__ldaBuild = j.build;
+    }
     incoming = { failed: false, starting: !!j.starting, snap: j };
   } catch {
     if (gen !== pollGen) return;

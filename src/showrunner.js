@@ -40,6 +40,8 @@ const {
   normalizeSelections,
 } = require("./brandcreate");
 const { inferSelectionsFromBrand } = require("./branding/creationSelections");
+// Identifies the running build so clients can reload when a deploy lands.
+const BUILD_ID = String(process.env.RENDER_GIT_COMMIT || process.env.BUILD_ID || Date.now()).slice(0, 12);
 const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls, withBrandVersion } = require("./pfp");
 const { animatedPfpMeta } = require("./motionprofiles");
 
@@ -639,6 +641,7 @@ class Show {
   snapshot(predictorId) {
     const cur = this.current;
     return {
+      build: BUILD_ID,
       phase: this.phase,
       serverNow: Date.now(),
       unit: "test-credits",

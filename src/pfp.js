@@ -835,6 +835,10 @@ function selectionCostume(row, x, colors, face) {
 
 function renderPfp(recipe, opts) {
   const row = recipe && recipe.colors ? recipe : buildRecipe(recipe);
+  // Live rig is v3 ("Neon Noir"). The original v2 cartoon rig stays available with PFP_RIG=v2.
+  if (process.env.PFP_RIG !== "v2") {
+    return require("./pfpv3").renderPfpV3(row, { size: normalizeSize(opts && opts.size), nonce: (opts && opts.nonce) || "pfp" });
+  }
   const size = normalizeSize(opts && opts.size);
   const nonce = String((opts && opts.nonce) || "pfp").replace(/[^a-zA-Z0-9_-]/g, "") || "pfp";
   const c = row.colors;
@@ -1043,7 +1047,7 @@ function pathData(svg) {
 
 // Bump whenever the portrait RENDER changes for an unchanged brand (new rig, new style rules).
 // It rides along in every portrait URL, so browsers/CDNs that cached the old look fetch again.
-const PFP_STYLE_STAMP = 2;
+const PFP_STYLE_STAMP = 3;
 
 function withBrandVersion(url, agent) {
   if (!url) return url;

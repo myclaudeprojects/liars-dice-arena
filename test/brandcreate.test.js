@@ -124,10 +124,10 @@ function signatures(concepts) {
   // Locked assets are version-stamped so a new brand version always changes the URL (cache bust).
   eq(locked.brand.version, 1, "first lock is version 1");
   eq(locked.brand.brandVersion, "v1", "brandVersion tag matches numeric version");
-  eq(locked.brand.assets.pfpPortrait, "/api/show/agents/" + a.agent.id + "/pfp.svg?v=1", "pfp url");
-  eq(locked.brand.assets.canonicalPfp, "/api/show/agents/" + a.agent.id + "/pfp.svg?v=1", "canonical url");
-  eq(locked.brand.assets.avatar48, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=48&v=1", "48 derived");
-  eq(locked.brand.assets.avatar96, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=96&v=1", "96 derived");
+  eq(locked.brand.assets.pfpPortrait, "/api/show/agents/" + a.agent.id + "/pfp.svg?v=1&s=2", "pfp url");
+  eq(locked.brand.assets.canonicalPfp, "/api/show/agents/" + a.agent.id + "/pfp.svg?v=1&s=2", "canonical url");
+  eq(locked.brand.assets.avatar48, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=48&v=1&s=2", "48 derived");
+  eq(locked.brand.assets.avatar96, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=96&v=1&s=2", "96 derived");
   eq(locked.brand.visualDirty, false, "lock clears visualDirty");
   eq(locked.brand.status, "READY", "lock sets READY");
   eq(typeof locked.brand.creationSelections.archetype, "string", "lock stores creationSelections");

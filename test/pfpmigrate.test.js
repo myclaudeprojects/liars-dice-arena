@@ -25,7 +25,7 @@ const eq = (a, b, m) => { if (a !== b) throw new Error(`${m}: ${JSON.stringify(a
   const after = show.brands.full(a.agent.id);
   eq(after.version, 2, "migration wrote version 2");
   assert(after.creationSelections && after.creationSelections.archetype, "migrated brand stores inferred selections");
-  assert(/\?v=2$/.test(after.assets.canonicalPfp), "new cache-busted URL");
+  assert(/[?&]v=2(&|$)/.test(after.assets.canonicalPfp), "new cache-busted URL");
   eq(show.legacyPortraitAgents().length, 0, "no legacy agents remain");
   eq(show.pfpMigration >= 2, true, "migration flag persisted");
   const res2 = await show.migrateLegacyPortraits();

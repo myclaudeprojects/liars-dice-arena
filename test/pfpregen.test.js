@@ -55,7 +55,7 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   eq(locked.brand.pfpVariation, chosen.pfpVariation, "brand stores the chosen concept variant");
   eq(locked.brand.visualDirty, false, "not dirty after save");
   eq(locked.brand.status, "READY", "ready after save");
-  assert(/\?v=1$/.test(locked.brand.assets.canonicalPfp), "canonical URL is version-stamped");
+  assert(/[?&]v=1(&|$)/.test(locked.brand.assets.canonicalPfp), "canonical URL is version-stamped");
   eq(locked.brand.animatedPfp.sourceCanonicalPfp, locked.brand.assets.canonicalPfp, "animation derives from the chosen portrait");
   const servedV1 = show.pfpSvgFor(a.agent.id, 512);
   eq(pathData(servedV1), pathData(chosen.pfpSvg), "served portrait IS the chosen concept");
@@ -83,7 +83,7 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   const locked2 = show.selectConcept(a.agent.id, pick2.id);
   eq(locked2.brand.version, 2, "second save is version 2");
   eq(locked2.brand.creationSelections.bodyType, "full_robot", "version 2 stores the new selections");
-  assert(/\?v=2$/.test(locked2.brand.assets.canonicalPfp), "URL changes with the version (cache bust)");
+  assert(/[?&]v=2(&|$)/.test(locked2.brand.assets.canonicalPfp), "URL changes with the version (cache bust)");
   const servedV2 = show.pfpSvgFor(a.agent.id, 512);
   assert(pathData(servedV2) !== pathData(servedV1), "served portrait visibly changed after regeneration");
   eq(pathData(servedV2), pathData(pick2.pfpSvg), "served portrait IS the newly chosen concept");

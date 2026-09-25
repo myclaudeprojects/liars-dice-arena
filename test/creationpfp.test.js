@@ -100,11 +100,11 @@ const recipePrompt = require("../src/pfp").promptFor(exec.recipe);
 assert(recipePrompt.includes("lda-pfp-v2"), "existing renderer stays in the prompt");
 assert(recipePrompt.includes("Archetype: executive"), "selections are appended to the existing prompt");
 
-eq(withBrandVersion("/api/show/agents/u_a/pfp.svg", { version: 2 }), "/api/show/agents/u_a/pfp.svg?v=2", "version query");
-eq(withBrandVersion("/api/show/agents/u_a/pfp.svg?size=96", { version: 3 }), "/api/show/agents/u_a/pfp.svg?size=96&v=3", "version after size");
+eq(withBrandVersion("/api/show/agents/u_a/pfp.svg", { version: 2 }), "/api/show/agents/u_a/pfp.svg?v=2&s=2", "version query");
+eq(withBrandVersion("/api/show/agents/u_a/pfp.svg?size=96", { version: 3 }), "/api/show/agents/u_a/pfp.svg?size=96&v=3&s=2", "version after size");
 eq(getAgentPfpUrl({
   brand: { version: 4, assets: { canonicalPfp: "/api/show/agents/u_a/pfp.svg?v=4", avatar256: "/api/show/agents/u_a/pfp.svg?size=256&v=4" }, avatarUrl: "/legacy.png" },
-}, 256), "/api/show/agents/u_a/pfp.svg?size=256&v=4", "sized canonical wins over legacy");
+}, 256), "/api/show/agents/u_a/pfp.svg?size=256&v=4&s=2", "sized canonical wins over legacy");
 
 const executivePreview = previewSvg("archetype", "executive");
 const robotPreview = previewSvg("archetype", "robot_ai");

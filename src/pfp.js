@@ -1041,15 +1041,20 @@ function pathData(svg) {
   return [...String(svg || "").matchAll(/\sd="([^"]+)"/g)].map((m) => m[1]).join("|");
 }
 
+// Bump whenever the portrait RENDER changes for an unchanged brand (new rig, new style rules).
+// It rides along in every portrait URL, so browsers/CDNs that cached the old look fetch again.
+const PFP_STYLE_STAMP = 2;
+
 function withBrandVersion(url, agent) {
   if (!url) return url;
   const row = agent && typeof agent === "object" ? agent : {};
   const brand = row.brand && typeof row.brand === "object" ? row.brand : row;
   const version = Number(brand.version || row.version || 1);
   const n = Number.isFinite(version) && version > 0 ? version : 1;
-  const text = String(url);
-  if (/[?&]v=\d+/.test(text)) return text;
-  return `${text}${text.includes("?") ? "&" : "?"}v=${n}`;
+  let text = String(url);
+  if (!/[?&]v=\d+/.test(text)) text = `${text}${text.includes("?") ? "&" : "?"}v=${n}`;
+  if (!/[?&]s=\d+/.test(text)) text = `${text}&s=${PFP_STYLE_STAMP}`;
+  return text;
 }
 
 function getAgentPfpUrl(agent, preferredSize = 256) {
@@ -1071,6 +1076,7 @@ function getAgentPfpUrl(agent, preferredSize = 256) {
 }
 
 module.exports = {
+  PFP_STYLE_STAMP,
   PFP_STYLE_VERSION,
   PFP_STYLE_ID,
   PFP_PROMPT_VERSION,

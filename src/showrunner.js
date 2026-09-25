@@ -1590,13 +1590,29 @@ class Show {
   generateConcepts(agentId, opts = {}) {
     const draft = this.userAgents.get(agentId);
     if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
-    if (draft.status === "READY") {
-      throw creatorError("brand_locked", "This brand is already locked.", 409);
+    // A locked brand can be regenerated: new selections (visualDirty) or an
+    // explicit regenerate request opens a fresh concept round. The active
+    // portrait stays live until a new concept is selected and saved.
+    if (opts.creationSelections) {
+      draft.creationSelections = normalizeSelections(opts.creationSelections);
+      draft.visualDirty = true;
+      draft.pfpStatus = "AWAITING_REGENERATION";
     }
+    if (draft.status === "READY" && !draft.visualDirty && !opts.regenerate) {
+      throw creatorError("brand_locked", "This brand is already locked. Change the visual options or choose Regenerate PFP.", 409);
+    }
+    if (draft.status === "READY") {
+      draft.regenerating = true;
+      draft.visualDirty = true;
+      draft.pfpStatus = "AWAITING_REGENERATION";
+      if (this.brands.full(agentId)) this.brands.patchActive(agentId, { visualDirty: true, status: "AWAITING_REGENERATION", creationSelections: draft.creationSelections });
+    }
+    console.log("PFP_CONCEPTS_START", { agentId, selections: draft.creationSelections, regenerate: draft.regenerating === true, salt: (draft.conceptSalt || 0) + 1 });
     const vary = ["all", "colors", "emblem", "like", ...PFP_TOUCHES].includes(opts.vary) ? opts.vary : "all";
     if (PFP_TOUCHES.includes(vary) && (draft.concepts || []).length >= 3) {
       draft.concepts = retouchConcepts(draft, vary);
-      draft.status = "AWAITING_SELECTION";
+      if (draft.status !== "READY") draft.status = "AWAITING_SELECTION";
+      draft.pfpStatus = "AWAITING_SELECTION";
       draft.updatedAt = new Date().toISOString();
       this.persist();
       return { agent: this.agentSummary(draft), concepts: draft.concepts, status: draft.status };
@@ -1610,7 +1626,8 @@ class Show {
     const anchor = opts.anchorConceptId
       ? (draft.concepts || []).find((row) => row.id === opts.anchorConceptId) || null
       : null;
-    draft.status = "GENERATING_CONCEPTS";
+    const live = draft.status === "READY"; // regenerating a seated agent: keep it playable
+    if (!live) draft.status = "GENERATING_CONCEPTS";
     const concepts = buildConcepts(draft, {
       count: opts.count,
       salt: draft.conceptSalt,
@@ -1619,21 +1636,23 @@ class Show {
       brands: this.brandPool(),
     });
     draft.concepts = PFP_TOUCHES.includes(vary) ? retouchConcepts({ ...draft, concepts }, vary) : concepts;
-    draft.status = "AWAITING_SELECTION";
+    if (!live) draft.status = "AWAITING_SELECTION";
+    draft.pfpStatus = "AWAITING_SELECTION";
     draft.updatedAt = new Date().toISOString();
     this.persist();
-    return { agent: this.agentSummary(draft), concepts: draft.concepts, status: draft.status };
+    return { agent: this.agentSummary(draft), concepts: draft.concepts, status: live ? "AWAITING_SELECTION" : draft.status, creationSelections: draft.creationSelections, regenerating: draft.regenerating === true };
   }
 
   selectConcept(agentId, conceptId) {
     const draft = this.userAgents.get(agentId);
     if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
-    if (draft.status === "READY") {
+    if (draft.status === "READY" && !draft.visualDirty && !draft.regenerating) {
       throw creatorError("brand_locked", "This brand is already locked.", 409);
     }
     const concept = (draft.concepts || []).find((row) => row.id === conceptId);
     if (!concept) throw creatorError("unknown_concept", "Pick one of the concepts.", 404);
-    const locked = lockBrand(draft, concept);
+    const previous = this.brands.full(agentId);
+    const locked = lockBrand(draft, concept, null, previous);
     try {
       this.brands.appendVersion(locked.brand);
     } catch (e) {
@@ -1644,7 +1663,11 @@ class Show {
     }
     draft.sheet = locked.sheet;
     draft.selectedConceptId = concept.id;
+    draft.creationSelections = { ...locked.brand.creationSelections };
     draft.status = "READY";
+    draft.visualDirty = false;
+    draft.pfpStatus = "READY";
+    draft.regenerating = false;
     draft.identity = {
       ...draft.identity,
       title: concept.title,
@@ -1653,13 +1676,16 @@ class Show {
     };
     draft.updatedAt = locked.brand.generation.approvedAt;
     this.records.ensure(draft.id);
-    this.seatGuest(draft.id);
+    if (!this.busyIds().has(draft.id)) this.seatGuest(draft.id);
     this.persist();
     this.emitState();
+    const saved = this.brands.full(draft.id);
+    console.log("PFP_CANONICAL_SAVED", { agentId: draft.id, newBrandVersion: saved && saved.version, canonicalPfp: saved && saved.assets && saved.assets.canonicalPfp, conceptId: concept.id });
     return {
       agent: this.agentSummary(draft),
-      brand: this.brands.full(draft.id),
+      brand: saved,
       seated: this.busyIds().has(draft.id),
+      creationSelections: draft.creationSelections,
     };
   }
 
@@ -1890,7 +1916,8 @@ class Show {
         : inferSelectionsFromBrand(this.brands.full(c.id) || {}),
       visualDirty: draft ? draft.visualDirty === true : false,
       pfpStatus: draft ? (draft.pfpStatus || (draft.status === "READY" ? "READY" : "AWAITING_REGENERATION")) : "READY",
-      concepts: draft && draft.status !== "READY" ? draft.concepts : undefined,
+      concepts: draft && (draft.status !== "READY" || draft.regenerating) ? draft.concepts : undefined,
+      regenerating: draft ? draft.regenerating === true : false,
       selectedConceptId: draft ? draft.selectedConceptId : null,
       personality: draft ? draft.personality : null,
       personalitySummary: draft ? draft.personalitySummary : null,

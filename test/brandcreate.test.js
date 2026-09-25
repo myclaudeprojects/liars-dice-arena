@@ -121,9 +121,16 @@ function signatures(concepts) {
   eq(locked.brand.selectedConceptId, picked.id, "select locks the concept");
   assert(brandSimilarity(locked.brand, locked.brand) >= 0.75, "a brand matches itself");
   assert(brandSimilarity(locked.brand, SEED_BRANDS[0]) < 0.75, "locked brand stays off the house");
-  eq(locked.brand.assets.pfpPortrait, "/api/show/agents/" + a.agent.id + "/pfp.svg", "pfp url");
-  eq(locked.brand.assets.avatar48, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=48", "48 derived");
-  eq(locked.brand.assets.avatar96, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=96", "96 derived");
+  // Locked assets are version-stamped so a new brand version always changes the URL (cache bust).
+  eq(locked.brand.version, 1, "first lock is version 1");
+  eq(locked.brand.brandVersion, "v1", "brandVersion tag matches numeric version");
+  eq(locked.brand.assets.pfpPortrait, "/api/show/agents/" + a.agent.id + "/pfp.svg?v=1", "pfp url");
+  eq(locked.brand.assets.canonicalPfp, "/api/show/agents/" + a.agent.id + "/pfp.svg?v=1", "canonical url");
+  eq(locked.brand.assets.avatar48, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=48&v=1", "48 derived");
+  eq(locked.brand.assets.avatar96, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=96&v=1", "96 derived");
+  eq(locked.brand.visualDirty, false, "lock clears visualDirty");
+  eq(locked.brand.status, "READY", "lock sets READY");
+  eq(typeof locked.brand.creationSelections.archetype, "string", "lock stores creationSelections");
   eq(locked.brand.assets.heroPortrait, null, "hero art stays deferred");
   assert(locked.brand.avatarCrop.method === "uniform-scale", "avatars scale the master");
   const { pathData, renderPfp } = require("../src/pfp");

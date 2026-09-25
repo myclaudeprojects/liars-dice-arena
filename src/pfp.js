@@ -8,7 +8,7 @@
 
 const { PFP_STYLE_ID } = require("./branding/stylePresets");
 const { buildPfpPrompt, buildNeonPfpVisualInstruction } = require("./branding/buildPfpPrompt");
-const { mapSelections } = require("./branding/creationSelections");
+const { mapSelections, conceptVariantFor } = require("./branding/creationSelections");
 
 const PFP_STYLE_VERSION = "lda-pfp-v2";
 const PFP_PROMPT_VERSION = "agent-pfp-v2";
@@ -160,6 +160,9 @@ function buildRecipe(input) {
   const mapped = (src.selections || src.creationSelections)
     ? mapSelections(src.selections || src.creationSelections)
     : null;
+  // With selections locked, `variation` picks a concept variant (hair, turn,
+  // intensity, jaw) so several concepts of the same selections differ visibly.
+  const cv = mapped ? conceptVariantFor(mapped, variation) : null;
   const primary = validHex(visual.primaryColor) || "#101216";
   const secondary = validHex(visual.secondaryColor) || "#1F232A";
   let accent = validHex(visual.accentColor) || "#4AD7FF";
@@ -196,16 +199,21 @@ function buildRecipe(input) {
   const headwear = mapped
     ? (mapped.headwear || "")
     : (forced || headwearFor(visual.emblem, src.archetype, variation));
-  const hairKind = mapped ? mapped.hair : hairUnder(headwear);
+  const hairKind = mapped ? (cv ? cv.hair : mapped.hair) : hairUnder(headwear);
   return {
     styleVersion: PFP_STYLE_VERSION,
     styleId: PFP_STYLE_ID,
     promptVersion: PFP_PROMPT_VERSION,
     treatment,
     variation,
-    turn: mapped ? mapped.turn : (variation % 3) - 1,
+    turn: mapped ? (cv ? cv.turn : mapped.turn) : (variation % 3) - 1,
     attitude,
-    intensity: mapped ? mapped.intensity : (treatment === "expression" ? 1.7 : 1.2),
+    intensity: mapped
+      ? Math.round((cv ? cv.intensity : mapped.intensity) * (treatment === "expression" ? 1.45 : 1) * 100) / 100
+      : (treatment === "expression" ? 1.7 : 1.2),
+    conceptVariant: cv ? cv.variant : 0,
+    jawShift: cv ? cv.jawShift : 0,
+    glowShift: cv ? cv.glowShift : 0,
     headwear,
     hair: hairKind,
     silhouette: mapped ? mapped.silhouette : (visual.silhouette || "SLIM_ELEGANT"),
@@ -285,14 +293,21 @@ const HOUSE_HEADWEAR = Object.freeze({
 
 function recipeFromBrand(brand) {
   const row = brand && typeof brand === "object" ? brand : {};
+  // The stored creation selections are the authoritative visual inputs. A brand
+  // that has them renders from them (plus its chosen concept variant); only
+  // legacy/house brands fall back to archetype + visualIdentity defaults.
+  const selections = row.creationSelections || (row.generation && row.generation.selections) || null;
+  const hasSelections = selections && typeof selections === "object" && selections.archetype;
+  const variant = Number.isFinite(Number(row.pfpVariation)) ? Number(row.pfpVariation) : null;
   return buildRecipe({
     name: row.name,
     title: row.title,
     archetype: row.archetype,
     visual: row.visualIdentity || {},
-    variation: hashString(row.agentId || row.name) % 5,
+    variation: hasSelections ? (variant != null ? variant : 0) : (variant != null ? variant : hashString(row.agentId || row.name) % 5),
     treatment: "standard",
-    headwear: HOUSE_HEADWEAR[row.agentId] || "",
+    headwear: hasSelections ? "" : (HOUSE_HEADWEAR[row.agentId] || ""),
+    selections: hasSelections ? selections : undefined,
   });
 }
 
@@ -373,8 +388,8 @@ function jawWidth(body, archetype) {
   return 200;
 }
 
-function humanFacePath(x, body, archetype) {
-  const jaw = jawWidth(body, archetype);
+function humanFacePath(x, body, archetype, shift) {
+  const jaw = jawWidth(body, archetype) + (Number(shift) || 0);
   const cheek = body === "heavy_set" ? jaw + 18 : body === "female_lean" ? jaw - 6 : jaw + 8;
   const chin = body === "female_lean" || body === "female_athletic" ? Math.round(jaw * 0.62) : body === "male_muscular" ? Math.round(jaw * 0.92) : Math.round(jaw * 0.78);
   const top = 176;
@@ -383,11 +398,15 @@ function humanFacePath(x, body, archetype) {
   return `M ${x} ${top} C ${x + cheek} ${top + 24 + browDrop} ${x + cheek} 390 ${x + jaw} 500 C ${x + chin + 24} 630 ${x + Math.round(chin * 0.45)} ${bot - 16} ${x} ${bot} C ${x - Math.round(chin * 0.45)} ${bot - 16} ${x - chin - 24} 630 ${x - jaw} 500 C ${x - cheek} 390 ${x - cheek} ${top + 24 + browDrop} ${x} ${top} Z`;
 }
 
-function robotFacePath(x, skeletal) {
+function robotFacePath(x, skeletal, variant) {
+  // Concept variant reshapes the plate: wider/narrower jaw, taller/shorter crown.
+  const v = Math.abs(Math.floor(Number(variant) || 0)) % 4;
+  const w = [0, 22, -18, 10][v];       // plate width shift
+  const t = [0, 18, -12, 8][v];        // upper-corner height shift (crown stays at FACE_TOP)
   if (skeletal) {
-    return `M ${x} 176 L ${x + 132} 248 L ${x + 118} 470 L ${x + 36} 708 L ${x - 36} 708 L ${x - 118} 470 L ${x - 132} 248 Z`;
+    return `M ${x} 176 L ${x + 132 + w} ${248 + t} L ${x + 118 + w} 470 L ${x + 36} 708 L ${x - 36} 708 L ${x - 118 - w} 470 L ${x - 132 - w} ${248 + t} Z`;
   }
-  return `M ${x - 36} 176 L ${x + 196} 230 L ${x + 214} 470 L ${x + 150} 620 L ${x + 48} 708 L ${x - 48} 708 L ${x - 150} 620 L ${x - 214} 470 L ${x - 196} 230 Z`;
+  return `M ${x - 36} 176 L ${x + 196 + w} ${230 + t} L ${x + 214 + w} 470 L ${x + 150 + w} 620 L ${x + 48} 708 L ${x - 48} 708 L ${x - 150 - w} 620 L ${x - 214 - w} 470 L ${x - 196 - w} ${230 + t} Z`;
 }
 
 function animalFacePath(x) {
@@ -559,16 +578,20 @@ function leaves(x, y, color) {
 }
 
 function selectionOutline(row, x) {
-  if (row.species === "robot") return robotFacePath(x, false);
-  if (row.species === "skeletal") return robotFacePath(x, true);
+  if (row.species === "robot") return robotFacePath(x, false, row.conceptVariant);
+  if (row.species === "skeletal") return robotFacePath(x, true, row.conceptVariant);
   if (row.species === "animal") return animalFacePath(x);
-  return humanFacePath(x, row.faceKind, row.archetypeId);
+  return humanFacePath(x, row.faceKind, row.archetypeId, row.jawShift);
 }
 
-function opticParts(cx, cy, colors) {
+function opticParts(cx, cy, colors, variant) {
+  const v = Math.abs(Math.floor(Number(variant) || 0)) % 4;
+  const w = [140, 172, 118, 152][v];   // visor width
+  const h = [44, 34, 56, 40][v];       // visor height
+  const rx = [8, 17, 6, 12][v];
   const open = [
-    el("rect", { x: cx - 70, y: cy - 22, width: 140, height: 44, rx: 8, fill: "#0C1016" }),
-    el("rect", { x: cx - 54, y: cy - 10, width: 108, height: 18, rx: 4, fill: colors.trim }),
+    el("rect", { x: cx - w / 2, y: cy - h / 2, width: w, height: h, rx, fill: "#0C1016" }),
+    el("rect", { x: cx - w / 2 + 16, y: cy - 9, width: w - 32, height: 18, rx: 4, fill: colors.trim }),
   ].join("");
   const pupils = el("rect", { x: cx - 16, y: cy - 6, width: 22, height: 10, fill: "#F7FBFF" });
   const closed = el("rect", { x: cx - 70, y: cy - 8, width: 140, height: 16, rx: 4, fill: "#1A2030" });
@@ -733,7 +756,7 @@ function selectionCostume(row, x, colors, face) {
   const gap = animal ? 78 : robot ? 0 : (row.faceKind === "female_lean" ? 100 : row.faceKind === "male_muscular" || row.faceKind === "heavy_set" ? 132 : 118);
   let eyes = "";
   if (robot) {
-    const visor = opticParts(x, eyesY, colors);
+    const visor = opticParts(x, eyesY, colors, row.conceptVariant);
     eyes = [
       layer("eyesOpen", visor.open),
       layer("pupils", visor.pupils),
@@ -741,8 +764,9 @@ function selectionCostume(row, x, colors, face) {
       el("path", { fill: colors.trim, d: `M ${x - 70} ${mouthY} H ${x + 90} V ${mouthY + 10} H ${x - 70} Z` }),
     ].join("");
   } else {
-    const left = eyeParts(x - gap, eyesY, face.squint + (face.wink || 0), face.wide, colors, face.glow || 0);
-    const right = eyeParts(x + gap, eyesY, face.squint, face.wide, colors, face.glow || 0);
+    const eyeGlow = Math.max(0, Math.min(1, (face.glow || 0) + (Number(row.glowShift) || 0)));
+    const left = eyeParts(x - gap, eyesY, face.squint + (face.wink || 0), face.wide, colors, eyeGlow);
+    const right = eyeParts(x + gap, eyesY, face.squint, face.wide, colors, eyeGlow);
     const wrinkles = row.age === "elder" ? [
       el("path", { d: `M ${x - 90} 300 Q ${x} 328 ${x + 90} 300`, fill: "none", stroke: colors.skinDeep, "stroke-width": 5 }),
       el("path", { d: `M ${x - 36} 560 Q ${x - 78} 630 ${x - 20} 690`, fill: "none", stroke: colors.skinDeep, "stroke-width": 5 }),

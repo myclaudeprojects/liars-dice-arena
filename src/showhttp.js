@@ -71,9 +71,12 @@ async function handleShow(req, res, url, query, show) {
       const version = query && query.get ? query.get("v") : "";
       const svg = show.pfpSvgFor(decodeURIComponent(pfpGet[1]), size, version);
       if (!svg) { send(res, 404, { ok: false, error: "No portrait for that agent.", code: "unknown_agent" }); return true; }
+      // A version-stamped URL never changes content (new version = new URL), so it can be
+      // cached hard; an unstamped URL must always revalidate so a fresh portrait shows.
+      const stamped = /^\d+$/.test(String(version || ""));
       res.writeHead(200, {
         "content-type": "image/svg+xml; charset=utf-8",
-        "cache-control": "no-cache",
+        "cache-control": stamped ? "public, max-age=31536000, immutable" : "no-cache",
       });
       res.end(svg);
       return true;

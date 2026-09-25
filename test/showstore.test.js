@@ -304,8 +304,14 @@ function opts(file, extra = {}) {
     eq(Number(fs.readFileSync(handoff + ".lock", "utf8")), handoffChild.pid, "the holder recorded its pid");
     handoffChild.kill("SIGTERM");
     const exitCode = await new Promise((r) => handoffChild.on("exit", (code) => r(code)));
-    eq(exitCode, 0, "SIGTERM is a clean release");
-    assert(!fs.existsSync(handoff + ".lock"), "SIGTERM drops the show lock");
+    if (process.platform === "win32") {
+      // Windows has no SIGTERM: kill() is a hard terminate, so no handler can release the
+      // lock. The release path is covered on Linux (where Render runs); here just clean up.
+      try { fs.unlinkSync(handoff + ".lock"); } catch { /* already gone */ }
+    } else {
+      eq(exitCode, 0, "SIGTERM is a clean release");
+      assert(!fs.existsSync(handoff + ".lock"), "SIGTERM drops the show lock");
+    }
     eq(JSON.parse(fs.readFileSync(handoff, "utf8")).n, 1, "shutdown does not rewrite the book");
     const next = new ShowStore(handoff, { lockWaitMs: 200 });
     next.save({ v: 1, n: 3, cashValue: 0, custody: false, realMoney: false });

@@ -90,6 +90,10 @@ class ShowStore {
 
   _acquire() {
     if (this._lockHeld) return;
+    // The lock lives next to the data file. On a first boot (fresh disk, new
+    // SHOW_DATA_PATH) that directory may not exist yet: create it, or the very
+    // first load() dies on ENOENT before save() ever gets a chance to mkdir.
+    try { this.fs.mkdirSync(path.dirname(this.lockPath), { recursive: true }); } catch { /* best effort; open below reports real failures */ }
     const deadline = Date.now() + this.lockWaitMs;
     let stoleUnreadable = false;
     let announcedWait = false;

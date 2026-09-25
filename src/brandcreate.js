@@ -534,14 +534,28 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
   return null;
 }
 
+// Concept variant number: concept 0 is the purest rendition of the selections;
+// later concepts (and later regenerations, via salt) vary hair/turn/intensity/jaw
+// inside those selections.
+function conceptVariation(draft, index) {
+  const salt = Number(draft && draft.conceptSalt) || 0;
+  const i = Math.max(0, Number(index) || 0);
+  return i === 0 ? 0 : i + 4 * (salt % 3);
+}
+
 function attachPfp(draft, concept, index, treatment) {
+  const selections = normalizeSelections(draft.creationSelections);
+  const variation = conceptVariation(draft, index);
+  concept.creationSelections = { ...selections };
+  concept.pfpVariation = variation;
   const recipe = buildRecipe({
     name: draft.name,
     title: concept.title,
     archetype: draft.archetype,
     visual: concept.visualIdentity,
-    variation: index,
+    variation,
     treatment: treatment || "standard",
+    selections,
   });
   const nonce = `${concept.id || "c"}_${recipe.treatment}`;
   let svg = imageProvider.renderSync({ recipe, size: 1024, nonce });
@@ -556,8 +570,9 @@ function attachPfp(draft, concept, index, treatment) {
         secondaryColor: "#100E0C",
         facialAttitude: concept.visualIdentity.facialAttitude,
       },
-      variation: index,
+      variation,
       treatment: treatment || "standard",
+      selections,
     });
     svg = imageProvider.renderSync({ recipe: lifted, size: 1024, nonce });
     quality = qualityCheck(lifted, svg);
@@ -779,6 +794,15 @@ function nextBrandVersion(current) {
   return `v${n + 1}`;
 }
 
+// Numeric version of the next brand. Legacy brands carry only brandVersion
+// ("v1") with no numeric `version`; both are honoured so keys never collide.
+function nextVersionNumber(previous) {
+  if (!previous) return 1;
+  const numeric = Number(previous.version) || 0;
+  const tagged = Number(String(previous.brandVersion || "").replace(/\D/g, "")) || 0;
+  return Math.max(numeric, tagged) + 1;
+}
+
 function visualForPortrait(draft, selections, pool) {
   const base = { ...((draft.identity && draft.identity.visualIdentity) || {}) };
   const mapped = mapSelections(selections);
@@ -893,15 +917,16 @@ async function renderCanonicalPortrait(draft, opts = {}) {
 
 function buildPortraitBrand(draft, portrait, previous) {
   const selections = portrait.selections || normalizeSelections(draft.creationSelections);
-  const version = Number(previous && previous.version || 0) + 1;
+  const version = nextVersionNumber(previous);
   const stamp = new Date().toISOString();
   const assetId = `pfp_${draft.id}_v${version}`;
   const assets = portraitAssets(draft.id, version);
   const material = portrait.visual.materialLanguage || ["carbon", "glass"];
   const brand = {
     agentId: draft.id,
-    brandVersion: previous ? nextBrandVersion(previous.brandVersion) : "v1",
+    brandVersion: `v${version}`,
     version,
+    pfpVariation: Number(portrait.recipe && portrait.recipe.conceptVariant) || 0,
     name: draft.name,
     title: draft.identity.title,
     tagline: draft.identity.tagline,
@@ -964,12 +989,25 @@ function buildPortraitBrand(draft, portrait, previous) {
   return { brand, sheet: sheetFor(draft, { visualIdentity: brand.visualIdentity, title: brand.title, tagline: brand.tagline }) };
 }
 
-function lockBrand(draft, concept, at) {
+function lockBrand(draft, concept, at, previous) {
   const stamp = at || new Date().toISOString();
   const portrait = concept.pfp || attachPfp(draft, concept, Math.max(0, (concept.conceptNumber || 1) - 1), "standard").pfp;
+  const selections = normalizeSelections(concept.creationSelections || draft.creationSelections);
+  const version = nextVersionNumber(previous);
+  const variation = Number.isFinite(Number(concept.pfpVariation)) ? Number(concept.pfpVariation)
+    : (Number(portrait.recipe && portrait.recipe.conceptVariant) || 0);
+  const assets = portraitAssets(draft.id, version);
+  console.log("PFP_CONCEPT_SELECTED", { agentId: draft.id, conceptId: concept.id, variation, version, selections });
   const brand = {
     agentId: draft.id,
-    brandVersion: "v1",
+    brandVersion: `v${version}`,
+    version,
+    pfpVariation: variation,
+    creationSelections: { ...selections },
+    styleId: PFP_STYLE_ID,
+    styleVersion: "v1",
+    visualDirty: false,
+    status: "READY",
     name: draft.name,
     title: concept.title,
     tagline: concept.tagline,
@@ -991,13 +1029,32 @@ function lockBrand(draft, concept, at) {
       method: "uniform-scale",
     },
     pfpRecipe: portrait.recipe,
-    assets: userAssetRefs(draft.id),
-    generation: generationStamp({
-      status: "READY",
-      at: stamp,
-      modelVersion: MODEL_VERSION,
-      assetStatus: { pfpPortrait: "READY", avatar: "READY" },
-    }),
+    assets,
+    generation: {
+      ...generationStamp({
+        status: "READY",
+        at: stamp,
+        modelVersion: MODEL_VERSION,
+        assetStatus: { pfpPortrait: "READY", avatar: "READY" },
+      }),
+      styleId: PFP_STYLE_ID,
+      styleVersion: "v1",
+      promptVersion: PFP_PROMPT_VERSION,
+      selections: { ...selections },
+      conceptId: concept.id,
+      variation,
+      generatedAt: Date.now(),
+      provider: "procedural-svg",
+      mime: "image/svg+xml",
+    },
+    animatedPfp: {
+      version,
+      engine: "procedural-svg",
+      enabled: true,
+      sourceCanonicalPfp: assets.canonicalPfp,
+      manifestUrl: null,
+      motionProfile: "NEON_COMPETITIVE",
+    },
   };
   const check = validateBrand(brand);
   if (!check.ok) {

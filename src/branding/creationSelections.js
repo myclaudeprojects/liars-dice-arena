@@ -208,6 +208,28 @@ function mapSelections(input) {
   };
 }
 
+// Concept variation. The user's seven selections are the identity; a concept
+// index (0..n) must still produce a visibly different portrait *within* those
+// selections: hair, head turn, expression intensity, jaw, glow. Deterministic,
+// so the same (selections, variant) always renders the same character.
+const HUMAN_HAIR = Object.freeze(["swept", "cropped", "asymmetric", "long", "wild"]);
+function conceptVariantFor(mapped, variant) {
+  const v = Math.abs(Math.floor(Number(variant) || 0));
+  if (!mapped || v === 0) return { variant: 0, hair: mapped ? mapped.hair : "swept", turn: mapped ? mapped.turn : 0, intensity: mapped ? mapped.intensity : 1, jawShift: 0, glowShift: 0 };
+  const lockedHair = mapped.hair === "none" || mapped.headwear === "hood";
+  let hair = mapped.hair;
+  if (!lockedHair) {
+    const pool = HUMAN_HAIR.filter((h) => h !== mapped.hair);
+    hair = pool[(v * 7 + 3) % pool.length];
+  }
+  const turnShift = [0, 1, -1][(v * 5) % 3];
+  const turn = Math.max(-1, Math.min(1, (mapped.turn || 0) + turnShift)) || (turnShift === 0 ? -(mapped.turn || 0) || 0 : 0);
+  const intensity = (mapped.intensity || 1) * [1, 1.18, 0.86, 1.08, 0.94][(v * 3) % 5];
+  const jawShift = [0, 10, -12, 6, -6][(v * 11) % 5];
+  const glowShift = [0, 0.12, -0.08, 0.06][(v * 13) % 4];
+  return { variant: v, hair, turn, intensity: Math.round(intensity * 100) / 100, jawShift, glowShift };
+}
+
 function inferSelectionsFromBrand(brand) {
   const row = brand && typeof brand === "object" ? brand : {};
   const stored = row.creationSelections || (row.generation && row.generation.selections);
@@ -363,6 +385,7 @@ module.exports = {
   speciesOf,
   mapSelections,
   inferSelectionsFromBrand,
+  conceptVariantFor,
   visualOptionGroups,
   previewSelections,
 };

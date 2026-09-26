@@ -117,6 +117,11 @@ assert(ui.liveBadge("Live", {}).includes("lda-badge-live") && ui.liveBadge("Fina
 assert(ui.marketBadge("TEST MARKET").includes("test-badge") && ui.marketBadge("TEST MARKET").includes("lda-badge-market"), "test market badge");
 
 assert(html.includes('id="match"') && html.includes('id="market"') && html.includes('id="sheet"'), "watch paints the table, market, and sheet apart");
+assert(html.includes("Live prediction market coming soon"), "shell announces the live market teaser");
+assert(html.includes('id="coming-soon"') && html.indexOf("coming-soon") < html.indexOf('id="view"'), "teaser sits in shared chrome above the views");
+assert(html.includes('sessionStorage.getItem("lda-live-market-soon")'), "teaser dismiss is session-only");
+assert(html.includes('id="credits"'), "arena credits chip stays in the header");
+assert(appCss.includes(".coming-soon") && appCss.includes("--coming-soon-h"), "teaser is styled and offsets sticky chrome");
 assert(html.includes('id="live-line"'), "match lines announce from a stable node");
 assert(html.includes("tokens.css"), "page loads tokens");
 assert(html.includes("primitives.css"), "page loads primitives");

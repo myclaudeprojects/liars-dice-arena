@@ -1,18 +1,111 @@
 /* Tokens live in tokens.css. This file is layout, type roles, and match motion. */
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--lda-bg); color: var(--lda-text); font-family: var(--lda-font-sans); }
+:root {
+  --coming-soon-h: 56px;
+  --shell-sticky-top: calc(64px + var(--coming-soon-h) + env(safe-area-inset-top));
+}
 html {
-  scroll-padding-top: calc(64px + env(safe-area-inset-top));
+  scroll-padding-top: var(--shell-sticky-top);
   scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
   overflow-anchor: none;
 }
 body { min-height: 100dvh; overflow-x: clip; }
 button, input { font: inherit; color: inherit; }
 button { cursor: pointer; touch-action: manipulation; }
-.top {
+.shell-chrome {
   position: sticky; top: 0; z-index: var(--z-chrome);
+}
+.coming-soon {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  height: calc(var(--coming-soon-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) clamp(16px, 3vw, 34px) 0;
+  background: var(--lda-gold);
+  color: var(--lda-ink);
+  box-shadow: inset 0 -3px 0 var(--lda-live-fill);
+}
+.coming-soon__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--lda-live-fill);
+  color: var(--lda-text);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+}
+.coming-soon__mark .dot { flex: 0 0 auto; }
+.coming-soon__copy {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+.coming-soon__copy strong {
+  font-family: var(--lda-font-display);
+  font-weight: 680;
+  font-size: clamp(15px, 2.2vw, 20px);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.1;
+}
+.coming-soon__copy span {
+  color: var(--lda-ink);
+  font-size: 13px;
+  line-height: 1.25;
+}
+.coming-soon__dismiss {
+  justify-self: end;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--lda-ink);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--lda-ink);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.coming-soon__dismiss:hover {
+  background: var(--lda-ink);
+  color: var(--lda-gold);
+}
+.coming-soon__dismiss:focus-visible {
+  outline: 3px solid var(--lda-ink);
+  outline-offset: 2px;
+}
+html.coming-soon-dismissed { --coming-soon-h: 0px; }
+html.coming-soon-dismissed .coming-soon { display: none; }
+html.coming-soon-dismissed .top {
+  padding-top: calc(10px + env(safe-area-inset-top));
+}
+@media (max-width: 720px) {
+  .coming-soon { grid-template-columns: minmax(0, 1fr) auto; }
+  .coming-soon__mark { display: none; }
+}
+@media (max-width: 520px) {
+  :root { --coming-soon-h: 76px; }
+}
+@media (max-width: 400px) {
+  .coming-soon__copy span { display: none; }
+  .coming-soon__copy strong { font-size: 15px; line-height: 1.2; }
+}
+.top {
+  position: static;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  padding: 10px 16px;
   background: var(--lda-chrome-bg); backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--lda-line);
 }
@@ -600,7 +693,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   margin-top: var(--space-3);
   padding: var(--space-4);
   background: var(--lda-chrome);
-  scroll-margin-top: calc(64px + env(safe-area-inset-top));
+  scroll-margin-top: var(--shell-sticky-top);
 }
 .market-zone-head {
   display: flex;
@@ -1445,8 +1538,8 @@ body {
   #view:has(#market:not(:empty)) #market {
     grid-column: 2;
     position: sticky;
-    top: calc(64px + env(safe-area-inset-top));
-    max-height: calc(100dvh - 168px - env(safe-area-inset-bottom));
+    top: var(--shell-sticky-top);
+    max-height: calc(100dvh - 168px - var(--coming-soon-h) - env(safe-area-inset-bottom));
     overflow: auto;
   }
   #view:has(#market:not(:empty)) #sheet { grid-column: 1 / -1; }

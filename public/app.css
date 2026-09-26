@@ -6,11 +6,26 @@ html, body { margin: 0; background: var(--lda-bg); color: var(--lda-text); font-
   --shell-sticky-top: calc(64px + var(--coming-soon-h) + env(safe-area-inset-top));
   /* Fixed tab bar plus a gap, so the last row can scroll clear of it. */
   --tabbar-clear: calc(132px + env(safe-area-inset-bottom));
+  /* Distance from the viewport bottom to the top of the tab bar. */
+  --tabbar-offset: calc(68px + env(safe-area-inset-bottom));
+  --page-max: 1180px;
+  --column-max: 720px;
+  /* Page titles, cards, and the desktop tab bar share this column. */
+  --rail-pad: max(16px, calc((100% - var(--column-max)) / 2));
+  --rail-width: min(var(--column-max), calc(100% - 32px));
 }
 @media (min-width: 820px) {
   :root {
-    /* Desktop bar floats 18px off the bottom and sits on the content column. */
+    /* Desktop bar floats 18px off the bottom. Clearance includes that gap. */
     --tabbar-clear: calc(164px + env(safe-area-inset-bottom));
+    --tabbar-offset: calc(86px + env(safe-area-inset-bottom));
+  }
+}
+@media (min-width: 980px) {
+  /* Watch opens a market column, so the rail grows to the page frame. */
+  :root:has(#market:not(:empty)) {
+    --rail-pad: max(16px, calc((100% - min(var(--page-max), 100%)) / 2 + 16px));
+    --rail-width: min(calc(var(--page-max) - 32px), calc(100% - 32px));
   }
 }
 html {
@@ -31,7 +46,7 @@ button { cursor: pointer; touch-action: manipulation; }
   align-items: center;
   column-gap: var(--space-3);
   height: calc(var(--coming-soon-h) + env(safe-area-inset-top));
-  padding: env(safe-area-inset-top) clamp(16px, 3vw, 34px) 0;
+  padding: env(safe-area-inset-top) var(--rail-pad) 0;
   background: var(--lda-gold);
   color: var(--lda-ink);
   box-shadow: inset 0 -3px 0 var(--lda-live-fill);
@@ -1139,7 +1154,21 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   margin-top: 0;
 }
 .argus-split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
-.creator-actions { display: flex; flex-direction: column; gap: var(--space-2); scroll-margin-bottom: var(--tabbar-clear); }
+.creator-actions {
+  position: fixed;
+  z-index: 5;
+  left: 50%;
+  bottom: calc(var(--tabbar-offset) + 10px);
+  transform: translateX(-50%);
+  width: var(--rail-width);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 14px 0 0;
+  background: linear-gradient(180deg, transparent, var(--lda-bg) 18px);
+}
+#view:has(.creator) { padding-bottom: calc(var(--tabbar-clear) + 128px); }
 .creator-actions .ghost,
 .creator-actions .cta { margin-top: 0; }
 
@@ -1378,7 +1407,7 @@ body {
     radial-gradient(circle at 50% 20%, var(--lda-gold-wash), transparent 34rem),
     linear-gradient(180deg, var(--lda-felt-dim) 0%, var(--lda-bg) 45%, var(--lda-felt-dim) 100%);
 }
-.top { padding-left: clamp(16px, 3vw, 34px); padding-right: clamp(16px, 3vw, 34px); }
+.top { padding-left: var(--rail-pad); padding-right: var(--rail-pad); }
 .brand { font-size: clamp(18px, 2vw, 24px); }
 .arena-shell {
   position: relative;
@@ -1679,14 +1708,14 @@ body {
     grid-column: 2;
     position: sticky;
     top: var(--shell-sticky-top);
-    max-height: calc(100dvh - 168px - var(--coming-soon-h) - env(safe-area-inset-bottom));
+    max-height: calc(100dvh - var(--shell-sticky-top) - var(--tabbar-offset) - 12px);
     overflow: auto;
   }
   #view:has(#market:not(:empty)) #sheet { grid-column: 1 / -1; }
 }
 @media (min-width: 820px) {
   .tabs {
-    left: 50%; right: auto; bottom: 18px; width: min(640px, calc(100% - 40px));
+    left: 50%; right: auto; bottom: 18px; width: var(--rail-width);
     transform: translateX(-50%);
     border: 1px solid var(--lda-line); border-radius: 18px;
     padding: 7px;
@@ -1926,6 +1955,12 @@ body {
   border-radius: 0;
   object-fit: cover;
 }
+.agent-card__portrait .agent-avatar { padding: 0; }
+.agent-card__portrait .agent-avatar > img,
+.agent-card__portrait img {
+  position: absolute;
+  inset: 0;
+}
 .agent-card__identity { padding: var(--space-3) var(--space-3) var(--space-4); }
 .agent-card__name {
   display: block;
@@ -1977,6 +2012,12 @@ body {
   border: 0;
   border-radius: var(--radius-xl);
   object-fit: cover;
+}
+.arena-shell .agent-portrait-wrap .agent-avatar { padding: 0; }
+.arena-shell .agent-portrait-wrap .agent-avatar > img,
+.arena-shell .agent-portrait-wrap .agent-avatar > svg {
+  position: absolute;
+  inset: 0;
 }
 .arena-shell.stage .watch-agent {
   transition: transform 180ms var(--ease-standard), opacity 180ms var(--ease-standard), filter 180ms var(--ease-standard);

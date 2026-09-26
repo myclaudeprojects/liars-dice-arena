@@ -2989,7 +2989,9 @@ function announceLine(text) {
 }
 
 function paintSlot(el, html, prev) {
-  if (html === prev) return prev;
+  // Tab changes clear the paint cache and pass null so an empty market or sheet
+  // still wipes the node. "" === "" used to leave the Watch column mounted.
+  if (prev !== null && html === prev && (html !== "" || !el.childElementCount)) return prev;
   el.innerHTML = html;
   return html;
 }
@@ -3120,9 +3122,9 @@ function render() {
     sheetHtml === paintedSheet ? "" : releaseFocus(sheetEl),
   ].find(Boolean) || "";
   view.classList.toggle("enter", !!arriving);
-  paintedMatch = paintSlot(matchEl, matchHtml, arriving ? "" : paintedMatch);
-  paintedMarket = paintSlot(marketEl, marketHtml, arriving ? "" : paintedMarket);
-  paintedSheet = paintSlot(sheetEl, sheetHtml, arriving ? "" : paintedSheet);
+  paintedMatch = paintSlot(matchEl, matchHtml, arriving ? null : paintedMatch);
+  paintedMarket = paintSlot(marketEl, marketHtml, arriving ? null : paintedMarket);
+  paintedSheet = paintSlot(sheetEl, sheetHtml, arriving ? null : paintedSheet);
   restoreCreatorDom(heldCreator);
   if (saved) restoreScroll(saved);
   if (sheetOpened) {

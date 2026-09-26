@@ -356,6 +356,7 @@ function personTitle(person) {
 }
 // Accept only our own portrait route. Query may carry size=, v= (brand version) and
 // s= (style stamp) in any order; anything else is refused and the letter fallback shows.
+// ui.js portraitUrl must allow the same keys, or the shell still paints a letter.
 function pfpPath(url) {
   const text = String(url || "");
   const m = text.match(/^(\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg)(?:\?(.*))?$/i);

@@ -88,6 +88,17 @@ assert(guest.includes("--agent-accent:hsl(12 42% 58%)"), "unknown hue still pain
 assert(guest.includes("lda-avatar-glyph"), "missing pfp falls back to the letter shell");
 const photo = ui.avatar("Vesper", 200, "u_vesper", { src: "/api/show/agents/u_vesper/pfp.svg?size=96", size: 96 });
 assert(photo.includes("lda-pfp") && photo.includes("width=\"96\"") && !photo.includes("lda-avatar-glyph"), "pfp url replaces the letter");
+const stamped = ui.avatar("Dracula", 350, "dracula", { src: "/api/show/agents/dracula/pfp.svg?size=96&v=1&s=3", size: 96 });
+assert(stamped.includes("lda-pfp") && stamped.includes("s=3") && !stamped.includes("lda-avatar-glyph"), "style stamp stays on the portrait");
+const anyOrder = ui.avatar("Caesar", 20, "caesar", { src: "/api/show/agents/caesar/pfp.svg?s=3&v=1&size=160", size: 160 });
+assert(anyOrder.includes("width=\"160\"") && anyOrder.includes("s=3") && !anyOrder.includes("lda-avatar-glyph"), "stamp, version, and size in any order");
+const plate = ui.agentAvatar(
+  { name: "Dracula", hue: 350, id: "dracula" },
+  { src: "/api/show/agents/dracula/pfp.svg?size=320&v=1&s=3", size: "lg" },
+);
+assert(plate.includes("lda-pfp") && plate.includes("s=3") && !plate.includes("lda-avatar-glyph"), "matchup plate keeps the style stamp");
+const junk = ui.avatar("Dracula", 350, "dracula", { src: "/api/show/agents/dracula/pfp.svg?size=96&v=1&s=3&x=1", size: 96 });
+assert(junk.includes("lda-avatar-glyph"), "unknown portrait query stays on the letter");
 const bogus = ui.avatar("Vesper", 200, "u_vesper", { src: "https://example.com/face.png" });
 assert(bogus.includes("lda-avatar-glyph"), "outside portrait urls stay on the letter");
 

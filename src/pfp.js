@@ -1,10 +1,11 @@
 // pfp.js — Procedural square PFP portraits.
 //
 // There is no image-generation provider in this process. These portraits are
-// deterministic SVG illustrations: one bust, one face, brand palette, dark
-// premium background, controlled neon accent. The locked art direction is
-// neon-competitive. The drawing engine stays lda-pfp-v2. Avatar sizes reuse
-// the same paths. Only the root width and height change.
+// deterministic SVG illustrations. The live drawing is the felt-roster rig
+// (src/pfparena.js): warm table light, a team costume, a readable face.
+// PFP_RIG=v3 keeps the neon-noir bust. PFP_RIG=v2 keeps the earlier cartoon.
+// The style id on the SVG stays lda-pfp-v2 so avatar sizes, layers, and the
+// animation runtime keep one contract. Only the root width and height change.
 
 const { PFP_STYLE_ID } = require("./branding/stylePresets");
 const { buildPfpPrompt, buildNeonPfpVisualInstruction } = require("./branding/buildPfpPrompt");
@@ -172,6 +173,14 @@ function buildRecipe(input) {
   if (mapped) {
     accent = validHex(mapped.accent) || accent;
     attitude = ATTITUDES.includes(mapped.attitude) ? mapped.attitude : attitude;
+    // Create Agent copies the chosen palette and expression onto visualIdentity
+    // before render, so those two already agree. House brands do not: inferred
+    // selections default the palette to cyan and replace the authored face.
+    // preserveVisual keeps the brand accent and expression in that case.
+    if (src.preserveVisual) {
+      if (validHex(visual.accentColor)) accent = validHex(visual.accentColor);
+      if (ATTITUDES.includes(visual.facialAttitude)) attitude = visual.facialAttitude;
+    }
     if (mapped.species === "robot" || mapped.species === "skeletal") pack = SKIN.metal;
     else if (mapped.species === "animal" || mapped.species === "primal") pack = SKIN.ember;
     else if (mapped.age === "elder") pack = SKIN.ash;
@@ -314,6 +323,7 @@ function recipeFromBrand(brand) {
     treatment: "standard",
     headwear: stored ? "" : (HOUSE_HEADWEAR[row.agentId] || ""),
     selections: hasSelections ? selections : undefined,
+    preserveVisual: !stored,
   });
 }
 
@@ -835,9 +845,13 @@ function selectionCostume(row, x, colors, face) {
 
 function renderPfp(recipe, opts) {
   const row = recipe && recipe.colors ? recipe : buildRecipe(recipe);
-  // Live rig is v3 ("Neon Noir"). The original v2 cartoon rig stays available with PFP_RIG=v2.
-  if (process.env.PFP_RIG !== "v2") {
+  // Live rig is the felt roster. PFP_RIG=v3 is the neon-noir bust. PFP_RIG=v2 is the older cartoon.
+  const rig = String(process.env.PFP_RIG || "arena").toLowerCase();
+  if (rig === "v3" || rig === "noir") {
     return require("./pfpv3").renderPfpV3(row, { size: normalizeSize(opts && opts.size), nonce: (opts && opts.nonce) || "pfp" });
+  }
+  if (rig !== "v2") {
+    return require("./pfparena").renderArenaPfp(row, { size: normalizeSize(opts && opts.size), nonce: (opts && opts.nonce) || "pfp" });
   }
   const size = normalizeSize(opts && opts.size);
   const nonce = String((opts && opts.nonce) || "pfp").replace(/[^a-zA-Z0-9_-]/g, "") || "pfp";
@@ -1047,7 +1061,7 @@ function pathData(svg) {
 
 // Bump whenever the portrait RENDER changes for an unchanged brand (new rig, new style rules).
 // It rides along in every portrait URL, so browsers/CDNs that cached the old look fetch again.
-const PFP_STYLE_STAMP = 3;
+const PFP_STYLE_STAMP = 4;
 
 function withBrandVersion(url, agent) {
   if (!url) return url;

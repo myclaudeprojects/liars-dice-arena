@@ -7,7 +7,8 @@
                     "demo":  "node demo.js",
                     "start":  "node server.js",
                     "start:llm":  "USE_LLM=1 node server.js",
-                    "test":  "node test/run.js"
+                    "test":  "node test/run.js",
+                    "pfp":  "node scripts/generate-pfps.js"
                 },
     "engines":  {
                     "node":  "\u003e=22"

@@ -5,6 +5,7 @@ const { ERROR_TEXT, DEFAULT_STAKE, THEORY_TAGS } = require("./simmarket");
 const { argusEnabled, argusPublicConfig, sponsoredState } = require("./argus/config");
 const { verifyLaunchTx } = require("./argus/verify");
 const { prepareLaunch } = require("./argus/launch");
+const { readArgusStats } = require("./argus/stats");
 const {
   sponsorLaunch,
   sponsorGuard,
@@ -267,6 +268,39 @@ async function handleShow(req, res, url, query, show) {
     }
     if (req.method === "POST" && /^\/agents\/([^/]+)\/brand\/rebrand$/.test(path)) {
       send(res, 501, { ok: false, error: "not_implemented", status: "DRAFT" });
+      return true;
+    }
+    const argusStatsGet = path.match(/^\/agents\/([^/]+)\/argus\/stats$/);
+    if (req.method === "GET" && argusStatsGet) {
+      const detail = show.agentDetail(decodeURIComponent(argusStatsGet[1]));
+      const argus = detail.argus;
+      if (!argus || !argus.tokenAddress) {
+        send(res, 200, {
+          ok: true,
+          minted: false,
+          symbol: null,
+          tokenAddress: null,
+          argusUrl: null,
+          marketCap: null,
+          holders: null,
+        });
+        return true;
+      }
+      // A stats failure must not turn into a profile error. The link still renders.
+      let stats;
+      try { stats = await readArgusStats(argus); }
+      catch {
+        stats = {
+          symbol: argus.symbol || null,
+          tokenAddress: argus.tokenAddress,
+          argusUrl: argus.argusUrl || null,
+          marketCap: null,
+          holders: null,
+          asOf: Date.now(),
+          cached: false,
+        };
+      }
+      send(res, 200, { ok: true, minted: true, ...stats });
       return true;
     }
     if (req.method === "GET" && path.startsWith("/agents/")) {

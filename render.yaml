@@ -34,6 +34,7 @@ services:
       # the creator has no wallet. Never reuse HOUSE_PRIVATE_KEY or a seat wallet.
       # The on-chain creator is this key's address. Do not commit the value.
       # PUBLIC_BASE_URL, ARC_RPC_URL, ARC_RPC_URLS confirm the receipt on two hosts.
+      # Those RPCs also price a minted token's market cap. Holders are read from Arcscan.
     disk:
       name: arena-data
       mountPath: /var/data

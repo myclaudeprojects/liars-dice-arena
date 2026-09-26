@@ -475,6 +475,7 @@ function agent(show, name) {
   assert(app.includes("Launch with server mint"), "server mint button");
   assert(app.includes("data-argus-sponsor"), "server mint action");
   assert(app.includes("if (houseMint) return sponsor + connect + sign"), "house mint keeps server mint first");
+  assert(app.includes("return connect + sign + sponsor"), "a mint key that is not the house wallet does not lead with server mint");
   assert(app.includes("signing wallet becomes the on-chain creator"), "ui warns that Sign create changes who receives fees");
   assert(app.includes("unless you are signing as"), "ui warns Sign create conflicts unless the signer is the house wallet");
   assert(app.includes("portrait from Create Agent"), "image is the existing portrait");

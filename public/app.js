@@ -1805,19 +1805,17 @@ function houseMintReady(cfg) {
 
 function argusLaunchButtons(cfg, form) {
   const busy = creator.busy ? " disabled" : "";
-  const walletReady = argusWalletReady(form);
   const houseMint = houseMintReady(cfg);
   const signing = creator.busy && creator.launchMode === "wallet";
   const sponsoring = creator.busy && creator.launchMode === "sponsor";
   const connect = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-connect="1"${busy}>Connect wallet</button>`;
-  const signPrimary = !cfg.sponsored || (walletReady && !houseMint);
-  const signClass = signPrimary ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
+  const signClass = houseMint ? "ghost lda-btn lda-btn-ghost lda-btn-block" : "cta lda-btn lda-btn-primary lda-btn-block";
   const sign = `<button class="${signClass}" type="button" data-argus-launch="1"${busy}>${signing ? "Launching…" : "Sign create on Arc"}</button>`;
   if (!cfg.sponsored) return connect + sign;
-  const sponsorClass = houseMint || !walletReady ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
+  const sponsorClass = houseMint ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
   const sponsor = `<button class="${sponsorClass}" type="button" data-argus-sponsor="1"${busy}>${sponsoring ? "Launching…" : "Launch with server mint"}</button>`;
   if (houseMint) return sponsor + connect + sign;
-  return walletReady ? connect + sign + sponsor : sponsor + connect + sign;
+  return connect + sign + sponsor;
 }
 
 function argusPanel() {

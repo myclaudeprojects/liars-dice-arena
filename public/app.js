@@ -2093,18 +2093,17 @@ function creatorView() {
   if (step === 1) {
     const options = creator.archetypes.map((row) => `<option value="${esc(row.id)}"${row.id === f.archetype ? " selected" : ""}>${esc(row.label || archetypeLabel(row.id))}</option>`).join("");
     body = `
-      <label>Name<input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Dracula"></label>
+      <label>Name <span class="fine">(optional — leave blank and we name them)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Dracula"></label>
       <label>Archetype<select name="archetype">${options}</select></label>
       <p class="fine">Persona play. The show seats them. You watch and predict with Arena Credits.</p>
       ${sliderField("aggression", "Aggression")}
       ${sliderField("bluffing", "Bluffing")}
       ${sliderField("discipline", "Discipline")}
       ${sliderField("chaos", "Chaos")}
-      <label>Visual direction<textarea name="visualDirection" maxlength="160" placeholder="Elegant gothic gambler, crimson rim light.">${esc(f.visualDirection)}</textarea></label>
       <details class="advanced-config">
         <summary>Advanced / Developer Options</summary>
         <div class="advanced-config__body">
-          <label>Short description<textarea name="shortDescription" maxlength="240" placeholder="A quiet closer who spends one lie and waits.">${esc(f.shortDescription)}</textarea></label>
+          <label>Short description <span class="fine">(optional)</span><textarea name="shortDescription" maxlength="240" placeholder="A quiet closer who spends one lie and waits.">${esc(f.shortDescription)}</textarea></label>
           <button class="ghost" type="button" data-more-traits="1">${creator.moreTraits ? "Hide extra traits" : "More traits"}</button>
           ${creator.moreTraits ? `
             ${sliderField("confidence", "Confidence")}
@@ -2124,6 +2123,7 @@ function creatorView() {
         <h2>One portrait. These choices build it.</h2>
         <p class="fine">Previews are examples. Generate agent locks one neon-competitive identity.</p>
       </div>
+      <button class="ghost lda-btn" type="button" data-random-look="1">Randomize again</button>
       ${visualOptionGrids(creator.selections)}
       <label>Refine<textarea name="refine" maxlength="160" placeholder="Optional note. The options above decide the portrait.">${esc(f.refine)}</textarea></label>
     </section>`;
@@ -2162,7 +2162,7 @@ function creatorView() {
       })}
     </section>`;
   }
-  const nextLabel = step === 1 ? "Choose look" : step === 2 ? "Generate agent" : "Enter the Arena";
+  const nextLabel = step === 1 ? "Random look" : step === 2 ? "Generate agent" : "Enter the Arena";
   const nextAttr = step === 1 ? "data-creator-next" : step === 2 ? "data-creator-generate" : "data-enter-arena";
   const working = creator.statusLabel || "Working.";
   return `<div class="creator">
@@ -2219,15 +2219,20 @@ function resumeCreator(agent) {
   render();
 }
 
+// Pick a random option in every group (never "auto"/"none" so the roll always shows).
+function randomizeLook() {
+  const out = {};
+  for (const [group, , ids] of visualGroupList()) {
+    const pool = ids.filter((id) => id !== "auto" && id !== "none" && id !== "custom");
+    out[group] = pool[Math.floor(Math.random() * pool.length)] || ids[0];
+  }
+  return out;
+}
+
 function chooseLook() {
   if (!creator || creator.busy) return;
   syncCreatorFromDom();
-  if (creator.form.name.trim().length < 2 || creator.form.shortDescription.trim().length < 8) {
-    creator.error = "Add a name, and a short description of at least 8 characters under Advanced.";
-    painted = "";
-    render();
-    return;
-  }
+  creator.selections = randomizeLook();
   creator.error = "";
   creator.step = 2;
   painted = "";
@@ -2237,13 +2242,6 @@ function chooseLook() {
 async function generateAgent() {
   if (!creator || creator.busy) return;
   syncCreatorFromDom();
-  if (creator.form.name.trim().length < 2 || creator.form.shortDescription.trim().length < 8) {
-    creator.error = "Add a name, and a short description of at least 8 characters under Advanced.";
-    creator.step = 1;
-    painted = "";
-    render();
-    return;
-  }
   creator.busy = true;
   creator.error = "";
   startCreatorBeat();
@@ -2301,12 +2299,6 @@ async function generateAgent() {
 
 async function runConcepts(vary) {
   if (!creator || creator.busy) return;
-  if (!creator.draft && (creator.form.name.trim().length < 2 || creator.form.shortDescription.trim().length < 8)) {
-    creator.error = "Add a name, and a short description of at least 8 characters under Advanced.";
-    painted = "";
-    render();
-    return;
-  }
   creator.busy = true;
   creator.error = "";
   startCreatorBeat();
@@ -3112,6 +3104,7 @@ view.addEventListener("click", async (e) => {
       return;
     }
     if (e.target.closest("[data-creator-next]")) { chooseLook(); return; }
+  if (e.target.closest("[data-random-look]") && creator && !creator.busy) { creator.selections = randomizeLook(); painted = ""; render(); return; }
     if (e.target.closest("[data-creator-generate]")) { generateAgent(); return; }
     if (e.target.closest("[data-argus-connect]")) { connectArgus(); return; }
     if (e.target.closest("[data-argus-launch]")) { launchArgus(); return; }

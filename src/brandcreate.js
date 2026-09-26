@@ -331,7 +331,27 @@ function archetypeLabel(id) {
   return labelFor(id);
 }
 
-function cleanName(value) {
+// Nothing is required to make an agent: a missing name is invented, a missing description
+// is written from the archetype, and anything too long is trimmed rather than rejected.
+const NAME_FIRST = ["Neon", "Velvet", "Iron", "Silent", "Lucky", "Midnight", "Golden", "Static", "Crimson", "Cobalt", "Ghost", "Ember", "Jade", "Solar", "Vandal", "Royal", "Sable", "Viper", "Halo", "Rogue"];
+const NAME_LAST = ["Vega", "Ace", "Marlow", "Kessler", "Rook", "Dice", "Quinn", "Nova", "Blaze", "Cassidy", "Voss", "Rex", "Mercer", "Loki", "Sato", "Dune", "Cruz", "Rain", "Knox", "Vale"];
+function randomName(taken) {
+  const used = new Set((taken || []).map((n) => String(n).toLowerCase()));
+  for (let i = 0; i < 200; i++) {
+    const base = NAME_FIRST[Math.floor(Math.random() * NAME_FIRST.length)] + " " + NAME_LAST[Math.floor(Math.random() * NAME_LAST.length)];
+    const name = i < 40 ? base : base + " " + (2 + Math.floor(Math.random() * 97));
+    if (!used.has(name.toLowerCase())) return name;
+  }
+  return "Agent " + Date.now().toString().slice(-5);
+}
+
+function cleanName(value, taken) {
+  let name = String(value || "").replace(/[^A-Za-z0-9 '\-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 32).replace(/^[^A-Za-z]+/, "");
+  if (name.length < 2) return randomName(taken);
+  return name;
+}
+
+function cleanNameStrict(value) {
   const name = String(value || "").replace(/\s+/g, " ").trim();
   if (!/^[A-Za-z][A-Za-z0-9 '\-]{1,31}$/.test(name)) {
     throw creatorError("bad_name", "Use 2–32 letters, numbers, spaces, apostrophes, or hyphens.");
@@ -339,12 +359,12 @@ function cleanName(value) {
   return name;
 }
 
-function cleanDescription(value) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (text.length < 8 || text.length > 240) {
-    throw creatorError("bad_description", "Add a short description, between 8 and 240 characters.");
-  }
-  return text;
+const AUTO_DESCRIPTIONS = ["Plays the table, not the dice.", "Bluffs early, collects late.", "Never shows the same face twice.", "Counts everything and admits nothing.", "Loud hands, quiet math.", "Lets the others talk themselves out of it.", "Patient until the pot is worth it.", "Reads tells, sells lies."];
+function cleanDescription(value, archetype) {
+  const text = String(value || "").replace(/\s+/g, " ").trim().slice(0, 240);
+  if (text.length >= 8) return text;
+  const line = AUTO_DESCRIPTIONS[Math.floor(Math.random() * AUTO_DESCRIPTIONS.length)];
+  return archetype ? `${archetypeLabel(archetype)}. ${line}` : line;
 }
 
 function cleanDirection(value) {
@@ -687,8 +707,8 @@ function allocateId(name, taken) {
 
 function createDraft(input, ctx) {
   const body = input && typeof input === "object" ? input : {};
-  const name = cleanName(body.name);
-  const shortDescription = cleanDescription(body.shortDescription || body.description);
+  const name = cleanName(body.name, ctx && ctx.names);
+  const shortDescription = cleanDescription(body.shortDescription || body.description, body.archetype);
   const archetype = String(body.archetype || "").trim().toUpperCase();
   if (!ARCHETYPE_IDS.includes(archetype)) {
     throw creatorError("bad_archetype", "Pick an archetype from the list.");

@@ -1668,6 +1668,7 @@ class Show {
       vary,
       anchor,
       brands: this.brandPool(),
+      takenPortraits: this.takenPortraits(agentId),
     });
     draft.concepts = PFP_TOUCHES.includes(vary) ? retouchConcepts({ ...draft, concepts }, vary) : concepts;
     if (!live) draft.status = "AWAITING_SELECTION";
@@ -1723,11 +1724,30 @@ class Show {
     };
   }
 
+  // Every library portrait is single-use: the ids currently held by any agent (house cast,
+  // locked brands in any version, and drafts' provisional picks), except `exceptId`'s own.
+  takenPortraits(exceptId) {
+    const used = new Set();
+    for (const row of this.brands._versions.values()) if (row.portrait && row.portrait.id && row.agentId !== exceptId) used.add(row.portrait.id);
+    for (const e of portraitLib.load().entries) if (e.house) used.add(e.id);
+    for (const d of this.userAgents.values()) {
+      if (d.id === exceptId) continue;
+      if (d.provisionalPortrait) used.add(d.provisionalPortrait);
+      for (const c of d.concepts || []) if (c && c.portrait && c.portrait.id) used.add(c.portrait.id); // faces on offer elsewhere right now
+    }
+    return [...used];
+  }
+
   // A draft that has not finished creation has no brand yet. Rather than a letter, the
-  // roster shows the closest library portrait for its options; the chosen one replaces it.
+  // roster shows a library portrait nobody else holds; the chosen one replaces it.
   provisionalBrand(draft) {
     if (!draft || !portraitLib.enabled()) return null;
-    const entry = portraitLib.match(normalizeSelections(draft.creationSelections), { count: 1, seed: "draft:" + draft.id })[0];
+    let entry = draft.provisionalPortrait ? portraitLib.byId(draft.provisionalPortrait) : null;
+    if (!entry) {
+      const sel = normalizeSelections(draft.creationSelections);
+      entry = portraitLib.match(sel, { count: 1, exclude: this.takenPortraits(draft.id), seed: "draft:" + draft.id })[0] || portraitLib.match(sel, { count: 1, seed: "draft:" + draft.id })[0];
+      if (entry) { draft.provisionalPortrait = entry.id; this.persist(); }
+    }
     if (!entry) return null;
     const url = withBrandVersion(portraitLib.urlFor(entry), { version: 1 });
     return { provisional: true, version: 0, status: draft.status, pfpStatus: draft.status, pfpUrl: url, canonicalPfp: url, avatarUrl: url,
@@ -1864,6 +1884,7 @@ class Show {
       if (err && err.code) throw err;
       throw creatorError("generation_failed", "Portrait generation failed. The last portrait was kept.", 502);
     }
+    portrait.takenPortraits = this.takenPortraits(agentId);
     const locked = buildPortraitBrand(draft, portrait, previous);
     try {
       this.brands.appendVersion(locked.brand);

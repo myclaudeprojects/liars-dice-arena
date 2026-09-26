@@ -50,11 +50,14 @@ function imagePortraitAssets(entry, agentId, version) {
 
 // Attach library portraits to a concept round: four DIFFERENT generated faces that best
 // match the selections (regenerate rounds skip what was already shown).
-function attachLibraryPortraits(draft, concepts) {
+function attachLibraryPortraits(draft, concepts, taken) {
   if (!portraitLib.enabled()) return concepts;
   const shown = Array.isArray(draft.shownPortraits) ? draft.shownPortraits : [];
-  let picks = portraitLib.match(draft.creationSelections, { count: concepts.length, exclude: shown, seed: draft.id + ":" + (draft.conceptSalt || 0) });
-  if (picks.length < concepts.length) picks = portraitLib.match(draft.creationSelections, { count: concepts.length, seed: draft.id + ":" + (draft.conceptSalt || 0) });
+  const held = Array.isArray(taken) ? taken : [];   // portraits already belonging to other agents: never offered
+  const seed = draft.id + ":" + (draft.conceptSalt || 0);
+  let picks = portraitLib.match(draft.creationSelections, { count: concepts.length, exclude: [...held, ...shown], seed });
+  if (picks.length < concepts.length) picks = portraitLib.match(draft.creationSelections, { count: concepts.length, exclude: held, seed });
+  if (picks.length < concepts.length) picks = portraitLib.match(draft.creationSelections, { count: concepts.length, seed });
   concepts.forEach((c, i) => { const e = picks[i]; if (e) { c.portrait = { id: e.id, file: e.file, tags: e.tags }; c.pfpUrl = portraitLib.urlFor(e); } });
   draft.shownPortraits = [...shown, ...picks.map((e) => e.id)].slice(-40);
   return concepts;
@@ -795,7 +798,7 @@ function buildConcepts(draft, opts = {}) {
   if (concepts.length < 3) {
     throw creatorError("uniqueness_exhausted", "Could not make three distinct concepts. Try a different direction.", 409);
   }
-  return attachLibraryPortraits(draft, concepts);
+  return attachLibraryPortraits(draft, concepts, opts.takenPortraits);
 }
 
 function sheetFor(draft, concept) {
@@ -962,7 +965,7 @@ function buildPortraitBrand(draft, portrait, previous) {
   const version = nextVersionNumber(previous);
   const stamp = new Date().toISOString();
   const assetId = `pfp_${draft.id}_v${version}`;
-  const libEntry = portrait.libraryEntry || (portraitLib.enabled() ? portraitLib.match(selections, { count: 1, seed: draft.id })[0] : null);
+  const libEntry = portrait.libraryEntry || (portraitLib.enabled() ? portraitLib.match(selections, { count: 1, exclude: portrait.takenPortraits || [], seed: draft.id })[0] || portraitLib.match(selections, { count: 1, seed: draft.id })[0] : null);
   const assets = libEntry ? imagePortraitAssets(libEntry, draft.id, version) : portraitAssets(draft.id, version);
   const material = portrait.visual.materialLanguage || ["carbon", "glass"];
   const brand = {

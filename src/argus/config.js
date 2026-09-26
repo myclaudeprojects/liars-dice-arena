@@ -4,7 +4,8 @@
 // The browser path stays available whenever the flag is on. The key itself is
 // never copied into the public config.
 
-const { activePortal, loadAbi, QUOTE_ASSET, CHAIN_ID, CHAIN_ID_HEX, BUNDLE_SHA256, BUNDLE_URL } = require("./launch");
+const { ethers } = require("ethers");
+const { activePortal, loadAbi, QUOTE_ASSET, CHAIN_ID, CHAIN_ID_HEX, BUNDLE_SHA256, BUNDLE_URL, HOUSE_LAUNCH_DEFAULTS } = require("./launch");
 const { parseMintKey } = require("./sponsor");
 
 const SPONSOR_UNAVAILABLE = "Server mint is not set up. Connect a wallet, or leave this agent playable.";
@@ -48,16 +49,63 @@ function publicBase(env) {
   return raw || "https://liars-dice-arena.onrender.com";
 }
 
+function hostOf(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    return new URL(/^https?:\/\//i.test(raw) ? raw : "https://" + raw).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function withSlash(value) {
+  return String(value || "").trim().replace(/\/+$/, "") + "/";
+}
+
+function creatorFeeWallet(source) {
+  const raw = String(source.ARGUS_CREATOR_WALLET || "").trim();
+  const pick = /^0x[0-9a-fA-F]{40}$/.test(raw) ? raw : HOUSE_LAUNCH_DEFAULTS.creatorFeeWallet;
+  try { return ethers.getAddress(pick); }
+  catch { return ethers.getAddress(HOUSE_LAUNCH_DEFAULTS.creatorFeeWallet); }
+}
+
+// LDA_SITE_URL wins. Otherwise a publicBase that is already liarsdicearc.app
+// is the site link. Any other host keeps the house default.
+function houseLaunchProfile(env) {
+  const source = env || process.env;
+  const explicit = String(source.LDA_SITE_URL || "").trim();
+  let site = /^https?:\/\//i.test(explicit) ? explicit : "";
+  if (!site && hostOf(publicBase(source)) === "liarsdicearc.app") site = publicBase(source);
+  if (!site) site = HOUSE_LAUNCH_DEFAULTS.siteUrl;
+  const xUrl = String(source.LDA_X_URL || "").trim() || HOUSE_LAUNCH_DEFAULTS.xUrl;
+  const telegramUrl = String(source.LDA_TELEGRAM_URL || "").trim();
+  return {
+    siteUrl: withSlash(site),
+    xUrl: xUrl.slice(0, 120),
+    telegramUrl: telegramUrl.slice(0, 120),
+    creatorFeeWallet: creatorFeeWallet(source),
+  };
+}
+
 function argusPublicConfig(env) {
   const state = sponsoredState(env);
+  const house = houseLaunchProfile(env);
+  const mintIsHouse = !!(state.sponsored && state.mintWallet
+    && state.mintWallet.toLowerCase() === house.creatorFeeWallet.toLowerCase());
   const base = {
     enabled: state.enabled,
     sponsored: state.sponsored,
     sponsoredMessage: state.sponsoredMessage,
     mintWallet: state.mintWallet,
+    mintIsHouse,
     chainId: CHAIN_ID,
     chainIdHex: CHAIN_ID_HEX,
     publicBase: publicBase(env),
+    siteUrl: house.siteUrl,
+    xUrl: house.xUrl,
+    telegramUrl: house.telegramUrl,
+    creatorFeeWallet: house.creatorFeeWallet,
     bundleUrl: BUNDLE_URL,
     bundleSha256: BUNDLE_SHA256,
   };
@@ -86,4 +134,4 @@ function argusPublicConfig(env) {
   };
 }
 
-module.exports = { argusEnabled, publicBase, argusPublicConfig, sponsoredState, SPONSOR_UNAVAILABLE };
+module.exports = { argusEnabled, publicBase, houseLaunchProfile, argusPublicConfig, sponsoredState, SPONSOR_UNAVAILABLE };

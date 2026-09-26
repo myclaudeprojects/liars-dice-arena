@@ -139,6 +139,7 @@ function req(method, url, body) {
       chaos: 0.2,
     });
     assert(created.status === 200 && created.json.agent && created.json.identity && created.json.identity.title, "create returns a first-pass identity");
+    assert(created.json.agent.name === "LDA Vesper", "create stores the roster name with the LDA prefix");
     assert(created.json.identity.visualIdentity && created.json.identity.visualIdentity.primaryColor, "create returns visual DNA");
     const concepts = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/concepts", { count: 4 });
     assert(concepts.status === 200 && concepts.json.concepts.length >= 3 && concepts.json.concepts.length <= 5, "concepts are 3 to 5");

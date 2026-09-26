@@ -6,7 +6,7 @@ const { MockAgent } = require("./agents");
 const CAST = [
   {
     id: "dracula",
-    name: "Dracula",
+    name: "LDA Dracula",
     archetype: "The Gambler",
     style: ["Aggressive", "High pressure", "High variance"],
     aggression: 0.86,
@@ -18,7 +18,7 @@ const CAST = [
   },
   {
     id: "caesar",
-    name: "Caesar",
+    name: "LDA Caesar",
     archetype: "The Strategist",
     style: ["Patient", "Calculating", "Tight"],
     aggression: 0.22,
@@ -30,7 +30,7 @@ const CAST = [
   },
   {
     id: "reaper",
-    name: "The Reaper",
+    name: "LDA The Reaper",
     archetype: "The Chaos Agent",
     style: ["Unpredictable", "High variance"],
     aggression: 0.58,
@@ -42,7 +42,7 @@ const CAST = [
   },
   {
     id: "athena",
-    name: "Athena",
+    name: "LDA Athena",
     archetype: "The Reader",
     style: ["Conservative", "Probability"],
     aggression: 0.16,
@@ -54,7 +54,7 @@ const CAST = [
   },
   {
     id: "shark",
-    name: "The Shark",
+    name: "LDA The Shark",
     archetype: "The Pressure Player",
     style: ["Pressure", "Bluffer"],
     aggression: 0.5,
@@ -66,7 +66,7 @@ const CAST = [
   },
   {
     id: "oracle",
-    name: "The Oracle",
+    name: "LDA The Oracle",
     archetype: "The Clock",
     style: ["Steady", "Low variance"],
     aggression: 0.38,
@@ -78,7 +78,7 @@ const CAST = [
   },
   {
     id: "fox",
-    name: "The Fox",
+    name: "LDA The Fox",
     archetype: "The Opportunist",
     style: ["Thin edges", "Small lies"],
     aggression: 0.47,
@@ -90,7 +90,7 @@ const CAST = [
   },
   {
     id: "brutus",
-    name: "Brutus",
+    name: "LDA Brutus",
     archetype: "The Enforcer",
     style: ["Fast calls", "Low variance"],
     aggression: 0.74,
@@ -102,7 +102,7 @@ const CAST = [
   },
   {
     id: "monk",
-    name: "The Monk",
+    name: "LDA The Monk",
     archetype: "The Anchor",
     style: ["Honest", "No variance"],
     aggression: 0.1,
@@ -114,7 +114,7 @@ const CAST = [
   },
   {
     id: "siren",
-    name: "The Siren",
+    name: "LDA The Siren",
     archetype: "The Tempo Player",
     style: ["Tempo", "Pressure"],
     aggression: 0.63,
@@ -126,7 +126,7 @@ const CAST = [
   },
   {
     id: "miser",
-    name: "The Miser",
+    name: "LDA The Miser",
     archetype: "The Grinder",
     style: ["Tight", "Patient"],
     aggression: 0.28,
@@ -138,7 +138,7 @@ const CAST = [
   },
   {
     id: "jester",
-    name: "The Jester",
+    name: "LDA The Jester",
     archetype: "The Noise",
     style: ["Noise", "Mixed tells"],
     aggression: 0.52,

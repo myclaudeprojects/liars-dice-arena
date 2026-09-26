@@ -24,6 +24,9 @@ const BLOCK = "0x" + "cd".repeat(32);
 const POOL = "0x" + "12".repeat(32);
 const IMAGE = "https://liars-dice-arena.onrender.com/api/show/agents/u_vesper/pfp.svg";
 const SITE = "https://liars-dice-arena.onrender.com/";
+const HOUSE = "https://liarsdicearc.app/";
+const HOUSE_X = "https://x.com/LiarsDiceArc";
+const HOUSE_WALLET = "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488";
 
 function boot(file) {
   return new Show({
@@ -174,14 +177,45 @@ function mockRes() {
     takenTickers: ["VESPER"],
     canonicalPfp: huge,
   });
+  eq(suggested.launchName, "LDA Vesper", "token name is branded");
   eq(suggested.launchTicker, "VESPER2", "suggested ticker avoids a collision");
   eq(suggested.launchImage, IMAGE, "suggested image is the short portrait");
-  eq(suggested.launchWebsite, SITE, "website is the site root");
+  eq(suggested.launchWebsite, HOUSE, "website is the house site");
+  eq(suggested.launchX, HOUSE_X, "X is the house profile");
+  eq(suggested.launchTelegram, "", "Telegram is left blank");
+  eq(suggested.creatorFeeWallet, HOUSE_WALLET, "creator-fee wallet is the house default");
+  eq(suggested.launchDescription, "A quiet closer who spends one lie and waits.\n\nPlay at " + HOUSE, "description keeps the blurb and the site line");
   eq(suggested.launchBuy, "5", "buy default");
   eq(suggested.launchCreator, "100", "creator default");
   eq(suggested.launchDevBuy, "0", "no dev buy");
+  eq(launch.suggestLaunch({ name: "Dracula", publicBase: "https://liars-dice-arena.onrender.com" }).launchName, "LDA Dracula", "chosen name is prefixed");
+  eq(launch.suggestLaunch({ name: "LDA Dracula" }).launchName, "LDA Dracula", "LDA prefix is not doubled");
+  eq(launch.suggestLaunch({ name: "LDA Dracula", takenTickers: [] }).launchTicker, "DRACULA", "ticker comes from the name after LDA");
+  eq(launch.suggestLaunch({ name: "LDA Vesper", takenTickers: ["VESPER"] }).launchTicker, "VESPER2", "a stored LDA name still avoids a taken ticker");
+  eq(launch.suggestLaunch({ name: "lda Dracula" }).launchName, "LDA Dracula", "prefix check ignores case");
+  eq(launch.suggestLaunch({ name: "Supercalifragilisticexpialidocious" }).launchName, "LDA Supercalifragilisticexpialid", "prefix still fits the name limit");
+  const longBlurb = "word ".repeat(80).trim();
+  const longSuggested = launch.suggestLaunch({ name: "Dracula", description: longBlurb, publicBase: "https://liars-dice-arena.onrender.com" });
+  assert(longSuggested.launchDescription.length <= 280, "branded description stays within 280");
+  assert(longSuggested.launchDescription.endsWith("\n\nPlay at " + HOUSE), "a long blurb keeps the site line");
+  eq(launch.suggestLaunch({ name: "Dracula", description: "", publicBase: "https://liars-dice-arena.onrender.com" }).launchDescription, "Play at " + HOUSE, "missing blurb is only the site line");
+  const canon = launch.suggestLaunch({ name: "LDA Dracula", publicBase: "https://liarsdicearc.app", canonicalPfp: "/api/show/agents/dracula/pfp.svg" });
+  eq(canon.launchWebsite, HOUSE, "a canonical public base is the website");
+  eq(canon.launchImage, "https://liarsdicearc.app/api/show/agents/dracula/pfp.svg", "portrait stays on the app host");
+  const custom = launch.suggestLaunch({
+    name: "LDA Vesper",
+    siteUrl: "https://example.com/play",
+    xUrl: "https://x.com/Example",
+    telegramUrl: "https://t.me/example",
+    creatorFeeWallet: "0x2222222222222222222222222222222222222222",
+  });
+  eq(custom.launchWebsite, "https://example.com/play/", "an explicit site replaces the house default");
+  eq(custom.launchX, "https://x.com/Example", "an explicit X replaces the house default");
+  eq(custom.launchTelegram, "https://t.me/example", "an explicit Telegram replaces the house default");
+  eq(custom.creatorFeeWallet, "0x2222222222222222222222222222222222222222", "an explicit fee wallet replaces the house default");
   const prepared = launch.prepareLaunch(suggested);
-  eq(prepared.name, "Vesper", "prepared name");
+  eq(prepared.name, "LDA Vesper", "prepared name");
+  eq(prepared.description, suggested.launchDescription, "prepared description keeps the site line");
   eq(prepared.symbol, "VESPER2", "prepared ticker");
   eq(prepared.buyTaxBps, 500, "prepared buy");
   eq(prepared.sellTaxBps, 500, "prepared sell");
@@ -206,7 +240,7 @@ function mockRes() {
 
   const data = launch.encodeLaunch(null, { ...prepared, hookSalt: mined.hookSalt });
   const decodedCall = iface().decodeFunctionData("launch", data);
-  eq(decodedCall[0].name, "Vesper", "calldata name");
+  eq(decodedCall[0].name, "LDA Vesper", "calldata name");
   eq(decodedCall[0].symbol, "VESPER2", "calldata ticker");
   eq(decodedCall[0].buyTaxBps, 500n, "calldata buy");
   eq(decodedCall[0].sellTaxBps, 500n, "calldata sell");
@@ -215,7 +249,11 @@ function mockRes() {
   eq(decodedCall[0].expectConvert, 1n, "calldata expectConvert");
   eq(ethers.getAddress(decodedCall[0].quoteAsset), ethers.getAddress(launch.QUOTE_ASSET), "calldata quote");
   eq(decodedCall[1].imageURI, IMAGE, "calldata image");
-  eq(decodedCall[1].website, SITE, "calldata website");
+  eq(decodedCall[1].website, HOUSE, "calldata website");
+  eq(decodedCall[1].twitter, HOUSE_X, "calldata X");
+  eq(decodedCall[1].telegram, "", "calldata Telegram stays empty");
+  const launchNames = launchFn.inputs.flatMap((input) => (input.components || []).map((row) => row.name).concat(input.name));
+  assert(!launchNames.includes("feeRecipient") && !launchNames.includes("creator"), "launch args have no fee recipient");
   eq(decodedCall[2], prepared.salt, "calldata salt");
   eq(decodedCall[3], mined.hookSalt, "calldata hook salt");
   assert(data.startsWith(launchFn.selector), "launch selector");

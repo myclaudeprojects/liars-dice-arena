@@ -130,6 +130,101 @@
     return String(value || "").replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
   }
 
+  function cleanMultiline(value) {
+    return String(value || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/[\u0000-\u0008\u000b-\u001f]/g, " ")
+      .replace(/[^\S\n]+/g, " ")
+      .replace(/ *\n */g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function launchSiteUrl(publicBase) {
+    const fallback = "https://liars-dice-arena.onrender.com";
+    const raw = String(publicBase || "").trim();
+    const base = (raw || fallback).replace(/\/+$/, "");
+    return base + "/";
+  }
+
+  // House profile for a new Argus token. Env can replace these; see argusPublicConfig.
+  // Portal #7 launch() has no creator-address argument and no fee-recipient argument.
+  // The signing wallet is the on-chain creator, and the 100% creator share accrues there.
+  // Server mint is how the house wallet signs. creatorFeeWallet is shown on the form
+  // and is not encoded into launch().
+  const HOUSE_LAUNCH_DEFAULTS = {
+    siteUrl: "https://liarsdicearc.app/",
+    xUrl: "https://x.com/LiarsDiceArc",
+    telegramUrl: "",
+    creatorFeeWallet: "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488",
+  };
+
+  function withSlash(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    return raw.replace(/\/+$/, "") + "/";
+  }
+
+  function hostOf(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      return new URL(/^https?:\/\//i.test(raw) ? raw : "https://" + raw).hostname.replace(/^www\./i, "").toLowerCase();
+    } catch {
+      return "";
+    }
+  }
+
+  function marketingSite(body) {
+    const explicit = String(body.siteUrl || "").trim();
+    if (/^https?:\/\//i.test(explicit)) return withSlash(explicit);
+    if (hostOf(body.publicBase) === "liarsdicearc.app") return withSlash(body.publicBase);
+    return HOUSE_LAUNCH_DEFAULTS.siteUrl;
+  }
+
+  function socialValue(value, fallback) {
+    const text = cleanText(value, 120);
+    return text || fallback;
+  }
+
+  function feeWallet(value) {
+    const raw = cleanText(value, 42);
+    try { return ethers.getAddress(raw || HOUSE_LAUNCH_DEFAULTS.creatorFeeWallet); }
+    catch { return ethers.getAddress(HOUSE_LAUNCH_DEFAULTS.creatorFeeWallet); }
+  }
+
+  function tickerBody(name) {
+    const cleaned = cleanText(name, 32);
+    const rest = /^lda /i.test(cleaned) ? cleaned.slice(4).trim() : cleaned;
+    return rest || cleaned;
+  }
+
+  function brandTokenName(name) {
+    const cleaned = cleanText(name, 32);
+    const rest = /^lda /i.test(cleaned) ? cleaned.slice(4) : cleaned;
+    const body = rest.slice(0, 28).trim();
+    return body ? "LDA " + body : "LDA";
+  }
+
+  function brandDescription(description, site) {
+    const line = "Play at " + site;
+    if (line.length >= 280) return line.slice(0, 280);
+    const tail = "\n\n" + line;
+    const blurb = cleanText(description, 280 - tail.length);
+    return blurb ? blurb + tail : line;
+  }
+
+  function fitLaunchDescription(value) {
+    const text = cleanMultiline(value);
+    const mark = "\n\nPlay at ";
+    const at = text.lastIndexOf(mark);
+    if (at < 0 || text.length <= 280) return text.slice(0, 280);
+    const tail = text.slice(at);
+    if (tail.length >= 280) return text.slice(0, 280);
+    const blurb = text.slice(0, at).trim().slice(0, 280 - tail.length);
+    return blurb ? blurb + tail : tail.replace(/^\n+/, "");
+  }
+
   function hasForm(input, key) {
     return input && Object.prototype.hasOwnProperty.call(input, key) && input[key] != null && String(input[key]).trim() !== "";
   }
@@ -154,9 +249,11 @@
 
   function suggestLaunch(input) {
     const body = input || {};
-    const base = String(body.publicBase || "https://liars-dice-arena.onrender.com").replace(/\/$/, "");
+    const site = marketingSite(body);
+    const base = launchSiteUrl(body.publicBase).replace(/\/$/, "");
     const agentId = encodeURIComponent(body.agentId || "");
     const fallback = base + "/api/show/agents/" + agentId + "/pfp.svg";
+    // Token image is the portrait Create Agent already saved (canonical PFP).
     const candidates = [];
     if (body.canonicalPfp) {
       const raw = String(body.canonicalPfp);
@@ -164,13 +261,14 @@
     }
     if (body.imageUrl) candidates.push(String(body.imageUrl));
     return {
-      launchName: cleanText(body.name, 32),
-      launchTicker: deriveTicker(body.name, body.takenTickers),
+      launchName: brandTokenName(body.name),
+      launchTicker: deriveTicker(tickerBody(body.name), body.takenTickers),
       launchImage: fitImageUri(candidates, fallback),
-      launchWebsite: base + "/",
-      launchDescription: cleanText(body.description, 280),
-      launchX: "",
-      launchTelegram: "",
+      launchWebsite: site,
+      launchDescription: brandDescription(body.description, site),
+      launchX: socialValue(body.xUrl, HOUSE_LAUNCH_DEFAULTS.xUrl),
+      launchTelegram: socialValue(body.telegramUrl, HOUSE_LAUNCH_DEFAULTS.telegramUrl),
+      creatorFeeWallet: feeWallet(body.creatorFeeWallet),
       launchBuy: "5",
       launchSell: "5",
       launchCreator: "100",
@@ -208,7 +306,7 @@
     if (!/^https?:\/\//i.test(website) || website.length > 200) {
       throw fail("website", "Website must be an http(s) URL.");
     }
-    const description = cleanText(hasForm(body, "launchDescription") ? body.launchDescription : body.description, 280);
+    const description = fitLaunchDescription(hasForm(body, "launchDescription") ? body.launchDescription : body.description);
     const twitter = cleanText(hasForm(body, "launchX") ? body.launchX : body.twitter, 120);
     const telegram = cleanText(hasForm(body, "launchTelegram") ? body.launchTelegram : body.telegram, 120);
     const devBuyQuote = hasForm(body, "launchDevBuy") || body.devBuyQuote == null
@@ -551,6 +649,7 @@ function encodeLaunch(abi, prepared) {
     HOOK_FLAGS,
     BUNDLE_SHA256,
     BUNDLE_URL,
+    HOUSE_LAUNCH_DEFAULTS,
     IMAGE_URI_MAX_BYTES,
     ARC_CHAIN,
     loadAbi,

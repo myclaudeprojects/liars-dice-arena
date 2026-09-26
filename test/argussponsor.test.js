@@ -201,6 +201,39 @@ function agent(show, name) {
   assert(!dumped.includes(TEST_KEY.slice(2)), "public config omits the raw key");
   assert(!Object.prototype.hasOwnProperty.call(hidden, "privateKey"), "no privateKey field");
 
+  eq(hidden.siteUrl, "https://liarsdicearc.app/", "house site is prefilled");
+  eq(hidden.xUrl, "https://x.com/LiarsDiceArc", "house X is prefilled");
+  eq(hidden.telegramUrl, "", "Telegram is left blank");
+  eq(hidden.creatorFeeWallet, "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488", "house creator-fee wallet is prefilled");
+  eq(hidden.mintIsHouse, false, "fixture mint key is not the house wallet");
+  const matched = argusPublicConfig({
+    ARGUS_MINT_ENABLED: "1",
+    ARGUS_MINT_KEY: TEST_KEY,
+    ARGUS_CREATOR_WALLET: MINT,
+  });
+  eq(matched.mintIsHouse, true, "mint key that matches the house wallet prefers server mint");
+  eq(matched.defaults.creatorPercent, 100, "allocation stays 100% creator");
+  eq(matched.defaults.dividendPercent, 0, "dividends stay 0");
+  eq(matched.defaults.burnPercent, 0, "burn stays 0");
+  eq(matched.defaults.liquidityPercent, 0, "LP stays 0");
+  const branded = argusPublicConfig({
+    ARGUS_MINT_ENABLED: "1",
+    PUBLIC_BASE_URL: "https://liarsdicearc.app",
+    LDA_SITE_URL: "https://example.com/arena",
+    LDA_X_URL: "https://x.com/Example",
+    LDA_TELEGRAM_URL: "https://t.me/example",
+    ARGUS_CREATOR_WALLET: "0x2222222222222222222222222222222222222222",
+  });
+  eq(branded.publicBase, "https://liarsdicearc.app", "public base stays the app origin");
+  eq(branded.siteUrl, "https://example.com/arena/", "LDA_SITE_URL replaces the website");
+  eq(branded.xUrl, "https://x.com/Example", "LDA_X_URL replaces X");
+  eq(branded.telegramUrl, "https://t.me/example", "LDA_TELEGRAM_URL replaces Telegram");
+  eq(branded.creatorFeeWallet, "0x2222222222222222222222222222222222222222", "ARGUS_CREATOR_WALLET replaces the fee wallet");
+  const canonHost = argusPublicConfig({ PUBLIC_BASE_URL: "https://www.liarsdicearc.app" });
+  eq(canonHost.siteUrl, "https://www.liarsdicearc.app/", "a canonical public base becomes the website");
+  const badWallet = argusPublicConfig({ ARGUS_CREATOR_WALLET: "not-an-address" });
+  eq(badWallet.creatorFeeWallet, "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488", "a bad fee wallet keeps the house default");
+
   const houseOnly = argusPublicConfig({ ARGUS_MINT_ENABLED: "1", HOUSE_PRIVATE_KEY: TEST_KEY });
   eq(houseOnly.sponsored, false, "house key is not a mint key");
   eq(houseOnly.mintWallet, null, "house key is not published as the creator");
@@ -436,10 +469,19 @@ function agent(show, name) {
   const mintJs = fs.readFileSync(path.join(__dirname, "..", "public", "argusmint.js"), "utf8");
   const sponsorSrc = fs.readFileSync(path.join(__dirname, "..", "src", "argus", "sponsor.js"), "utf8");
   assert(app.includes("Sign create on Arc"), "browser sign button remains");
+  assert(app.includes("data-argus-for"), "agent detail can open the launch panel");
+  assert(!app.includes("!argusOffer.enabled || !agent.playable"), "a saved user agent can launch before they are playable");
   assert(app.includes("data-argus-launch"), "browser launch action remains");
   assert(app.includes("Launch with server mint"), "server mint button");
   assert(app.includes("data-argus-sponsor"), "server mint action");
-  assert(app.includes("server mint wallet"), "ui names the on-chain creator");
+  assert(app.includes("if (houseMint) return sponsor + connect + sign"), "house mint keeps server mint first");
+  assert(app.includes("return connect + sign + sponsor"), "a mint key that is not the house wallet does not lead with server mint");
+  assert(app.includes("signing wallet becomes the on-chain creator"), "ui warns that Sign create changes who receives fees");
+  assert(app.includes("unless you are signing as"), "ui warns Sign create conflicts unless the signer is the house wallet");
+  assert(app.includes("portrait from Create Agent"), "image is the existing portrait");
+  assert(app.includes("100% creator, 0% dividends, 0% burn, 0% LP"), "allocation default stays 100% creator");
+  assert(app.includes("no on-chain split with the spectator"), "ui says the spectator split is not on-chain");
+  assert(app.includes("siteUrl"), "launch suggestions receive the house site");
   assert(!app.includes("ARGUS_MINT_KEY"), "client does not mention the env key");
   assert(!mintJs.includes("ARGUS_MINT_KEY"), "wallet bundle does not mention the env key");
   assert(mintJs.includes("runLaunch"), "browser launch helper remains");

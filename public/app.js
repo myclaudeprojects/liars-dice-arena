@@ -1699,6 +1699,10 @@ function createAgentButton() {
   return `<button class="lda-btn lda-btn-primary" type="button" data-create-agent="1">Create agent</button>`;
 }
 
+function createAgentListNote() {
+  return `<p class="fine">Connect wallet is not on this page. It appears on Reveal, after Generate agent, with the Argus token launch.</p>`;
+}
+
 function sliderField(key, label) {
   const value = Math.round(Number(creator.form[key] || 0) * 100);
   return `<label>${esc(label)} <output>${value}</output><input type="range" name="${esc(key)}" min="0" max="100" value="${value}"></label>`;
@@ -1729,35 +1733,55 @@ function argusAgentId() {
   return (creator.reveal && creator.reveal.agentId) || (creator.draft && creator.draft.agent && creator.draft.agent.id) || "";
 }
 
+function houseLaunchArgs(cfg, extra) {
+  const offer = cfg || {};
+  const more = extra || {};
+  return {
+    name: more.name != null ? more.name : creator.form.name,
+    description: more.description != null ? more.description : creator.form.shortDescription,
+    agentId: more.agentId || argusAgentId(),
+    publicBase: offer.publicBase,
+    siteUrl: offer.siteUrl,
+    xUrl: offer.xUrl,
+    telegramUrl: offer.telegramUrl,
+    creatorFeeWallet: offer.creatorFeeWallet,
+    takenTickers: more.takenTickers || takenArgusTickers(),
+    canonicalPfp: more.canonicalPfp,
+  };
+}
+
+function suggestedLaunch(cfg, extra) {
+  const tools = window.ArgusLaunch;
+  const args = houseLaunchArgs(cfg, extra);
+  if (tools && tools.suggestLaunch) return tools.suggestLaunch(args);
+  const house = (tools && tools.HOUSE_LAUNCH_DEFAULTS) || {};
+  return {
+    launchName: args.name || "",
+    launchWebsite: args.siteUrl || house.siteUrl || "",
+    launchDescription: args.description || "",
+    launchX: args.xUrl || house.xUrl || "",
+    launchTelegram: args.telegramUrl || house.telegramUrl || "",
+    creatorFeeWallet: args.creatorFeeWallet || house.creatorFeeWallet || "",
+  };
+}
+
 async function loadArgusConfig() {
   if (!creator) return;
   try {
     const cfg = await api("/api/show/argus/config");
     if (!creator) return;
-    creator.argusConfig = cfg && cfg.enabled ? cfg : { enabled: false, publicBase: (cfg && cfg.publicBase) || "" };
+    creator.argusConfig = cfg && cfg.enabled ? cfg : { enabled: false, publicBase: (cfg && cfg.publicBase) || "", siteUrl: cfg && cfg.siteUrl, xUrl: cfg && cfg.xUrl, telegramUrl: cfg && cfg.telegramUrl, creatorFeeWallet: cfg && cfg.creatorFeeWallet };
     argusOffer = cfg || argusOffer;
   } catch {
     if (creator) creator.argusConfig = { enabled: false };
   }
   if (!creator || creator.launch) return;
-  const tools = window.ArgusLaunch;
   const cfg = creator.argusConfig || {};
   const canonical = creator.reveal && creator.reveal.canonicalPfp;
   try {
-    if (tools && tools.suggestLaunch) {
-      creator.launch = tools.suggestLaunch({
-        name: creator.form.name,
-        description: creator.form.shortDescription,
-        agentId: argusAgentId(),
-        publicBase: cfg.publicBase,
-        takenTickers: takenArgusTickers(),
-        canonicalPfp: canonical,
-      });
-    } else {
-      creator.launch = { launchName: creator.form.name || "" };
-    }
+    creator.launch = suggestedLaunch(cfg, { canonicalPfp: canonical });
   } catch {
-    if (creator && !creator.launch) creator.launch = { launchName: creator.form.name || "" };
+    if (creator && !creator.launch) creator.launch = suggestedLaunch(cfg, { canonicalPfp: canonical });
   }
 }
 
@@ -1771,18 +1795,27 @@ function argusWalletReady(form) {
   return !!((form && form.wallet) || (window.ArgusMint && window.ArgusMint.hasWallet && window.ArgusMint.hasWallet()));
 }
 
+function houseMintReady(cfg) {
+  if (!cfg || !cfg.sponsored || !cfg.mintWallet) return false;
+  if (cfg.mintIsHouse === true) return true;
+  if (cfg.mintIsHouse === false) return false;
+  const house = String(cfg.creatorFeeWallet || "").toLowerCase();
+  return /^0x[0-9a-f]{40}$/.test(house) && house === String(cfg.mintWallet).toLowerCase();
+}
+
 function argusLaunchButtons(cfg, form) {
   const busy = creator.busy ? " disabled" : "";
-  const walletReady = argusWalletReady(form);
+  const houseMint = houseMintReady(cfg);
   const signing = creator.busy && creator.launchMode === "wallet";
   const sponsoring = creator.busy && creator.launchMode === "sponsor";
   const connect = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-connect="1"${busy}>Connect wallet</button>`;
-  const signClass = !cfg.sponsored || walletReady ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
+  const signClass = houseMint ? "ghost lda-btn lda-btn-ghost lda-btn-block" : "cta lda-btn lda-btn-primary lda-btn-block";
   const sign = `<button class="${signClass}" type="button" data-argus-launch="1"${busy}>${signing ? "Launching…" : "Sign create on Arc"}</button>`;
   if (!cfg.sponsored) return connect + sign;
-  const sponsorClass = walletReady ? "ghost lda-btn lda-btn-ghost lda-btn-block" : "cta lda-btn lda-btn-primary lda-btn-block";
+  const sponsorClass = houseMint ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
   const sponsor = `<button class="${sponsorClass}" type="button" data-argus-sponsor="1"${busy}>${sponsoring ? "Launching…" : "Launch with server mint"}</button>`;
-  return walletReady ? connect + sign + sponsor : sponsor + connect + sign;
+  if (houseMint) return sponsor + connect + sign;
+  return connect + sign + sponsor;
 }
 
 function argusPanel() {
@@ -1801,20 +1834,31 @@ function argusPanel() {
   if (!cfg.enabled) {
     return `<section class="argus-launch">
       <h2>Launch on Argus</h2>
-      <p class="fine">Coming soon. This agent is saved and can play without a token.</p>
+      <p class="fine">This agent is already saved. Creating the agent and minting a token are separate steps. Launch is not open yet. They can play without a token.</p>
     </section>`;
   }
   const f = creator.launch || {};
+  const houseMint = houseMintReady(cfg);
+  const house = f.creatorFeeWallet || cfg.creatorFeeWallet || "";
   const wallet = f.wallet ? `Connected ${f.wallet.slice(0, 6)}…${f.wallet.slice(-4)}` : "Wallet not connected";
-  const sponsorNote = cfg.sponsored && cfg.mintWallet
-    ? `No wallet? Launch with server mint submits this same Portal #7 transaction. The on-chain creator will be ${cfg.mintWallet}, the server mint wallet. The creator share (100% with the defaults) accrues to that address, not to your spectator profile. This app does not hold your funds.`
-    : (cfg.sponsoredMessage || "");
   const pending = f.pendingTx ? `<p class="fine">Submitted ${esc(f.pendingTx)}. If the wallet already shows that transaction, check again before creating another token.</p>
       <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-check="1"${creator.busy ? " disabled" : ""}>Check again</button>` : "";
+  const feeNote = !house ? ""
+    : houseMint
+      ? `<b>Launch with server mint</b> signs as the house wallet ${esc(house)}. That address becomes the on-chain creator, so the 100% creator share accrues there. <b>Sign create on Arc</b> stays available. The signing wallet becomes the on-chain creator. Creator fees then accrue to that wallet instead of ${esc(house)}, unless you are signing as ${esc(house)}.`
+      : cfg.sponsored && cfg.mintWallet
+        ? `Server mint would sign as ${esc(cfg.mintWallet)}, which is not the house wallet ${esc(house)}. <b>Sign create on Arc</b> stays available. The signing wallet becomes the on-chain creator. Creator fees accrue to the wallet that signs, not to ${esc(house)}, unless you are signing as ${esc(house)}.`
+        : `Server mint is not set up, so this form cannot sign as the house wallet ${esc(house)}. <b>Sign create on Arc</b> stays available. The signing wallet becomes the on-chain creator. Creator fees accrue to that wallet, not to ${esc(house)}, unless you are signing as ${esc(house)}.`;
+  const feeLabel = houseMint
+    ? "House wallet (on-chain creator for server mint)"
+    : "House wallet (fees land here only if this address signs)";
   return `<section class="argus-launch">
     <h2>Launch on Argus</h2>
-    <p class="fine">Portal #7 on Arc (chain 5042). A connected wallet is preferred: you sign the create, and that wallet is the on-chain creator. Defaults: 5% buy tax, 5% sell tax, 100% to the creator, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply. If the launch fails, this agent still plays.</p>
-    ${sponsorNote ? `<p class="fine">${esc(sponsorNote)}</p>` : ""}
+    <p class="fine">This agent is already saved. Creating the agent and minting a token are separate steps. ${creator.agentPlayable === false ? "Use Enter the Arena to skip the token. Finish branding from their page when you want them in the show. If the launch fails, the saved agent is unchanged." : "Use Enter the Arena to skip. If the launch fails, this agent still plays."}</p>
+    <p class="fine">Connect wallet only links MetaMask or Rabby, an injected wallet on Arc (chain 5042). Connecting does not mint the token.</p>
+    <p class="fine">The fields below are already filled from this agent and the house profile. Image URL is this agent's portrait from Create Agent. Review or edit the name, ticker, description, image, website, and X. Telegram stays blank. ${houseMint ? "Use <b>Launch with server mint</b> so creator fees land on the house wallet." : "The wallet that signs is the on-chain creator."}</p>
+    <p class="fine">Defaults: 5% buy tax, 5% sell tax, 100% creator, 0% dividends, 0% burn, 0% LP, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply. There is no on-chain split with the spectator.</p>
+    ${feeNote ? `<p class="fine">${feeNote}</p>` : ""}
     <p class="fine">${esc(wallet)}</p>
     ${f.status ? `<p class="fine" role="status">${esc(f.status)}</p>` : ""}
     ${argusField("launchName", "Token name", f.launchName, { attrs: 'maxlength="32" autocomplete="off"' })}
@@ -1826,6 +1870,7 @@ function argusPanel() {
       ${argusField("launchX", "X", f.launchX)}
       ${argusField("launchTelegram", "Telegram", f.launchTelegram)}
     </div>
+    ${f.creatorFeeWallet ? `<label>${feeLabel}<input type="text" value="${esc(f.creatorFeeWallet)}" readonly tabindex="-1"></label>` : ""}
     <details class="advanced-config">
       <summary>Tax, allocation, and value</summary>
       <div class="advanced-config__body">
@@ -1969,10 +2014,19 @@ function argusDetail(agent) {
       <p class="fine">Opens argus.world. This app does not swap.</p>
     </section>`;
   }
-  if (!argusOffer.enabled || !agent.playable) return "";
-  const offer = argusOffer.sponsored
-    ? "This agent has no token yet. A connected wallet is preferred. Server mint is there if you have no wallet, and that mint wallet is the on-chain creator. Launching does not change how they play."
-    : "This agent has no token yet. Launching is a wallet signature on Arc and does not change how they play.";
+  if (!argusOffer.enabled) return "";
+  const stillPlays = agent.playable
+    ? "Skip the launch, or if it fails, this agent still plays."
+    : "Continue branding finishes their look. They can join the show after that, with or without a token.";
+  const houseMint = houseMintReady(argusOffer);
+  const offer = [
+    "This agent is already saved. Creating the agent and minting a token are separate steps.",
+    "The image is this agent's portrait from Create Agent.",
+    houseMint
+      ? "Launch with server mint signs as the house wallet, so the 100% creator share accrues there. Sign create on Arc makes the connected wallet the on-chain creator instead."
+      : "Connect wallet only links MetaMask or Rabby. Sign create on Arc makes that wallet the on-chain creator.",
+    stillPlays,
+  ].filter(Boolean).join(" ");
   return `<section class="argus-launch">
     <h2>Launch on Argus</h2>
     <p class="fine">${esc(offer)}</p>
@@ -2165,22 +2219,26 @@ function openArgusLaunch(agent) {
     agentId: agent.id,
   };
   creator.step = 3;
-  creator.argusConfig = argusOffer && argusOffer.enabled ? argusOffer : { enabled: false, publicBase: (argusOffer && argusOffer.publicBase) || "" };
-  if (window.ArgusLaunch && window.ArgusLaunch.suggestLaunch) {
-    creator.launch = window.ArgusLaunch.suggestLaunch({
-      name: creator.form.name,
-      description: creator.form.shortDescription,
-      agentId: agent.id,
-      publicBase: creator.argusConfig.publicBase,
-      takenTickers: takenArgusTickers().filter((symbol) => symbol !== (agent.argus && agent.argus.symbol)),
-      canonicalPfp: creator.reveal.canonicalPfp,
-    });
-  }
+  creator.agentPlayable = agent.playable !== false;
+  creator.argusConfig = argusOffer && argusOffer.enabled ? argusOffer : { enabled: false, publicBase: (argusOffer && argusOffer.publicBase) || "", siteUrl: argusOffer && argusOffer.siteUrl, xUrl: argusOffer && argusOffer.xUrl, telegramUrl: argusOffer && argusOffer.telegramUrl, creatorFeeWallet: argusOffer && argusOffer.creatorFeeWallet };
+  creator.launch = suggestedLaunch(creator.argusConfig, {
+    name: creator.form.name,
+    description: creator.form.shortDescription,
+    agentId: agent.id,
+    takenTickers: takenArgusTickers().filter((symbol) => symbol !== (agent.argus && agent.argus.symbol)),
+    canonicalPfp: creator.reveal.canonicalPfp,
+  });
   focusAgent = null;
   tab = "agents";
   painted = "";
   paintTabs();
   render();
+}
+
+function applyStoredAgentName(agent) {
+  if (!creator || !agent || !agent.name) return;
+  creator.form.name = agent.name;
+  if (creator.draft && creator.draft.agent) creator.draft.agent.name = agent.name;
 }
 
 function creatorPayload() {
@@ -2219,7 +2277,7 @@ function creatorView() {
   if (step === 1) {
     const options = creator.archetypes.map((row) => `<option value="${esc(row.id)}"${row.id === f.archetype ? " selected" : ""}>${esc(row.label || archetypeLabel(row.id))}</option>`).join("");
     body = `
-      <label>Name <span class="fine">(optional — leave blank and we name them)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Dracula"></label>
+      <label>Name <span class="fine">(optional — saved on the roster as LDA plus this name)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Dracula"></label>
       <label>Archetype<select name="archetype">${options}</select></label>
       <p class="fine">Persona play. The show seats them. You watch and predict with Arena Credits.</p>
       ${sliderField("aggression", "Aggression")}
@@ -2239,9 +2297,10 @@ function creatorView() {
             ${sliderField("riskTolerance", "Risk")}
             ${sliderField("adaptability", "Adaptability")}
           ` : ""}
-          <p class="fine">No endpoint, API key, wallet, or funding on this flow. Custom brains and real-money seats are not part of the spectator arena.</p>
+          <p class="fine">Naming and personality only. No endpoint, API key, or funding on this step. Connect wallet is not part of naming. It appears later on Reveal, for the Argus token. Custom brains and real-money seats are not part of the spectator arena.</p>
         </div>
-      </details>`;
+      </details>
+      <p class="fine">Connect wallet is not on this step. It appears on Reveal, after Generate agent, with the Argus token launch.</p>`;
   } else if (step === 2) {
     body = `<section class="brand-options">
       <div class="section-head">
@@ -2254,6 +2313,7 @@ function creatorView() {
       <p class="fine">Previews are examples. Generate agent locks one neon-competitive identity.</p>
       ${visualOptionGrids(creator.selections)}
       <label>Refine<textarea name="refine" maxlength="160" placeholder="Optional note. The options above decide the portrait.">${esc(f.refine)}</textarea></label>
+      <p class="fine">Connect wallet is not on this step. It appears on Reveal, after Generate agent, with the Argus token launch.</p>
     </section>`;
   } else {
     const reveal = creator.reveal || {};
@@ -2386,7 +2446,9 @@ async function generateAgent() {
         body: JSON.stringify(creatorPayload()),
       });
       creator.draft = created;
+      applyStoredAgentName(created.agent);
     }
+    applyStoredAgentName(creator.draft && creator.draft.agent);
     const id = creator.draft.agent.id;
     const generated = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/generate", {
       method: "POST",
@@ -2443,7 +2505,9 @@ async function runConcepts(vary) {
         body: JSON.stringify(creatorPayload()),
       });
       creator.draft = created;
+      applyStoredAgentName(created.agent);
     }
+    applyStoredAgentName(creator.draft && creator.draft.agent);
     const id = creator.draft.agent.id;
     const body = { count: 4, vary: vary || "all" };
     if (vary && vary !== "all" && creator.selectedId) body.anchorConceptId = creator.selectedId;
@@ -2526,10 +2590,10 @@ function agentsView() {
     const body = listsError
       ? "The connection blinked. This tab will try again."
       : "Records show up when the show answers.";
-    return `${pageHead("Agents", { actions: createAgentButton() })}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
+    return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
   }
-  if (!agents.length) return `${pageHead("Agents", { actions: createAgentButton() })}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
-  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}<div class="agent-roster">` +
+  if (!agents.length) return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
+  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}${createAgentListNote()}<div class="agent-roster">` +
     agents.map((a) => {
       const roster = a.roster === "user" ? (a.status === "READY" ? "Your competitor" : "Brand in progress") : "";
       return `<button class="agent-card" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
@@ -3328,13 +3392,10 @@ view.addEventListener("click", async (e) => {
     try {
       const j = await api("/api/show/agents/" + encodeURIComponent(agentBtn.dataset.agent));
       focusAgent = j.agent;
-      api("/api/show/argus/config").then((cfg) => {
-        argusOffer = cfg || argusOffer;
-        if (focusAgent && focusAgent.id === j.agent.id) {
-          painted = "";
-          render();
-        }
-      }).catch(() => {});
+      try {
+        const cfg = await api("/api/show/argus/config");
+        if (cfg) argusOffer = cfg;
+      } catch { /* the detail still opens; launch stays hidden until config loads */ }
       tab = "agents";
       paintTabs();
       pinScroll = false;

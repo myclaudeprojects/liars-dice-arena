@@ -1795,17 +1795,28 @@ function argusWalletReady(form) {
   return !!((form && form.wallet) || (window.ArgusMint && window.ArgusMint.hasWallet && window.ArgusMint.hasWallet()));
 }
 
+function houseMintReady(cfg) {
+  if (!cfg || !cfg.sponsored || !cfg.mintWallet) return false;
+  if (cfg.mintIsHouse === true) return true;
+  if (cfg.mintIsHouse === false) return false;
+  const house = String(cfg.creatorFeeWallet || "").toLowerCase();
+  return /^0x[0-9a-f]{40}$/.test(house) && house === String(cfg.mintWallet).toLowerCase();
+}
+
 function argusLaunchButtons(cfg, form) {
   const busy = creator.busy ? " disabled" : "";
   const walletReady = argusWalletReady(form);
+  const houseMint = houseMintReady(cfg);
   const signing = creator.busy && creator.launchMode === "wallet";
   const sponsoring = creator.busy && creator.launchMode === "sponsor";
   const connect = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-connect="1"${busy}>Connect wallet</button>`;
-  const signClass = !cfg.sponsored || walletReady ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
+  const signPrimary = !cfg.sponsored || (walletReady && !houseMint);
+  const signClass = signPrimary ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
   const sign = `<button class="${signClass}" type="button" data-argus-launch="1"${busy}>${signing ? "Launching…" : "Sign create on Arc"}</button>`;
   if (!cfg.sponsored) return connect + sign;
-  const sponsorClass = walletReady ? "ghost lda-btn lda-btn-ghost lda-btn-block" : "cta lda-btn lda-btn-primary lda-btn-block";
+  const sponsorClass = houseMint || !walletReady ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
   const sponsor = `<button class="${sponsorClass}" type="button" data-argus-sponsor="1"${busy}>${sponsoring ? "Launching…" : "Launch with server mint"}</button>`;
+  if (houseMint) return sponsor + connect + sign;
   return walletReady ? connect + sign + sponsor : sponsor + connect + sign;
 }
 
@@ -1829,23 +1840,27 @@ function argusPanel() {
     </section>`;
   }
   const f = creator.launch || {};
+  const houseMint = houseMintReady(cfg);
+  const house = f.creatorFeeWallet || cfg.creatorFeeWallet || "";
   const wallet = f.wallet ? `Connected ${f.wallet.slice(0, 6)}…${f.wallet.slice(-4)}` : "Wallet not connected";
-  const sponsorNote = cfg.sponsored && cfg.mintWallet
-    ? `Launch with server mint is the no-wallet path. It submits this same Portal #7 transaction. The mint wallet becomes the on-chain creator: ${cfg.mintWallet}, the server mint wallet. The creator share (100% with the defaults) accrues to that address, not to your spectator profile. This app does not hold your funds.`
-    : (cfg.sponsoredMessage || "");
   const pending = f.pendingTx ? `<p class="fine">Submitted ${esc(f.pendingTx)}. If the wallet already shows that transaction, check again before creating another token.</p>
       <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-check="1"${creator.busy ? " disabled" : ""}>Check again</button>` : "";
-  const mintHint = cfg.sponsored
-    ? `Connect wallet does not create the token. <b>Sign create on Arc</b> does. <b>Launch with server mint</b> is the no-wallet path, and that mint wallet becomes the on-chain creator.`
-    : `Connect wallet does not create the token. <b>Sign create on Arc</b> does.`;
+  const feeNote = !house ? ""
+    : houseMint
+      ? `<b>Launch with server mint</b> signs as the house wallet ${esc(house)}. That address becomes the on-chain creator, so the 100% creator share accrues there. <b>Sign create on Arc</b> stays available. The signing wallet becomes the on-chain creator. Creator fees then accrue to that wallet instead of ${esc(house)}, unless you are signing as ${esc(house)}.`
+      : cfg.sponsored && cfg.mintWallet
+        ? `Server mint would sign as ${esc(cfg.mintWallet)}, which is not the house wallet ${esc(house)}. <b>Sign create on Arc</b> stays available. The signing wallet becomes the on-chain creator. Creator fees accrue to the wallet that signs, not to ${esc(house)}, unless you are signing as ${esc(house)}.`
+        : `Server mint is not set up, so this form cannot sign as the house wallet ${esc(house)}. <b>Sign create on Arc</b> stays available. The signing wallet becomes the on-chain creator. Creator fees accrue to that wallet, not to ${esc(house)}, unless you are signing as ${esc(house)}.`;
+  const feeLabel = houseMint
+    ? "House wallet (on-chain creator for server mint)"
+    : "House wallet (fees land here only if this address signs)";
   return `<section class="argus-launch">
     <h2>Launch on Argus</h2>
     <p class="fine">This agent is already saved. Creating the agent and minting a token are separate steps. ${creator.agentPlayable === false ? "Use Enter the Arena to skip the token. Finish branding from their page when you want them in the show. If the launch fails, the saved agent is unchanged." : "Use Enter the Arena to skip. If the launch fails, this agent still plays."}</p>
     <p class="fine">Connect wallet only links MetaMask or Rabby, an injected wallet on Arc (chain 5042). Connecting does not mint the token.</p>
-    <p class="fine">The fields below are already filled from this agent and the house profile. Review or edit the name, ticker, description, image, website, X, and Telegram, then tap <b>Sign create on Arc</b>. That signature creates the Portal #7 token. It turns this agent metadata into an on-chain Argus token. The wallet that signs is the on-chain creator.</p>
-    <p class="fine">Defaults: 5% buy tax, 5% sell tax, 100% to the creator, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply.</p>
-    ${f.creatorFeeWallet ? `<p class="fine">Intended creator-fee wallet: ${esc(f.creatorFeeWallet)}. Portal #7 does not take a separate fee recipient. The creator share accrues to the wallet that signs. On Sign create on Arc, that is the connected wallet. On Launch with server mint, that is the server mint wallet, not a hidden key and not this house address unless they are the same.</p>` : ""}
-    ${sponsorNote ? `<p class="fine">${esc(sponsorNote)}</p>` : ""}
+    <p class="fine">The fields below are already filled from this agent and the house profile. Image URL is this agent's portrait from Create Agent. Review or edit the name, ticker, description, image, website, and X. Telegram stays blank. ${houseMint ? "Use <b>Launch with server mint</b> so creator fees land on the house wallet." : "The wallet that signs is the on-chain creator."}</p>
+    <p class="fine">Defaults: 5% buy tax, 5% sell tax, 100% creator, 0% dividends, 0% burn, 0% LP, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply. There is no on-chain split with the spectator.</p>
+    ${feeNote ? `<p class="fine">${feeNote}</p>` : ""}
     <p class="fine">${esc(wallet)}</p>
     ${f.status ? `<p class="fine" role="status">${esc(f.status)}</p>` : ""}
     ${argusField("launchName", "Token name", f.launchName, { attrs: 'maxlength="32" autocomplete="off"' })}
@@ -1857,7 +1872,7 @@ function argusPanel() {
       ${argusField("launchX", "X", f.launchX)}
       ${argusField("launchTelegram", "Telegram", f.launchTelegram)}
     </div>
-    ${f.creatorFeeWallet ? `<label>Creator-fee wallet <span class="fine">(house default, not the signing wallet)</span><input type="text" value="${esc(f.creatorFeeWallet)}" readonly tabindex="-1"></label>` : ""}
+    ${f.creatorFeeWallet ? `<label>${feeLabel}<input type="text" value="${esc(f.creatorFeeWallet)}" readonly tabindex="-1"></label>` : ""}
     <details class="advanced-config">
       <summary>Tax, allocation, and value</summary>
       <div class="advanced-config__body">
@@ -1881,7 +1896,6 @@ function argusPanel() {
       </div>
     </details>
     ${pending}
-    <p class="fine">${mintHint}</p>
     ${argusLaunchButtons(cfg, f)}
   </section>`;
 }
@@ -2006,12 +2020,14 @@ function argusDetail(agent) {
   const stillPlays = agent.playable
     ? "Skip the launch, or if it fails, this agent still plays."
     : "Continue branding finishes their look. They can join the show after that, with or without a token.";
+  const houseMint = houseMintReady(argusOffer);
   const offer = [
     "This agent is already saved. Creating the agent and minting a token are separate steps.",
-    "Connect wallet only links MetaMask or Rabby, an injected wallet on Arc. Connecting does not mint.",
-    "On the launch form, review or edit the prefilled name, ticker, description, and image, then tap Sign create on Arc. That signature creates the Portal #7 token.",
+    "The image is this agent's portrait from Create Agent.",
+    houseMint
+      ? "Launch with server mint signs as the house wallet, so the 100% creator share accrues there. Sign create on Arc makes the connected wallet the on-chain creator instead."
+      : "Connect wallet only links MetaMask or Rabby. Sign create on Arc makes that wallet the on-chain creator.",
     stillPlays,
-    argusOffer.sponsored ? "Launch with server mint is the no-wallet path, and that mint wallet is the on-chain creator." : "",
   ].filter(Boolean).join(" ");
   return `<section class="argus-launch">
     <h2>Launch on Argus</h2>

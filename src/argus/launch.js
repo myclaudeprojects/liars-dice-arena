@@ -148,8 +148,10 @@
   }
 
   // House profile for a new Argus token. Env can replace these; see argusPublicConfig.
-  // Portal #7 launch() has no creator-address argument. The signing wallet is the
-  // on-chain creator. creatorFeeWallet is shown and stored with the suggestion only.
+  // Portal #7 launch() has no creator-address argument and no fee-recipient argument.
+  // The signing wallet is the on-chain creator, and the 100% creator share accrues there.
+  // Server mint is how the house wallet signs. creatorFeeWallet is shown on the form
+  // and is not encoded into launch().
   const HOUSE_LAUNCH_DEFAULTS = {
     siteUrl: "https://liarsdicearc.app/",
     xUrl: "https://x.com/LiarsDiceArc",
@@ -251,6 +253,7 @@
     const base = launchSiteUrl(body.publicBase).replace(/\/$/, "");
     const agentId = encodeURIComponent(body.agentId || "");
     const fallback = base + "/api/show/agents/" + agentId + "/pfp.svg";
+    // Token image is the portrait Create Agent already saved (canonical PFP).
     const candidates = [];
     if (body.canonicalPfp) {
       const raw = String(body.canonicalPfp);

@@ -91,11 +91,14 @@ function houseLaunchProfile(env) {
 function argusPublicConfig(env) {
   const state = sponsoredState(env);
   const house = houseLaunchProfile(env);
+  const mintIsHouse = !!(state.sponsored && state.mintWallet
+    && state.mintWallet.toLowerCase() === house.creatorFeeWallet.toLowerCase());
   const base = {
     enabled: state.enabled,
     sponsored: state.sponsored,
     sponsoredMessage: state.sponsoredMessage,
     mintWallet: state.mintWallet,
+    mintIsHouse,
     chainId: CHAIN_ID,
     chainIdHex: CHAIN_ID_HEX,
     publicBase: publicBase(env),

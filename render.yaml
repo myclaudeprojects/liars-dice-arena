@@ -29,15 +29,16 @@ services:
       # Set these in the Render dashboard (never commit them):
       # USE_LLM, ANTHROPIC_API_KEY, OPENAI_API_KEY
       # CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET, CIRCLE_BLOCKCHAIN
-      # ARGUS_MINT_ENABLED=1 offers Portal #7 launches. The browser wallet signs.
-      # ARGUS_MINT_KEY is a dedicated Arc key for server-sponsored launches when
-      # the creator has no wallet. Never reuse HOUSE_PRIVATE_KEY or a seat wallet.
-      # The on-chain creator is this key's address. Do not commit the value.
+      # ARGUS_MINT_ENABLED=1 offers Portal #7 launches.
+      # ARGUS_MINT_KEY should be the key for the house wallet
+      # 0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488 so Launch with server mint
+      # makes that address the on-chain creator. Never reuse HOUSE_PRIVATE_KEY
+      # or a seat wallet. Do not commit the value.
       # PUBLIC_BASE_URL, ARC_RPC_URL, ARC_RPC_URLS confirm the receipt on two hosts.
       # Those RPCs also price a minted token's market cap. Holders are read from Arcscan.
       # LDA_SITE_URL, LDA_X_URL, and ARGUS_CREATOR_WALLET prefill the launch
-      # form. Leave LDA_TELEGRAM_URL unset so Telegram stays blank. Portal #7
-      # still records the signing wallet as the on-chain creator.
+      # form. Leave LDA_TELEGRAM_URL unset so Telegram stays blank. The image
+      # is the Create Agent portrait. Allocation stays 100% creator.
     disk:
       name: arena-data
       mountPath: /var/data

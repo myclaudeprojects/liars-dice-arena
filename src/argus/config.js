@@ -79,7 +79,7 @@ function houseLaunchProfile(env) {
   if (!site && hostOf(publicBase(source)) === "liarsdicearc.app") site = publicBase(source);
   if (!site) site = HOUSE_LAUNCH_DEFAULTS.siteUrl;
   const xUrl = String(source.LDA_X_URL || "").trim() || HOUSE_LAUNCH_DEFAULTS.xUrl;
-  const telegramUrl = String(source.LDA_TELEGRAM_URL || "").trim() || HOUSE_LAUNCH_DEFAULTS.telegramUrl;
+  const telegramUrl = String(source.LDA_TELEGRAM_URL || "").trim();
   return {
     siteUrl: withSlash(site),
     xUrl: xUrl.slice(0, 120),

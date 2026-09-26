@@ -153,7 +153,7 @@
   const HOUSE_LAUNCH_DEFAULTS = {
     siteUrl: "https://liarsdicearc.app/",
     xUrl: "https://x.com/LiarsDiceArc",
-    telegramUrl: "https://t.me/tradewarzchat",
+    telegramUrl: "",
     creatorFeeWallet: "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488",
   };
 

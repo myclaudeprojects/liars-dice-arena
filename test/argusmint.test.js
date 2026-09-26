@@ -26,7 +26,6 @@ const IMAGE = "https://liars-dice-arena.onrender.com/api/show/agents/u_vesper/pf
 const SITE = "https://liars-dice-arena.onrender.com/";
 const HOUSE = "https://liarsdicearc.app/";
 const HOUSE_X = "https://x.com/LiarsDiceArc";
-const HOUSE_TG = "https://t.me/tradewarzchat";
 const HOUSE_WALLET = "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488";
 
 function boot(file) {
@@ -183,7 +182,7 @@ function mockRes() {
   eq(suggested.launchImage, IMAGE, "suggested image is the short portrait");
   eq(suggested.launchWebsite, HOUSE, "website is the house site");
   eq(suggested.launchX, HOUSE_X, "X is the house profile");
-  eq(suggested.launchTelegram, HOUSE_TG, "Telegram is the house profile");
+  eq(suggested.launchTelegram, "", "Telegram is left blank");
   eq(suggested.creatorFeeWallet, HOUSE_WALLET, "creator-fee wallet is the house default");
   eq(suggested.launchDescription, "A quiet closer who spends one lie and waits.\n\nPlay at " + HOUSE, "description keeps the blurb and the site line");
   eq(suggested.launchBuy, "5", "buy default");
@@ -252,7 +251,7 @@ function mockRes() {
   eq(decodedCall[1].imageURI, IMAGE, "calldata image");
   eq(decodedCall[1].website, HOUSE, "calldata website");
   eq(decodedCall[1].twitter, HOUSE_X, "calldata X");
-  eq(decodedCall[1].telegram, HOUSE_TG, "calldata Telegram");
+  eq(decodedCall[1].telegram, "", "calldata Telegram stays empty");
   const launchNames = launchFn.inputs.flatMap((input) => (input.components || []).map((row) => row.name).concat(input.name));
   assert(!launchNames.includes("feeRecipient") && !launchNames.includes("creator"), "launch args have no fee recipient");
   eq(decodedCall[2], prepared.salt, "calldata salt");

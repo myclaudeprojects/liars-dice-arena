@@ -39,12 +39,12 @@ function assertNoir(id, accent) {
   assert(!/\sZ"/.test(edge), id + " rim is an open edge, not a closed face contour");
   const book = new BrandBook();
   const view = book.publicOf(id);
-  assert(/[?&]s=5(?:&|$)/.test(view.pfpUrl), id + " portrait url busts the old stamp");
-  assert(/[?&]s=5(?:&|$)/.test(view.avatarSizes[96]), id + " avatar url busts the old stamp");
+  assert(/[?&]s=6(?:&|$)/.test(view.pfpUrl), id + " portrait url busts the old stamp");
+  assert(/[?&]s=6(?:&|$)/.test(view.avatarSizes[96]), id + " avatar url busts the old stamp");
 }
 
-eq(PFP_STYLE_STAMP, 5, "style stamp bumped");
-eq(withBrandVersion("/api/show/agents/fox/pfp.svg?v=1&s=3", { version: 1 }), "/api/show/agents/fox/pfp.svg?v=1&s=5", "stored stamp is rewritten");
+eq(PFP_STYLE_STAMP, 6, "style stamp bumped");
+eq(withBrandVersion("/api/show/agents/fox/pfp.svg?v=1&s=3", { version: 1 }), "/api/show/agents/fox/pfp.svg?v=1&s=6", "stored stamp is rewritten");
 
 assertNoir("fox", "#F6C453");
 assertNoir("brutus", "#F0A07A");
@@ -66,8 +66,8 @@ assert(!rim(robot).includes("clip-path"), "synthetic rim is not a face overlay")
 
 const letter = ui.avatar("The Fox", 40, "fox", {});
 assert(letter.includes("lda-avatar-glyph") && !letter.includes("<img"), "letter fallback when there is no portrait");
-const img = ui.avatar("The Fox", 40, "fox", { src: "/api/show/agents/fox/pfp.svg?v=1&s=5", size: 96 });
-assert(img.includes("<img") && img.includes("s=5") && !img.includes("lda-avatar-glyph"), "stamped portrait still mounts");
+const img = ui.avatar("The Fox", 40, "fox", { src: "/api/show/agents/fox/pfp.svg?v=1&s=6", size: 96 });
+assert(img.includes("<img") && img.includes("s=6") && !img.includes("lda-avatar-glyph"), "stamped portrait still mounts");
 
 process.env.PFP_RIG = "v2";
 const legacy = renderPfp(recipeFromBrand(byId.fox), { nonce: "fox-v2" });

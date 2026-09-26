@@ -283,6 +283,8 @@ const server = http.createServer(async (req, res) => {
   if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(publicState())); }
   const preview = url.match(/^\/assets\/agent-creation-previews\/([A-Za-z]+)\/([A-Za-z0-9_]+)\.svg$/);
   if (req.method === "GET" && preview) {
+    const previewImage = (() => { try { const lib = require("./src/portraitlib"); const cs = require("./src/branding/creationSelections"); if (!lib.enabled()) return null; const sel = cs.previewSelections(preview[1], preview[2]); if (!sel) return null; const e = lib.match(sel, { count: 1, seed: preview[1] + "/" + preview[2] })[0]; return e ? lib.urlFor(e) : null; } catch { return null; } })();
+    if (previewImage) { res.writeHead(302, { location: previewImage, "cache-control": "public, max-age=3600" }); return res.end(); }
     const svg = previewSvg(preview[1], preview[2]);
     if (!svg) { res.writeHead(404); return res.end("not found"); }
     res.writeHead(200, {

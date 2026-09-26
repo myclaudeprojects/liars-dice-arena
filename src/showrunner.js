@@ -41,6 +41,7 @@ const {
   normalizeSelections,
 } = require("./brandcreate");
 const { inferSelectionsFromBrand } = require("./branding/creationSelections");
+const portraitLib = require("./portraitlib");
 const { publicArgus } = require("./argus/launch");
 // Identifies the running build so clients can reload when a deploy lands.
 const BUILD_ID = String(process.env.RENDER_GIT_COMMIT || process.env.BUILD_ID || Date.now()).slice(0, 12);
@@ -1773,6 +1774,14 @@ class Show {
     };
   }
 
+  // Library image URL for an agent's portrait (the brand's own, or the house cast's), else null.
+  portraitImageFor(agentId, version) {
+    const brand = version ? this.brands.full(agentId, "v" + version) || this.brands.full(agentId) : this.brands.full(agentId);
+    if (!brand) return null;
+    const entry = (brand.portrait && brand.portrait.file) ? brand.portrait : portraitLib.houseEntry(agentId);
+    return entry ? withBrandVersion(portraitLib.urlFor(entry), { version: Number(brand.version) || 1 }) : null;
+  }
+
   // Which agents still render through the pre-selection pipeline.
   legacyPortraitAgents() {
     const out = [];
@@ -1782,7 +1791,8 @@ class Show {
       if (!brand) continue;
       const hasSelections = brand.creationSelections && brand.creationSelections.archetype;
       const hasVariant = Number.isFinite(Number(brand.pfpVariation));
-      if (!hasSelections || !hasVariant) out.push(id);
+      const needsImage = portraitLib.enabled() && !(brand.portrait && brand.portrait.file);
+      if (!hasSelections || !hasVariant || needsImage) out.push(id);
     }
     return out;
   }
@@ -1791,7 +1801,7 @@ class Show {
   // version rendered from inferred selections; old versions stay reachable by ?v=. Runs in
   // the background after boot, sequentially, and records completion so it never re-runs.
   async migrateLegacyPortraits(force = false) {
-    const TARGET = 2;
+    const TARGET = portraitLib.enabled() ? 3 : 2;
     if (!force && this.pfpMigration >= TARGET) return { migrated: 0, skipped: "done" };
     const ids = this.legacyPortraitAgents();
     let migrated = 0; const failed = [];

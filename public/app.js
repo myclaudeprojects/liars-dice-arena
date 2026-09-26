@@ -364,6 +364,7 @@ function personTitle(person) {
 // ui.js portraitUrl must allow the same keys, or the shell still paints a letter.
 function pfpPath(url) {
   const text = String(url || "");
+  if (/^\/assets\/portraits\/[a-z0-9_.-]+\.(?:webp|png|jpg)(?:\?(?:[a-z]+=[a-z0-9]+)(?:&[a-z]+=[a-z0-9]+)*)?$/i.test(text)) return text;
   const m = text.match(/^(\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg)(?:\?(.*))?$/i);
   if (!m) return "";
   if (!m[2]) return text;
@@ -497,6 +498,11 @@ function pfpFrame(svg) {
   if (!art) return "";
   return `<span class="pfp-frame">${art}</span>`;
 }
+// A concept's art: a generated library image when it has one, else its SVG.
+function conceptArt(c) {
+  if (c && c.pfpUrl && pfpPath(c.pfpUrl)) return `<span class="pfp-frame"><img src="${esc(c.pfpUrl)}" alt="" loading="lazy"></span>`;
+  return pfpFrame(c && c.pfpSvg);
+}
 function pfpMini(svg, size) {
   const art = safeSvg(svg);
   if (!art) return "";
@@ -508,7 +514,7 @@ function conceptPortrait(c) {
   const on = c.id === creator.selectedId;
   const accent = hexColor(visual.accentColor) || "#4AD7FF";
   return `<button class="concept-card pfp-concept lda-card${on ? " is-selected" : ""}" type="button" data-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait option ${esc(String((c.conceptNumber || 0)))}" style="--agent-accent:${esc(accent)}">
-    <span class="pfp-concept__image-wrap">${pfpFrame(c.pfpSvg)}<span class="pfp-concept__ring"></span></span>
+    <span class="pfp-concept__image-wrap">${conceptArt(c)}<span class="pfp-concept__ring"></span></span>
     <span class="concept-copy">
       <span class="concept-name"><b>${esc(creator.form.name)}</b><span class="concept-emblem" style="color:${esc(hexColor(visual.accentColor) || "#e4c27a")}">${safeSvg(c.emblemSvg)}</span></span>
       <span class="brand-title">${esc(c.title)}</span>
@@ -2139,7 +2145,7 @@ function creatorView() {
     body = `<section class="agent-reveal" style="--agent-accent:${esc(accent)};--agent-primary:${esc(primary)}">
       <div class="agent-reveal__aura agent-reveal__glow" aria-hidden="true"></div>
       ${emblem ? `<div class="agent-reveal__emblem" aria-hidden="true">${emblem}</div>` : ""}
-      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-style="neon-competitive" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${pfpFrame(reveal.svg || (c && c.pfpSvg))}</div>
+      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-style="neon-competitive" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${(c && c.pfpUrl) ? conceptArt(c) : pfpFrame(reveal.svg || (c && c.pfpSvg))}</div>
       <div class="agent-reveal__identity agent-reveal__copy">
         <span class="agent-reveal__title">${esc(reveal.title || (c && c.title) || "")}</span>
         <h1>${esc(reveal.name || f.name)}</h1>
@@ -2477,7 +2483,7 @@ function regenConceptCard(c, name) {
   const on = portraitEdit && c.id === portraitEdit.selectedId;
   const accent = hexColor(visual.accentColor) || "#4AD7FF";
   return `<button class="concept-card pfp-concept lda-card${on ? " is-selected" : ""}" type="button" data-regen-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait option ${esc(String(c.conceptNumber || 0))}" style="--agent-accent:${esc(accent)}">
-    <span class="pfp-concept__image-wrap">${pfpFrame(c.pfpSvg)}<span class="pfp-concept__ring"></span></span>
+    <span class="pfp-concept__image-wrap">${conceptArt(c)}<span class="pfp-concept__ring"></span></span>
     <span class="concept-copy"><span class="concept-name"><b>${esc(name)}</b></span><span class="brand-title">${esc(c.title)}</span></span>
     <span class="pfp-select pfp-concept__label">${on ? "Selected" : "Option " + esc(String(c.conceptNumber || ""))}</span>
   </button>`;

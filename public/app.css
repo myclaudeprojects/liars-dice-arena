@@ -1912,6 +1912,7 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+.pfp-frame img { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: inherit; }
 .visual-group { margin: 0 0 18px; }
 .visual-section { border: 1px solid var(--lda-line); border-radius: 12px; padding: 6px 14px; margin: 0 0 12px; }
 .visual-section > summary { cursor: pointer; padding: 8px 0; font-size: 15px; list-style: none; display: flex; justify-content: space-between; align-items: baseline; }

@@ -99,6 +99,8 @@ async function handleShow(req, res, url, query, show) {
     if (req.method === "GET" && pfpGet) {
       const size = query && query.get ? query.get("size") : "";
       const version = query && query.get ? query.get("v") : "";
+      const imageUrl = show.portraitImageFor(decodeURIComponent(pfpGet[1]), version);
+      if (imageUrl) { res.writeHead(302, { location: imageUrl, "cache-control": "no-cache" }); res.end(); return true; }
       const svg = show.pfpSvgFor(decodeURIComponent(pfpGet[1]), size, version);
       if (!svg) { send(res, 404, { ok: false, error: "No portrait for that agent.", code: "unknown_agent" }); return true; }
       // A version-stamped URL never changes content (new version = new URL), so it can be

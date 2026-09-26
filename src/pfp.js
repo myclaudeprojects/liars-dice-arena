@@ -1073,7 +1073,7 @@ function pathData(svg) {
 
 // Bump whenever the portrait RENDER changes for an unchanged brand (new rig, new style rules).
 // It rides along in every portrait URL, so browsers/CDNs that cached the old look fetch again.
-const PFP_STYLE_STAMP = 5;
+const PFP_STYLE_STAMP = 6;
 
 function withBrandVersion(url, agent) {
   if (!url) return url;

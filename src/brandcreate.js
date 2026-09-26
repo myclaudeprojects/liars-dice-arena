@@ -38,6 +38,27 @@ const {
 } = require("./branding/creationSelections");
 
 const imageProvider = createImageProvider();
+const portraitLib = require("./portraitlib");
+
+// Asset map for a brand whose portrait is a library image: every size is the same
+// file (browsers scale it), stamped so a new version or style still busts caches.
+function imagePortraitAssets(entry, agentId, version) {
+  const base = portraitAssets(agentId, version);
+  const url = withBrandVersion(portraitLib.urlFor(entry), { version });
+  return { ...base, pfpPortrait: url, canonicalPfp: url, avatar: url, avatar48: url, avatar96: url, avatar160: url, avatar256: url, avatar320: url, avatar512: url, avatar1024: url };
+}
+
+// Attach library portraits to a concept round: four DIFFERENT generated faces that best
+// match the selections (regenerate rounds skip what was already shown).
+function attachLibraryPortraits(draft, concepts) {
+  if (!portraitLib.enabled()) return concepts;
+  const shown = Array.isArray(draft.shownPortraits) ? draft.shownPortraits : [];
+  let picks = portraitLib.match(draft.creationSelections, { count: concepts.length, exclude: shown, seed: draft.id + ":" + (draft.conceptSalt || 0) });
+  if (picks.length < concepts.length) picks = portraitLib.match(draft.creationSelections, { count: concepts.length, seed: draft.id + ":" + (draft.conceptSalt || 0) });
+  concepts.forEach((c, i) => { const e = picks[i]; if (e) { c.portrait = { id: e.id, file: e.file, tags: e.tags }; c.pfpUrl = portraitLib.urlFor(e); } });
+  draft.shownPortraits = [...shown, ...picks.map((e) => e.id)].slice(-40);
+  return concepts;
+}
 
 const MODEL_VERSION = PFP_STYLE_VERSION;
 const PFP_TOUCHES = Object.freeze(["expression", "darker", "cleaner", "minimal", "premium"]);
@@ -754,7 +775,7 @@ function buildConcepts(draft, opts = {}) {
   if (concepts.length < 3) {
     throw creatorError("uniqueness_exhausted", "Could not make three distinct concepts. Try a different direction.", 409);
   }
-  return concepts;
+  return attachLibraryPortraits(draft, concepts);
 }
 
 function sheetFor(draft, concept) {
@@ -921,7 +942,8 @@ function buildPortraitBrand(draft, portrait, previous) {
   const version = nextVersionNumber(previous);
   const stamp = new Date().toISOString();
   const assetId = `pfp_${draft.id}_v${version}`;
-  const assets = portraitAssets(draft.id, version);
+  const libEntry = portrait.libraryEntry || (portraitLib.enabled() ? portraitLib.match(selections, { count: 1, seed: draft.id })[0] : null);
+  const assets = libEntry ? imagePortraitAssets(libEntry, draft.id, version) : portraitAssets(draft.id, version);
   const material = portrait.visual.materialLanguage || ["carbon", "glass"];
   const brand = {
     agentId: draft.id,
@@ -954,6 +976,7 @@ function buildPortraitBrand(draft, portrait, previous) {
       method: "uniform-scale",
     },
     pfpRecipe: portrait.recipe,
+    portrait: libEntry ? { id: libEntry.id, file: libEntry.file, tags: libEntry.tags } : null,
     assets,
     generation: {
       ...generationStamp({
@@ -997,7 +1020,8 @@ function lockBrand(draft, concept, at, previous) {
   const version = nextVersionNumber(previous);
   const variation = Number.isFinite(Number(concept.pfpVariation)) ? Number(concept.pfpVariation)
     : (Number(portrait.recipe && portrait.recipe.conceptVariant) || 0);
-  const assets = portraitAssets(draft.id, version);
+  const libEntry = concept.portrait && concept.portrait.file ? concept.portrait : null;
+  const assets = libEntry ? imagePortraitAssets(libEntry, draft.id, version) : portraitAssets(draft.id, version);
   console.log("PFP_CONCEPT_SELECTED", { agentId: draft.id, conceptId: concept.id, variation, version, selections });
   const brand = {
     agentId: draft.id,
@@ -1030,6 +1054,7 @@ function lockBrand(draft, concept, at, previous) {
       method: "uniform-scale",
     },
     pfpRecipe: portrait.recipe,
+    portrait: libEntry ? { id: libEntry.id, file: libEntry.file, tags: libEntry.tags } : null,
     assets,
     generation: {
       ...generationStamp({

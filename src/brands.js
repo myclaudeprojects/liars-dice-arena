@@ -11,6 +11,7 @@
 const { CAST } = require("./characters");
 const { assetUrls, PFP_STYLE_VERSION, PFP_STYLE_ID, ASSET_TYPE, withBrandVersion } = require("./pfp");
 const { inferSelectionsFromBrand } = require("./branding/creationSelections");
+const portraitLib = require("./portraitlib");
 const { animatedPfpMeta } = require("./motionprofiles");
 
 const HOUSE_STYLE_VERSION = "lda-house-v1";
@@ -640,14 +641,18 @@ class BrandBook {
     if (visual.primaryColor) {
       const urls = assetUrls(brand.agentId);
       const versioned = (url) => withBrandVersion(url, brand.version ? brand : { version: view.version });
-      view.pfpUrl = versioned((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master);
+      // Library portrait: the brand's own, or the house cast's generated one.
+      const libEntry = (brand.portrait && brand.portrait.file) ? brand.portrait : portraitLib.houseEntry(brand.agentId);
+      const libUrl = libEntry ? versioned(portraitLib.urlFor(libEntry)) : null;
+      if (libUrl) view.portrait = { id: libEntry.id, file: libEntry.file, url: libUrl, kind: "image" };
+      view.pfpUrl = libUrl || versioned((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master);
       view.canonicalPfp = view.pfpUrl;
       view.pfpAssetType = ASSET_TYPE;
       view.primaryPfpAssetId = brand.primaryPfpAssetId || `pfp_${brand.agentId}_canonical`;
       view.pfpStyleVersion = brand.pfpStyleVersion || PFP_STYLE_VERSION;
       view.pfpStyleId = PFP_STYLE_ID;
-      view.avatarUrl = versioned((brand.assets && brand.assets.avatar) || urls.avatar);
-      view.avatarSizes = {
+      view.avatarUrl = libUrl || versioned((brand.assets && brand.assets.avatar) || urls.avatar);
+      view.avatarSizes = libUrl ? { 48: libUrl, 96: libUrl, 160: libUrl, 256: libUrl, 320: libUrl, 512: libUrl } : {
         48: versioned((brand.assets && brand.assets.avatar48) || urls.sizes["48"]),
         96: versioned((brand.assets && brand.assets.avatar96) || urls.sizes["96"]),
         160: versioned((brand.assets && brand.assets.avatar160) || urls.sizes["160"]),

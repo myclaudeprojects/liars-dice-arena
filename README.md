@@ -15,6 +15,14 @@ Open the site, tap **Watch & pick**, confirm a test trade, and stay for the reve
 
 `LEGACY_USDC=1 npm start` boots the older on-chain spectator table. That path is parked, not the product.
 
+## Argus token launch (optional)
+
+Create Agent can launch a Portal #7 token on Arc (chain id 5042). There is no Argus REST create API. The browser wallet path is preferred: the spectator signs `launch`, and the server confirms the receipt on two Arc RPCs before saving it. Set `ARGUS_MINT_ENABLED=1` on the host. Leave it unset and Create Agent stays a spectator-only save.
+
+Creators with no browser wallet can use server mint. That path signs the same Portal #7 `launch` with `ARGUS_MINT_KEY`, a dedicated Arc key set only in the Render dashboard. Do not commit the key, and do not reuse `HOUSE_PRIVATE_KEY` or a seat wallet. The on-chain creator is that key's address, so the creator allocation (100% with the defaults) accrues to the mint wallet. The server does not take custody of spectator funds. The mint wallet pays Arc gas. A dev buy is refused on this path so the key does not spend quote inventory. If `ARGUS_MINT_KEY` is missing, server mint says so and the agent stays playable. A failed launch never blocks Create Agent.
+
+Render env vars: `ARGUS_MINT_ENABLED`, `ARGUS_MINT_KEY`, `PUBLIC_BASE_URL`, `ARC_RPC_URL`, `ARC_RPC_URLS`. Sponsored sends are limited per spectator session and per IP.
+
 The rest of this file describes that older table.
 
 Why this is new tech rather than another dApp:

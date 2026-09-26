@@ -29,6 +29,11 @@ services:
       # Set these in the Render dashboard (never commit them):
       # USE_LLM, ANTHROPIC_API_KEY, OPENAI_API_KEY
       # CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET, CIRCLE_BLOCKCHAIN
+      # ARGUS_MINT_ENABLED=1 offers Portal #7 launches. The browser wallet signs.
+      # ARGUS_MINT_KEY is a dedicated Arc key for server-sponsored launches when
+      # the creator has no wallet. Never reuse HOUSE_PRIVATE_KEY or a seat wallet.
+      # The on-chain creator is this key's address. Do not commit the value.
+      # PUBLIC_BASE_URL, ARC_RPC_URL, ARC_RPC_URLS confirm the receipt on two hosts.
     disk:
       name: arena-data
       mountPath: /var/data

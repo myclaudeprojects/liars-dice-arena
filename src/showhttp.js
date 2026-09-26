@@ -1,9 +1,16 @@
 // showhttp.js — JSON + SSE for the Phase 1 spectator app.
-// Test credits only. No wallet routes.
+// Test credits only. Argus launches are optional and do not move spectator credits.
 
 const { ERROR_TEXT, DEFAULT_STAKE, THEORY_TAGS } = require("./simmarket");
-const { argusEnabled, argusPublicConfig } = require("./argus/config");
+const { argusEnabled, argusPublicConfig, sponsoredState } = require("./argus/config");
 const { verifyLaunchTx } = require("./argus/verify");
+const { prepareLaunch } = require("./argus/launch");
+const {
+  sponsorLaunch,
+  sponsorGuard,
+  clientKeys,
+  redact,
+} = require("./argus/sponsor");
 
 function send(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -34,11 +41,32 @@ function readBody(req) {
   });
 }
 
+function safeErrorText(e) {
+  const code = (e && (e.code || e.message)) || "error";
+  let text = (e && e.publicMessage) || ERROR_TEXT[code] || (e && e.message) || code;
+  text = redact(text, process.env.ARGUS_MINT_KEY);
+  if (text.length > 400) text = text.slice(0, 400);
+  return text;
+}
+
 function fail(res, e) {
   const code = e.code || e.message || "error";
   let status = code === "no_market" || code === "unknown_predictor" || code === "unknown_agent" || code === "unknown_concept" ? 404 : 400;
   if (Number.isInteger(e.status) && e.status >= 400 && e.status < 600) status = e.status;
-  send(res, status, { ok: false, error: e.publicMessage || ERROR_TEXT[code] || code, code });
+  const body = { ok: false, error: safeErrorText(e), code };
+  if (e.txHash && /^0x[0-9a-fA-F]{64}$/.test(e.txHash)) body.txHash = e.txHash;
+  send(res, status, body);
+}
+
+function stillPlayable(e, fallback) {
+  const err = e || new Error(fallback || "Server mint did not finish.");
+  const text = String(err.publicMessage || fallback || err.message || "Server mint did not finish.");
+  err.publicMessage = /can still play/i.test(text) ? text : text.replace(/\s+$/, "") + " This agent can still play.";
+  if (!Number.isInteger(err.status)) {
+    err.status = !err.code || err.code === "sponsor_failed" || err.code === "rpc_unavailable" ? 502 : 400;
+  }
+  if (!err.code) err.code = "sponsor_failed";
+  return err;
 }
 
 async function handleShow(req, res, url, query, show) {
@@ -108,6 +136,76 @@ async function handleShow(req, res, url, query, show) {
       const launch = await verifyLaunchTx(body.txHash);
       const saved = show.attachArgusMint(decodeURIComponent(argusPost[1]), launch);
       send(res, 200, { ok: true, ...saved });
+      return true;
+    }
+    const argusSponsor = path.match(/^\/agents\/([^/]+)\/argus\/sponsor$/);
+    if (req.method === "POST" && argusSponsor) {
+      if (!argusEnabled()) {
+        send(res, 403, { ok: false, error: "Argus launch is not enabled on this server.", code: "argus_disabled" });
+        return true;
+      }
+      const agentId = decodeURIComponent(argusSponsor[1]);
+      const raw = await readBody(req);
+      const body = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+      const draft = show.userAgents.get(agentId);
+      if (!draft) {
+        send(res, 404, { ok: false, error: "No such agent.", code: "unknown_agent" });
+        return true;
+      }
+      if (draft.argus && draft.argus.status === "minted" && draft.argus.txHash) {
+        send(res, 409, { ok: false, error: "This agent already has an Argus token.", code: "already_minted" });
+        return true;
+      }
+      const state = sponsoredState();
+      if (!state.sponsored) {
+        send(res, 503, { ok: false, error: state.sponsoredMessage, code: "mint_key_missing" });
+        return true;
+      }
+      let prepared;
+      try {
+        prepared = prepareLaunch(body);
+      } catch (e) {
+        fail(res, stillPlayable(e, "Those launch details cannot be submitted."));
+        return true;
+      }
+      if (prepared.devBuyQuote !== 0n) {
+        send(res, 400, {
+          ok: false,
+          error: "A dev buy spends the creator wallet. Connect your own wallet for a dev buy, or set it to zero. This agent can still play.",
+          code: "dev_buy",
+        });
+        return true;
+      }
+      if (!sponsorGuard().begin(agentId)) {
+        send(res, 409, {
+          ok: false,
+          error: "A server mint is already running for this agent. This agent can still play.",
+          code: "sponsor_busy",
+        });
+        return true;
+      }
+      let txHash = "";
+      try {
+        sponsorGuard().take(clientKeys(req, body));
+        const sent = await sponsorLaunch({ privateKey: process.env.ARGUS_MINT_KEY, prepared });
+        txHash = sent.txHash;
+        const launch = await verifyLaunchTx(txHash);
+        if (sent.creator && launch.creatorWallet && launch.creatorWallet.toLowerCase() !== sent.creator.toLowerCase()) {
+          const mismatch = new Error("creator mismatch");
+          mismatch.code = "creator_mismatch";
+          mismatch.status = 409;
+          mismatch.publicMessage = "The launch creator did not match the server mint wallet. This agent can still play.";
+          mismatch.txHash = txHash;
+          throw mismatch;
+        }
+        const saved = show.attachArgusMint(agentId, launch);
+        send(res, 200, { ok: true, sponsored: true, ...saved });
+      } catch (e) {
+        if (txHash && !e.txHash) e.txHash = txHash;
+        if (!res.headersSent) fail(res, stillPlayable(e));
+      } finally {
+        sponsorGuard().end(agentId);
+      }
       return true;
     }
     if (req.method === "GET" && path === "/agents/brand/options") {

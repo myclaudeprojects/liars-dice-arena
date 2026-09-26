@@ -337,7 +337,12 @@ function predictorId() {
 async function api(path, opts) {
   const r = await fetch(path, opts);
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.ok === false) throw new Error(j.error || "Something went wrong.");
+  if (!r.ok || j.ok === false) {
+    const err = new Error(j.error || "Something went wrong.");
+    err.code = j.code;
+    if (j.txHash) err.txHash = j.txHash;
+    throw err;
+  }
   return j;
 }
 function faceWord(face) { return FACE[face] || "dice"; }
@@ -1735,6 +1740,24 @@ function argusField(name, label, value, extra) {
   return `<label>${esc(label)}<input data-launch="1" type="${esc(type)}" name="${esc(name)}" value="${esc(value || "")}" ${attrs}></label>`;
 }
 
+function argusWalletReady(form) {
+  return !!((form && form.wallet) || (window.ArgusMint && window.ArgusMint.hasWallet && window.ArgusMint.hasWallet()));
+}
+
+function argusLaunchButtons(cfg, form) {
+  const busy = creator.busy ? " disabled" : "";
+  const walletReady = argusWalletReady(form);
+  const signing = creator.busy && creator.launchMode === "wallet";
+  const sponsoring = creator.busy && creator.launchMode === "sponsor";
+  const connect = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-connect="1"${busy}>Connect wallet</button>`;
+  const signClass = !cfg.sponsored || walletReady ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
+  const sign = `<button class="${signClass}" type="button" data-argus-launch="1"${busy}>${signing ? "Launching…" : "Sign create on Arc"}</button>`;
+  if (!cfg.sponsored) return connect + sign;
+  const sponsorClass = walletReady ? "ghost lda-btn lda-btn-ghost lda-btn-block" : "cta lda-btn lda-btn-primary lda-btn-block";
+  const sponsor = `<button class="${sponsorClass}" type="button" data-argus-sponsor="1"${busy}>${sponsoring ? "Launching…" : "Launch with server mint"}</button>`;
+  return walletReady ? connect + sign + sponsor : sponsor + connect + sign;
+}
+
 function argusPanel() {
   if (!creator) return "";
   const cfg = creator.argusConfig || { enabled: false };
@@ -1743,6 +1766,7 @@ function argusPanel() {
     return `<section class="argus-launch">
       <h2>Launched on Argus</h2>
       <p class="fine">${esc(minted.symbol || "Token")} · ${esc(minted.tokenAddress || "")}</p>
+      ${minted.creatorWallet ? `<p class="fine">On-chain creator ${esc(minted.creatorWallet)}</p>` : ""}
       <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(minted.argusUrl)}" target="_blank" rel="noopener">Buy on Argus</a>
       <p class="fine">Opens argus.world. This app does not swap.</p>
     </section>`;
@@ -1755,11 +1779,15 @@ function argusPanel() {
   }
   const f = creator.launch || {};
   const wallet = f.wallet ? `Connected ${f.wallet.slice(0, 6)}…${f.wallet.slice(-4)}` : "Wallet not connected";
+  const sponsorNote = cfg.sponsored && cfg.mintWallet
+    ? `No wallet? Launch with server mint submits this same Portal #7 transaction. The on-chain creator will be ${cfg.mintWallet}, the server mint wallet. The creator share (100% with the defaults) accrues to that address, not to your spectator profile. This app does not hold your funds.`
+    : (cfg.sponsoredMessage || "");
   const pending = f.pendingTx ? `<p class="fine">Submitted ${esc(f.pendingTx)}. If the wallet already shows that transaction, check again before creating another token.</p>
       <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-check="1"${creator.busy ? " disabled" : ""}>Check again</button>` : "";
   return `<section class="argus-launch">
     <h2>Launch on Argus</h2>
-    <p class="fine">You sign the create transaction on Arc (chain 5042). Portal #7 records the connected wallet as the creator. Defaults: 5% buy tax, 5% sell tax, 100% to the creator, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply. If the launch fails, this agent still plays.</p>
+    <p class="fine">Portal #7 on Arc (chain 5042). A connected wallet is preferred: you sign the create, and that wallet is the on-chain creator. Defaults: 5% buy tax, 5% sell tax, 100% to the creator, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply. If the launch fails, this agent still plays.</p>
+    ${sponsorNote ? `<p class="fine">${esc(sponsorNote)}</p>` : ""}
     <p class="fine">${esc(wallet)}</p>
     ${f.status ? `<p class="fine" role="status">${esc(f.status)}</p>` : ""}
     ${argusField("launchName", "Token name", f.launchName, { attrs: 'maxlength="32" autocomplete="off"' })}
@@ -1790,12 +1818,11 @@ function argusPanel() {
           ${argusField("launchBondFdv", "Bond FDV (USDC)", f.launchBondFdv, { type: "number", attrs: 'min="1" step="1"' })}
         </div>
         ${argusField("launchSupply", "Supply (tokens)", f.launchSupply, { type: "number", attrs: 'min="1" step="1"' })}
-        <p class="fine">Taxes and the allocation are permanent. The four allocation fields must total 100%. A dev buy above zero spends USDC from the connected wallet.</p>
+        <p class="fine">Taxes and the allocation are permanent. The four allocation fields must total 100%. A dev buy above zero spends USDC from the creator wallet. Server mint only submits a dev buy of zero.</p>
       </div>
     </details>
     ${pending}
-    <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-connect="1"${creator.busy ? " disabled" : ""}>Connect wallet</button>
-    <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-launch="1"${creator.busy ? " disabled" : ""}>${creator.busy ? "Launching…" : "Sign create on Arc"}</button>
+    ${argusLaunchButtons(cfg, f)}
   </section>`;
 }
 
@@ -1805,14 +1832,19 @@ function argusDetail(agent) {
     return `<section class="argus-launch">
       <h2>Argus token</h2>
       <p class="fine">${esc(agent.argus.symbol || "Token")} · ${esc(agent.argus.tokenAddress || "")}</p>
+      ${agent.argus.creatorWallet ? `<p class="fine">On-chain creator ${esc(agent.argus.creatorWallet)}</p>` : ""}
       <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(agent.argus.argusUrl)}" target="_blank" rel="noopener">Buy on Argus</a>
       <p class="fine">Opens argus.world. This app does not swap.</p>
     </section>`;
   }
   if (!argusOffer.enabled || !agent.playable) return "";
+  const offer = argusOffer.sponsored
+    ? "This agent has no token yet. A connected wallet is preferred. Server mint is there if you have no wallet, and that mint wallet is the on-chain creator. Launching does not change how they play."
+    : "This agent has no token yet. Launching is a wallet signature on Arc and does not change how they play.";
   return `<section class="argus-launch">
     <h2>Launch on Argus</h2>
-    <p class="fine">This agent has no token yet. Launching is a wallet signature on Arc and does not change how they play.</p>
+    <p class="fine">${esc(offer)}</p>
+    ${argusOffer.sponsoredMessage ? `<p class="fine">${esc(argusOffer.sponsoredMessage)}</p>` : ""}
     <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-for="1">Launch on Argus</button>
   </section>`;
 }
@@ -1821,6 +1853,7 @@ async function connectArgus() {
   if (!creator || creator.busy) return;
   syncLaunchFromDom();
   creator.busy = true;
+  creator.launchMode = "connect";
   creator.error = "";
   painted = "";
   render();
@@ -1833,6 +1866,7 @@ async function connectArgus() {
   } finally {
     if (creator) {
       creator.busy = false;
+      creator.launchMode = "";
       painted = "";
       render();
     }
@@ -1866,6 +1900,7 @@ async function launchArgus() {
     return;
   }
   creator.busy = true;
+  creator.launchMode = "wallet";
   creator.error = "";
   painted = "";
   render();
@@ -1899,6 +1934,64 @@ async function launchArgus() {
   } finally {
     if (creator) {
       creator.busy = false;
+      creator.launchMode = "";
+      creator.statusLabel = "";
+      painted = "";
+      render();
+    }
+  }
+}
+
+async function sponsorArgus() {
+  if (!creator || creator.busy) return;
+  syncLaunchFromDom();
+  const cfg = creator.argusConfig || {};
+  const id = argusAgentId();
+  if (!cfg.enabled || !id) {
+    creator.error = "Launch is not available for this agent. They can still play.";
+    painted = "";
+    render();
+    return;
+  }
+  if (!cfg.sponsored) {
+    creator.error = cfg.sponsoredMessage || "Server mint is not set up. Connect a wallet, or leave this agent playable.";
+    painted = "";
+    render();
+    return;
+  }
+  creator.busy = true;
+  creator.launchMode = "sponsor";
+  creator.error = "";
+  if (creator.launch) creator.launch.status = "Submitting the server mint…";
+  painted = "";
+  render();
+  try {
+    const payload = Object.assign({}, creator.launch, { predictor: predictorId() });
+    delete payload.minted;
+    delete payload.wallet;
+    delete payload.pendingTx;
+    delete payload.status;
+    const saved = await api("/api/show/agents/" + encodeURIComponent(id) + "/argus/sponsor", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (creator && creator.launch) {
+      creator.launch.minted = saved.argus;
+      creator.launch.pendingTx = "";
+      creator.launch.status = "";
+    }
+    await refreshLists();
+  } catch (ex) {
+    if (creator) {
+      if (creator.launch && ex.txHash) creator.launch.pendingTx = ex.txHash;
+      if (creator.launch) creator.launch.status = "";
+      creator.error = ex.message || "Server mint did not finish. This agent can still play.";
+    }
+  } finally {
+    if (creator) {
+      creator.busy = false;
+      creator.launchMode = "";
       creator.statusLabel = "";
       painted = "";
       render();
@@ -3016,6 +3109,7 @@ view.addEventListener("click", async (e) => {
     if (e.target.closest("[data-creator-generate]")) { generateAgent(); return; }
     if (e.target.closest("[data-argus-connect]")) { connectArgus(); return; }
     if (e.target.closest("[data-argus-launch]")) { launchArgus(); return; }
+    if (e.target.closest("[data-argus-sponsor]")) { sponsorArgus(); return; }
     if (e.target.closest("[data-argus-check]")) { checkArgus(); return; }
     if (e.target.closest("[data-enter-arena]")) {
       stopCreatorBeat();

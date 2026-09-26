@@ -44,6 +44,8 @@
   // after portrait URLs gained &s=3.
   function portraitUrl(url) {
     const text = String(url || "");
+    // Generated portrait library (same rule as app.js pfpPath).
+    if (/^\/assets\/portraits\/[a-z0-9_.-]+\.(?:webp|png|jpg)(?:\?(?:[a-z]+=[a-z0-9]+)(?:&[a-z]+=[a-z0-9]+)*)?$/i.test(text)) return text;
     const m = text.match(/^(\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg)(?:\?(.*))?$/i);
     if (!m) return "";
     if (!m[2]) return text;

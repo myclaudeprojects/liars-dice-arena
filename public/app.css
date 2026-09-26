@@ -1139,6 +1139,39 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   margin-top: 0;
 }
 .argus-split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.portrait-pick { display: flex; flex-direction: column; gap: var(--space-2); }
+.portrait-pick__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.portrait-choice {
+  appearance: none;
+  display: flex;
+  margin: 0;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--lda-line);
+  background: var(--lda-surface);
+  color: inherit;
+  cursor: pointer;
+  min-height: var(--tap);
+}
+.portrait-choice img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: calc(var(--radius-md) - 4px);
+  background: var(--lda-felt-dim);
+}
+.portrait-choice.is-selected {
+  border-color: var(--lda-gold);
+  box-shadow: 0 0 0 1px var(--lda-gold);
+}
+.portrait-derived { margin: 0; }
+@media (min-width: 760px) {
+  .portrait-pick__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 .creator-actions { display: flex; flex-direction: column; gap: var(--space-2); scroll-margin-bottom: var(--tabbar-clear); }
 .creator-actions .ghost,
 .creator-actions .cta { margin-top: 0; }

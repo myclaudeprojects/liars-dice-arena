@@ -450,6 +450,132 @@ function summaries(name, archetype, personality) {
   return { personalitySummary, playstyleSummary, strength, weakness, label };
 }
 
+// Visual portrait tags decide the game archetype and the play-style sliders.
+// A typed name never picks these, and the client cannot send a different archetype
+// once a portrait id is present.
+const VISUAL_TO_GAME = Object.freeze({
+  executive: "COMMANDER",
+  street: "PIRATE",
+  athlete: "DUELIST",
+  celebrity: "GAMBLER",
+  tech: "ORACLE",
+  criminal: "ASSASSIN",
+  antihero: "PHANTOM",
+  comedian: "TRICKSTER",
+  animal: "BEAST",
+  primal: "BEAST",
+  robot_ai: "MACHINE",
+  experimental: "MADMAN",
+  gambler: "GAMBLER",
+  dealer: "GAMBLER",
+  hacker: "STRATEGIST",
+  royalty: "EMPEROR",
+});
+
+const EXPRESSION_NUDGE = Object.freeze({
+  aggressive: { aggression: 0.18, patience: -0.12, discipline: -0.06 },
+  calm: { aggression: -0.16, patience: 0.16, discipline: 0.1, chaos: -0.08 },
+  confident: { confidence: 0.16, aggression: 0.06 },
+  playful: { bluffing: 0.16, showmanship: 0.18, chaos: 0.06 },
+  mysterious: { bluffing: 0.12, showmanship: -0.1, chaos: 0.04 },
+  intense: { aggression: 0.14, calculation: 0.1, patience: -0.08 },
+  intellectual: { calculation: 0.18, discipline: 0.12, chaos: -0.1 },
+  laid_back: { patience: 0.18, aggression: -0.14, chaos: 0.04 },
+  cocky: { confidence: 0.16, bluffing: 0.12, showmanship: 0.1 },
+  serious: { discipline: 0.16, showmanship: -0.1, chaos: -0.08 },
+  unhinged: { chaos: 0.22, discipline: -0.14, bluffing: 0.08 },
+});
+
+const ATTIRE_NUDGE = Object.freeze({
+  tactical: { aggression: 0.08, discipline: 0.06 },
+  sports: { aggression: 0.08, confidence: 0.06 },
+  formal: { discipline: 0.1, patience: 0.06 },
+  business: { discipline: 0.08, calculation: 0.06 },
+  luxury: { showmanship: 0.1, confidence: 0.06 },
+  hood_mask: { bluffing: 0.1, chaos: 0.04 },
+  performance_costume: { showmanship: 0.12, chaos: 0.04 },
+  cyber_gear: { calculation: 0.1, chaos: -0.04 },
+  plate_armor: { discipline: 0.08, aggression: 0.06 },
+  robe: { patience: 0.08, chaos: 0.04 },
+});
+
+function clampUnit(n) {
+  return Math.round(Math.max(0, Math.min(1, n)) * 1000) / 1000;
+}
+
+function personaFromPortrait(tags, seed) {
+  const row = tags && typeof tags === "object" ? tags : {};
+  const visual = String(row.archetype || "").toLowerCase();
+  const archetype = VISUAL_TO_GAME[visual] || "GAMBLER";
+  const expression = String(row.expression || "").toLowerCase();
+  const attire = String(row.attire || "").toLowerCase();
+  const base = personalityFrom({}, archetype);
+  const expr = EXPRESSION_NUDGE[expression] || {};
+  const wear = ATTIRE_NUDGE[attire] || {};
+  const rand = mulberry32(hashString("portrait:" + String(seed || visual || "face")));
+  const personality = {};
+  for (const key of PERSONALITY_KEYS) {
+    const jitter = (rand() - 0.5) * 0.06;
+    const extra = (expr[key] || 0) + (wear[key] || 0);
+    personality[key] = clampUnit((base[key] || 0) + extra + jitter);
+  }
+  const copy = summaries("They", archetype, personality);
+  return {
+    archetype,
+    archetypeLabel: copy.label,
+    personality,
+    personalitySummary: copy.personalitySummary,
+    playstyleSummary: copy.playstyleSummary,
+    strength: copy.strength,
+    weakness: copy.weakness,
+    selections: normalizeSelections({
+      archetype: row.archetype,
+      bodyType: row.bodyType,
+      expression: row.expression,
+      attire: row.attire,
+      colorPalette: row.colorPalette,
+      background: row.background,
+      accessories: row.accessories,
+    }),
+  };
+}
+
+function shapeCreateBody(input, takenPortraits) {
+  const body = input && typeof input === "object" ? input : {};
+  const id = String(body.portraitId || "").trim();
+  if (!id) return body;
+  const entry = portraitLib.byId(id);
+  if (!entry || entry.house) throw creatorError("unknown_portrait", "That portrait is not available.", 404);
+  if ((takenPortraits || []).includes(entry.id)) {
+    throw creatorError("portrait_taken", "That portrait is already in the arena.", 409);
+  }
+  const persona = personaFromPortrait(entry.tags, entry.id);
+  return {
+    ...body,
+    archetype: persona.archetype,
+    personality: persona.personality,
+    creationSelections: persona.selections,
+    portraitId: entry.id,
+  };
+}
+
+function syncDraftPersona(draft) {
+  if (!draft) return draft;
+  const copy = summaries(draft.name, draft.archetype, draft.personality);
+  draft.archetypeLabel = copy.label;
+  draft.personalitySummary = copy.personalitySummary;
+  draft.playstyleSummary = copy.playstyleSummary;
+  draft.strength = copy.strength;
+  draft.weakness = copy.weakness;
+  if (draft.identity) {
+    draft.identity.archetype = draft.archetype;
+    draft.identity.personalitySummary = copy.personalitySummary;
+    draft.identity.playstyleSummary = copy.playstyleSummary;
+  }
+  draft.updatedAt = new Date().toISOString();
+  return draft;
+}
+
 function styleOf(personality, label) {
   const style = [label];
   if (personality.aggression >= 0.66) style.push("Aggressive");
@@ -723,7 +849,7 @@ function allocateId(name, taken) {
 }
 
 function createDraft(input, ctx) {
-  const body = input && typeof input === "object" ? input : {};
+  const body = shapeCreateBody(input, ctx && ctx.takenPortraits);
   const name = storedAgentName(body.name, ctx && ctx.names);
   const shortDescription = cleanDescription(body.shortDescription || body.description, body.archetype);
   const archetype = String(body.archetype || "").trim().toUpperCase();
@@ -756,6 +882,7 @@ function createDraft(input, ctx) {
     weakness: copy.weakness,
     identity: null,
     creationSelections: normalizeSelections(body.creationSelections),
+    portraitId: body.portraitId || null,
     visualDirty: true,
     pfpStatus: "AWAITING_REGENERATION",
     concepts: [],
@@ -1169,6 +1296,9 @@ module.exports = {
   brandDisplayName,
   storedAgentName,
   normalizeDisplayName,
+  personaFromPortrait,
+  shapeCreateBody,
+  syncDraftPersona,
   buildConcepts,
   retouchConcepts,
   lockBrand,

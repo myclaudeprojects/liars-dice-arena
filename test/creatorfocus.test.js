@@ -22,15 +22,15 @@ assert(
   "a list refresh does not rebuild the wizard",
 );
 assert(
-  app.includes("!sameArchetypeList(creator.archetypes, j.archetypes)"),
-  "identical archetype options do not rebuild the wizard",
+  app.includes("data-portrait") && app.includes("syncCreatorFromDom();"),
+  "choosing a portrait copies the typed name first",
 );
 assert(app.includes("syncCreatorFromDom();"), "a paint copies the live fields first");
 assert(app.includes("const heldCreator = repaintMatch ? holdCreatorDom() : null;"), "a paint remembers the caret");
 assert(app.includes("restoreCreatorDom(heldCreator);"), "a paint puts the caret back");
 assert(
-  app.includes("name=\"name\"") && app.includes("name=\"shortDescription\"") && !app.includes("name=\"visualDirection\"") && app.includes("name=\"refine\""),
-  "name, description and refine stay named fields; visual direction is gone",
+  app.includes("name=\"name\"") && app.includes("name=\"shortDescription\"") && !app.includes("name=\"visualDirection\"") && !app.includes("name=\"refine\"") && !app.includes("name=\"archetype\""),
+  "name and description stay named fields; refine, visual direction, and archetype pickers are gone",
 );
 
 function sliceFn(source, name) {

@@ -215,6 +215,13 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ok: true, ...show.creatorOptions() });
       return true;
     }
+    if (req.method === "GET" && path === "/agents/brand/portraits") {
+      const exclude = String((query && query.get && query.get("exclude")) || "").split(",").map((id) => id.trim()).filter(Boolean);
+      const count = Number((query && query.get && query.get("count")) || 8);
+      const seed = String((query && query.get && query.get("seed")) || "");
+      send(res, 200, { ok: true, ...show.offerPortraits({ count, exclude, seed }) });
+      return true;
+    }
     // Admin removal: DELETE /api/show/agents/:id with header x-admin-token = ADMIN_TOKEN (env).
     const del = path.match(/^\/agents\/([^/]+)$/);
     if (req.method === "DELETE" && del) {

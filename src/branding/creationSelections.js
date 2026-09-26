@@ -230,6 +230,25 @@ function conceptVariantFor(mapped, variant) {
   return { variant: v, hair, turn, intensity: Math.round(intensity * 100) / 100, jawShift, glowShift };
 }
 
+function paletteForHex(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ""));
+  if (!m) return "";
+  const n = parseInt(m[1], 16);
+  const rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  let best = "";
+  let bestD = Infinity;
+  for (const id of PALETTE_IDS) {
+    if (id === "multi") continue;
+    const pm = /^#([0-9a-f]{6})$/i.exec(PALETTE_HEX[id] || "");
+    if (!pm) continue;
+    const pn = parseInt(pm[1], 16);
+    const pr = [(pn >> 16) & 255, (pn >> 8) & 255, pn & 255];
+    const d = (rgb[0] - pr[0]) ** 2 + (rgb[1] - pr[1]) ** 2 + (rgb[2] - pr[2]) ** 2;
+    if (d < bestD) { bestD = d; best = id; }
+  }
+  return best;
+}
+
 function inferSelectionsFromBrand(brand) {
   const row = brand && typeof brand === "object" ? brand : {};
   const stored = row.creationSelections || (row.generation && row.generation.selections);
@@ -272,6 +291,9 @@ function inferSelectionsFromBrand(brand) {
     base.attire = "tactical";
     base.expression = "intense";
   }
+  const accent = row.visualIdentity && row.visualIdentity.accentColor;
+  const palette = paletteForHex(accent);
+  if (palette) base.colorPalette = palette;
   return base;
 }
 

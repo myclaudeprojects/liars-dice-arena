@@ -3,11 +3,11 @@
 // Consumes the SAME recipe buildRecipe() produces and returns an SVG that keeps
 // the contract the rest of the app depends on (1024 square, data-style tag,
 // FACE_TOP/FACE_BOTTOM coordinates, the data-layer groups the animation runtime
-// moves), but draws a different picture:
-//   - cel-shaded angular face planes with one hard neon rim light + bloom
-//   - a scene per background selection instead of a gradient blob
+// moves). The picture is one noir bust lit by neon:
+//   - the legacy geometric face is not drawn, and neon is not a second layer on it
+//   - one open rim along the lit contour (no closed wireframe, no visor seam)
+//   - a scene per background selection
 //   - attire / accessories / species drawn as real silhouettes
-//   - no sticker outline; edges are lit, not traced
 // Everything is procedural: no fonts, no images, no network.
 
 const FACE_TOP = 176;
@@ -66,7 +66,49 @@ function faceGeom(row) {
   return g;
 }
 
-// Angular face plane: forehead → temple → cheekbone → jaw → chin. Returns points for reuse.
+// Smooth bust. The previous rig filled an angular polygon and then stroked that
+// same polygon in neon, which read as the old face under a wireframe visor.
+function smoothFace(x, g, turn) {
+  const t = turn * 14;
+  const top = FACE_TOP;
+  const bot = FACE_BOTTOM;
+  const L = x - g.w + t * 0.4;
+  const R = x + g.w + t * 0.4;
+  const chin = x + t * 1.2;
+  const jaw = g.jaw;
+  const n = (v) => Number(v).toFixed(1);
+  return [
+    `M ${n(x + t)} ${n(top)}`,
+    `C ${n(R - 36)} ${n(top - 6)}, ${n(R + 6)} ${n(top + 64)}, ${n(R - 2)} ${n(top + 168)}`,
+    `C ${n(R + 4)} ${n(top + 270)}, ${n(R - 16)} 548, ${n(x + jaw * 0.62 + t)} ${n(bot - 52)}`,
+    `C ${n(x + jaw * 0.28 + t)} ${n(bot + 4)}, ${n(chin + 8)} ${n(bot + 2)}, ${n(chin)} ${n(bot)}`,
+    `C ${n(chin - 8)} ${n(bot + 2)}, ${n(x - jaw * 0.28 + t)} ${n(bot + 4)}, ${n(x - jaw * 0.62 + t)} ${n(bot - 52)}`,
+    `C ${n(L + 16)} 548, ${n(L - 4)} ${n(top + 270)}, ${n(L + 2)} ${n(top + 168)}`,
+    `C ${n(L - 6)} ${n(top + 64)}, ${n(L + 36)} ${n(top - 6)}, ${n(x + t)} ${n(top)} Z`,
+  ].join(" ");
+}
+
+// One lit contour. Open on purpose: a closed stroke of the face, shifted inward,
+// is the visor seam and the wireframe overlay.
+function litEdge(x, g, turn, litSide) {
+  const t = turn * 14;
+  const top = FACE_TOP;
+  const bot = FACE_BOTTOM;
+  const L = x - g.w + t * 0.4;
+  const R = x + g.w + t * 0.4;
+  const n = (v) => Number(v).toFixed(1);
+  if (litSide < 0) {
+    return `M ${n(x + t * 0.3)} ${n(top + 10)} C ${n(L + 28)} ${n(top + 4)}, ${n(L - 2)} ${n(top + 90)}, ${n(L + 6)} ${n(top + 190)} C ${n(L + 10)} ${n(top + 300)}, ${n(L + 22)} 600, ${n(x - g.jaw * 0.4 + t)} ${n(bot - 28)}`;
+  }
+  return `M ${n(x + t * 0.3)} ${n(top + 10)} C ${n(R - 28)} ${n(top + 4)}, ${n(R + 2)} ${n(top + 90)}, ${n(R - 6)} ${n(top + 190)} C ${n(R - 10)} ${n(top + 300)}, ${n(R - 22)} 600, ${n(x + g.jaw * 0.4 + t)} ${n(bot - 28)}`;
+}
+
+function sideEdge(pts, litSide) {
+  const seq = litSide < 0 ? [pts[0], pts[11], pts[10], pts[9], pts[8], pts[7]] : [pts[0], pts[1], pts[2], pts[3], pts[4], pts[5]];
+  return seq.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+}
+
+// Angular plate for synthetic heads only. Returns points for reuse.
 function facePts(x, g, turn) {
   const t = turn * 14;
   const top = FACE_TOP, bot = FACE_BOTTOM;
@@ -165,7 +207,8 @@ function headwear(row, x, g, c) {
   if (kind === "laurel") return el("path", { d: `M ${L - 6} ${top + 90} Q ${x + t} ${top - 70} ${R + 6} ${top + 90}`, fill: "none", stroke: "#8fd18f", "stroke-width": 14, "stroke-linecap": "round" });
   if (kind === "cap") return el("path", { d: `M ${L - 8} ${top + 40} L ${L + 10} ${top - 40} Q ${x + t} ${top - 110} ${R - 10} ${top - 40} L ${R + 8} ${top + 40} Z`, fill: c.clothDeep }) + el("path", { d: `M ${L - 70} ${top + 60} L ${R + 30} ${top + 40} L ${R + 30} ${top + 66} L ${L - 66} ${top + 84} Z`, fill: shade(c.clothDeep, -0.25) }) + el("rect", { x: x - 30 + t, y: top - 10, width: 60, height: 12, rx: 4, fill: c.trim, opacity: 0.85 });
   if (kind === "hood" || kind === "cowl") return el("path", { d: `M ${L - 70} ${top + 560} L ${L - 40} ${top + 60} Q ${x + t} ${top - 150} ${R + 40} ${top + 60} L ${R + 70} ${top + 560} L ${R - 20} ${top + 420} L ${R - 44} ${top + 70} Q ${x + t} ${top - 60} ${L + 44} ${top + 70} L ${L + 20} ${top + 420} Z`, fill: c.clothDeep }) + el("path", { d: `M ${L - 40} ${top + 60} Q ${x + t} ${top - 150} ${R + 40} ${top + 60} L ${R + 24} ${top + 80} Q ${x + t} ${top - 120} ${L - 24} ${top + 80} Z`, fill: c.trim, opacity: 0.35 });
-  if (kind === "helm") return el("path", { d: `M ${L - 6} ${top + 60} Q ${x + t} ${top - 120} ${R + 6} ${top + 60} L ${R + 6} ${top + 150} L ${L - 6} ${top + 150} Z`, fill: "#5d6b78" }) + el("path", { d: `M ${x - 8 + t} ${top - 90} L ${x + 8 + t} ${top - 90} L ${x + 6 + t} ${top + 150} L ${x - 6 + t} ${top + 150} Z`, fill: c.trim });
+  if (kind === "helm") return el("path", { d: `M ${L - 6} ${top + 60} Q ${x + t} ${top - 120} ${R + 6} ${top + 60} L ${R + 6} ${top + 150} L ${L - 6} ${top + 150} Z`, fill: "#14161c" }) + el("path", { d: `M ${L + 8} ${top + 48} Q ${x + t} ${top - 96} ${R - 8} ${top + 48}`, fill: "none", stroke: c.trim, "stroke-width": 5, "stroke-linecap": "round" });
+  if (kind === "halfmask") return el("path", { d: `M ${x - 8 + t} 488 C ${x + 70 + t} 460 ${R - 8} 510 ${R - 18} 590 C ${R - 36} 660 ${x + 36 + t} 688 ${x + t} 700 C ${x - 20 + t} 640 ${x - 24 + t} 560 ${x - 8 + t} 488 Z`, fill: "#14161c", opacity: 0.94 }) + el("path", { d: `M ${x + 4 + t} 500 C ${x + 80 + t} 478 ${R - 28} 530 ${R - 36} 610`, fill: "none", stroke: c.trim, "stroke-width": 4, "stroke-linecap": "round" });
   if (kind === "halo") return el("ellipse", { cx: x + t, cy: top - 40, rx: 150, ry: 22, fill: "none", stroke: c.trim, "stroke-width": 8, opacity: 0.85 });
   if (kind === "ears") return el("path", { d: `M ${L + 10} ${top + 60} L ${L - 30} ${top - 110} L ${L + 90} ${top + 10} Z M ${R - 10} ${top + 60} L ${R + 30} ${top - 110} L ${R - 90} ${top + 10} Z`, fill: c.hair });
   return "";
@@ -225,70 +268,60 @@ function attire(row, x, c, wide) {
 // ---------------------------------------------------------------- head
 function head(row, x, g, c, f, id) {
   const turn = row.turn || 0, t = turn * 14, species = String(row.species || "human");
-  const pts = facePts(x, g, turn);
-  const outline = P(pts);
-  const litSide = turn >= 0 ? -1 : 1; // rim light comes from the accent side
-  const neck = el("path", { d: `M ${x - 70 + t} ${FACE_BOTTOM - 80} L ${x + 70 + t} ${FACE_BOTTOM - 80} L ${x + 90 + t} 760 L ${x - 90 + t} 760 Z`, fill: c.skinShadow });
-  const ears = species === "robot" || species === "skeletal" ? "" : el("ellipse", { cx: x - g.w - 6 + t * 0.4, cy: 470, rx: 22, ry: 40, fill: c.skinShadow }) + el("ellipse", { cx: x + g.w + 6 + t * 0.4, cy: 470, rx: 22, ry: 40, fill: c.skin });
+  const litSide = turn >= 0 ? -1 : 1;
+  const noir = "#100E12";
+  const neck = el("path", { d: `M ${x - 70 + t} ${FACE_BOTTOM - 80} L ${x + 70 + t} ${FACE_BOTTOM - 80} L ${x + 90 + t} 760 L ${x - 90 + t} 760 Z`, fill: noir });
 
-  let plate = "";
   if (species === "robot" || species === "skeletal") {
-    const metal = species === "robot" ? "#c9d3da" : "#e9e6df", metalD = species === "robot" ? "#6b7683" : "#9a958b";
-    plate = el("path", { d: outline, fill: `url(#${id("metal")})` })
-      + el("path", { d: `M ${x + t} ${FACE_TOP + 20} L ${x + t} ${FACE_BOTTOM - 20}`, stroke: metalD, "stroke-width": 3, opacity: 0.6 })
-      + el("path", { d: `M ${x - g.w + 30 + t} 340 L ${x + g.w - 30 + t} 340 M ${x - g.w + 40 + t} 560 L ${x + g.w - 40 + t} 560`, stroke: metalD, "stroke-width": 3, opacity: 0.5 })
+    const pts = facePts(x, g, turn);
+    const outline = P(pts);
+    const metalD = species === "robot" ? "#6b7683" : "#9a958b";
+    const plate = el("path", { d: outline, fill: `url(#${id("metal")})`, "data-face-fill": "synthetic" })
+      + el("path", { d: `M ${x - g.w + 40 + t} 560 L ${x + g.w - 40 + t} 560`, stroke: metalD, "stroke-width": 3, opacity: 0.45 })
       + el("rect", { x: x - g.w + 40 + t, y: 400, width: g.w * 2 - 80, height: 60, rx: 8, fill: "#0a0d12" })
       + el("rect", { x: x - g.w + 54 + t, y: 418, width: g.w * 2 - 108, height: 24, rx: 4, fill: c.trim, filter: `url(#${id("bloom")})`, "data-layer": "eyesOpen" })
       + el("rect", { x: x - g.w + 54 + t, y: 418, width: g.w * 2 - 108, height: 24, rx: 4, fill: "#0a0d12", opacity: "0", "data-layer": "eyesClosed" })
       + el("g", { "data-layer": "pupils" }, el("rect", { x: x - 30 + t, y: 424, width: 60, height: 12, rx: 3, fill: "#ffffff", opacity: 0.85 }))
       + el("path", { d: `M ${x - 60 + t} 620 L ${x + 60 + t} 620`, stroke: c.trim, "stroke-width": 6, "stroke-linecap": "round", opacity: 0.8 })
       + (species === "skeletal" ? el("path", { d: `M ${x - 40 + t} 660 L ${x + 40 + t} 660 M ${x - 30 + t} 640 L ${x - 30 + t} 690 M ${x - 10 + t} 640 L ${x - 10 + t} 690 M ${x + 10 + t} 640 L ${x + 10 + t} 690 M ${x + 30 + t} 640 L ${x + 30 + t} 690`, stroke: metalD, "stroke-width": 4 }) : "");
-    return { outline, inner: neck + plate + el("path", { d: outline, fill: "none", stroke: shade(metal, 0.3), "stroke-width": 2, opacity: 0.5 }) };
+    return { outline, edge: sideEdge(pts, litSide), inner: neck + plate };
   }
 
-  // human / animal
-  const skin = species === "animal" ? shade(c.hair, 0.15) : c.skin;
-  const skinS = species === "animal" ? shade(c.hair, -0.2) : c.skinShadow;
-  const skinD = species === "animal" ? shade(c.hair, -0.45) : c.skinDeep;
-  const base = el("path", { d: outline, fill: shade(skin, 0.06) });
-  // cel shadow plane (side away from the light) + cheek/jaw planes
-  const shadowPts = litSide < 0
-    ? [pts[1], pts[2], pts[3], pts[4], pts[5], pts[6], [x + t, 520], [x + 40 + t, 360], [x + 60 + t, FACE_TOP + 40]]
-    : [pts[11], pts[10], pts[9], pts[8], pts[7], pts[6], [x + t, 520], [x - 40 + t, 360], [x - 60 + t, FACE_TOP + 40]];
-  const shadowPlane = el("path", { d: P(shadowPts), fill: skinS, opacity: 0.85 });
-  const jawPlane = el("path", { d: P([pts[4], pts[5], pts[6], pts[7], pts[8], [x - g.jaw * 0.4 + t, 600], [x + g.jaw * 0.4 + t, 600]]), fill: skinD, opacity: 0.35 });
-  const cheekHi = el("path", { d: P(litSide < 0 ? [pts[10], pts[9], [x - 60 + t, 500], [x - 40 + t, 380]] : [pts[2], pts[3], [x + 60 + t, 500], [x + 40 + t, 380]]), fill: shade(skin, 0.28), opacity: 0.6 });
-  const age = String(row.age) === "elder" ? el("path", { d: `M ${x - 120 + t} 600 q 20 30 60 26 M ${x + 120 + t} 600 q -20 30 -60 26 M ${x - 60 + t} ${FACE_TOP + 90} L ${x + 60 + t} ${FACE_TOP + 90} M ${x - 50 + t} ${FACE_TOP + 116} L ${x + 50 + t} ${FACE_TOP + 116}`, stroke: skinD, "stroke-width": 4, fill: "none", opacity: 0.55, "stroke-linecap": "round" }) : "";
+  const outline = smoothFace(x, g, turn);
+  const edge = litEdge(x, g, turn, litSide);
+  const ears = el("ellipse", { cx: x - g.w - 6 + t * 0.4, cy: 470, rx: 22, ry: 40, fill: "#1A1816" }) + el("ellipse", { cx: x + g.w + 6 + t * 0.4, cy: 470, rx: 22, ry: 40, fill: noir });
+  const base = el("path", { d: outline, fill: noir, "data-face-fill": "noir" });
+  const keyWash = el("path", { d: outline, fill: `url(#${id(litSide < 0 ? "keyL" : "keyR")})`, opacity: 0.9 });
+  const line = "#2A2428";
+  const age = String(row.age) === "elder" ? el("path", { d: `M ${x - 120 + t} 600 q 20 30 60 26 M ${x + 120 + t} 600 q -20 30 -60 26 M ${x - 60 + t} ${FACE_TOP + 90} L ${x + 60 + t} ${FACE_TOP + 90} M ${x - 50 + t} ${FACE_TOP + 116} L ${x + 50 + t} ${FACE_TOP + 116}`, stroke: line, "stroke-width": 3, fill: "none", opacity: 0.7, "stroke-linecap": "round" }) : "";
 
-  // features
   const eyeY = 430, gap = 74, ew = 46, eh = 22 * (1 - Math.min(0.5, Math.max(-0.2, f.lid))) + 4;
-  const eye = (cx) => el("ellipse", { cx, cy: eyeY, rx: ew, ry: eh, fill: c.sclera });
+  const eye = (cx) => el("ellipse", { cx, cy: eyeY, rx: ew, ry: eh, fill: "#C8C2BA" });
   const irisR = 15, iris = (cx) => el("circle", { cx, cy: eyeY + 1, r: irisR, fill: `url(#${id("iris")})` }) + el("circle", { cx: cx - 5, cy: eyeY - 5, r: 4, fill: "#ffffff", opacity: 0.9 });
-  const lid = (cx) => el("path", { d: `M ${cx - ew} ${eyeY} Q ${cx} ${eyeY - eh - 6} ${cx + ew} ${eyeY}`, fill: "none", stroke: skinD, "stroke-width": 5 });
-  const closed = (cx) => el("path", { d: `M ${cx - ew} ${eyeY + 2} Q ${cx} ${eyeY + 12} ${cx + ew} ${eyeY + 2}`, fill: "none", stroke: skinD, "stroke-width": 6, "stroke-linecap": "round" });
-  const eyeGlow = f.glow > 0.05 ? el("g", { filter: `url(#${id("bloom")})`, opacity: f.glow * 0.9 }, el("ellipse", { cx: x - gap + t, cy: eyeY, rx: ew + 6, ry: eh + 4, fill: c.trim }) + el("ellipse", { cx: x + gap + t, cy: eyeY, rx: ew + 6, ry: eh + 4, fill: c.trim })) : "";
+  const lid = (cx) => el("path", { d: `M ${cx - ew} ${eyeY} Q ${cx} ${eyeY - eh - 6} ${cx + ew} ${eyeY}`, fill: "none", stroke: line, "stroke-width": 4 });
+  const closed = (cx) => el("path", { d: `M ${cx - ew} ${eyeY + 2} Q ${cx} ${eyeY + 12} ${cx + ew} ${eyeY + 2}`, fill: "none", stroke: line, "stroke-width": 5, "stroke-linecap": "round" });
+  const eyeGlow = f.glow > 0.05 ? el("g", { filter: `url(#${id("bloom")})`, opacity: Math.min(0.55, f.glow * 0.7) }, el("ellipse", { cx: x - gap + t, cy: eyeY, rx: ew + 4, ry: eh + 3, fill: c.trim }) + el("ellipse", { cx: x + gap + t, cy: eyeY, rx: ew + 4, ry: eh + 3, fill: c.trim })) : "";
   const eyesOpen = el("g", { "data-layer": "eyesOpen" }, eyeGlow + eye(x - gap + t) + eye(x + gap + t) + lid(x - gap + t) + lid(x + gap + t));
   const pupils = el("g", { "data-layer": "pupils" }, iris(x - gap + t) + iris(x + gap + t));
-  const eyesClosed = el("g", { "data-layer": "eyesClosed", opacity: "0" }, el("ellipse", { cx: x - gap + t, cy: eyeY, rx: ew + 2, ry: eh + 2, fill: skin }) + el("ellipse", { cx: x + gap + t, cy: eyeY, rx: ew + 2, ry: eh + 2, fill: skin }) + closed(x - gap + t) + closed(x + gap + t));
-  const [bIn, bOut, bW] = f.brow; // inner/outer lift, weight
-  const brow = (cx, dir) => el("path", { d: `M ${cx - dir * (ew + 10)} ${eyeY - 56 - bOut} L ${cx} ${eyeY - 66 - (bIn + bOut) / 2} L ${cx + dir * (ew + 12)} ${eyeY - 60 - bIn}`, fill: "none", stroke: c.hair === "#20162b" ? "#1a1420" : shade(c.hair, -0.2), "stroke-width": 10 * bW, "stroke-linecap": "round", "stroke-linejoin": "round" });
+  const eyesClosed = el("g", { "data-layer": "eyesClosed", opacity: "0" }, el("ellipse", { cx: x - gap + t, cy: eyeY, rx: ew + 2, ry: eh + 2, fill: noir }) + el("ellipse", { cx: x + gap + t, cy: eyeY, rx: ew + 2, ry: eh + 2, fill: noir }) + closed(x - gap + t) + closed(x + gap + t));
+  const [bIn, bOut, bW] = f.brow;
+  const brow = (cx, dir) => el("path", { d: `M ${cx - dir * (ew + 10)} ${eyeY - 56 - bOut} L ${cx} ${eyeY - 66 - (bIn + bOut) / 2} L ${cx + dir * (ew + 12)} ${eyeY - 60 - bIn}`, fill: "none", stroke: shade(c.hair, -0.15), "stroke-width": 8 * bW, "stroke-linecap": "round", "stroke-linejoin": "round" });
   const brows = brow(x - gap + t, -1) + brow(x + gap + t, 1);
-  const nose = el("path", { d: `M ${x + 6 + t} 470 L ${x + 26 + t} 560 L ${x - 6 + t} 570`, fill: "none", stroke: skinD, "stroke-width": 5, "stroke-linecap": "round", opacity: 0.6 }) + el("path", { d: `M ${x + 8 + t} 500 L ${x + 24 + t} 556 L ${x + 2 + t} 560 Z`, fill: skinS, opacity: 0.7 });
+  const nose = el("path", { d: `M ${x + 4 + t} 478 L ${x + 16 + t} 552 L ${x - 6 + t} 562`, fill: "none", stroke: line, "stroke-width": 4, "stroke-linecap": "round", opacity: 0.8 });
   const my = 628;
   const mouths = {
-    smile: el("path", { d: `M ${x - 54 + t} ${my - 6} Q ${x + t} ${my + 34} ${x + 54 + t} ${my - 6}`, fill: "none", stroke: c.lip, "stroke-width": 7, "stroke-linecap": "round" }),
+    smile: el("path", { d: `M ${x - 54 + t} ${my - 6} Q ${x + t} ${my + 34} ${x + 54 + t} ${my - 6}`, fill: "none", stroke: c.lip, "stroke-width": 6, "stroke-linecap": "round" }),
     grin: el("path", { d: `M ${x - 62 + t} ${my - 10} Q ${x + t} ${my + 46} ${x + 62 + t} ${my - 10} Z`, fill: "#1a0e12" }) + el("path", { d: `M ${x - 48 + t} ${my - 2} Q ${x + t} ${my + 14} ${x + 48 + t} ${my - 2} L ${x + 44 + t} ${my + 6} Q ${x + t} ${my + 22} ${x - 44 + t} ${my + 6} Z`, fill: "#f3efe6" }),
-    smirk: el("path", { d: `M ${x - 44 + t} ${my + 4} Q ${x + 6 + t} ${my + 18} ${x + 56 + t} ${my - 14}`, fill: "none", stroke: c.lip, "stroke-width": 7, "stroke-linecap": "round" }),
-    flat: el("path", { d: `M ${x - 44 + t} ${my} L ${x + 44 + t} ${my}`, fill: "none", stroke: c.lip, "stroke-width": 7, "stroke-linecap": "round" }),
-    tight: el("path", { d: `M ${x - 48 + t} ${my + 4} L ${x + 48 + t} ${my - 2}`, fill: "none", stroke: c.lip, "stroke-width": 8, "stroke-linecap": "round" }),
-    soft: el("path", { d: `M ${x - 46 + t} ${my - 2} Q ${x + t} ${my + 18} ${x + 46 + t} ${my - 2}`, fill: "none", stroke: c.lip, "stroke-width": 6, "stroke-linecap": "round" }),
+    smirk: el("path", { d: `M ${x - 44 + t} ${my + 4} Q ${x + 6 + t} ${my + 18} ${x + 56 + t} ${my - 14}`, fill: "none", stroke: c.lip, "stroke-width": 6, "stroke-linecap": "round" }),
+    flat: el("path", { d: `M ${x - 44 + t} ${my} L ${x + 44 + t} ${my}`, fill: "none", stroke: c.lip, "stroke-width": 6, "stroke-linecap": "round" }),
+    tight: el("path", { d: `M ${x - 48 + t} ${my + 4} L ${x + 48 + t} ${my - 2}`, fill: "none", stroke: c.lip, "stroke-width": 6, "stroke-linecap": "round" }),
+    soft: el("path", { d: `M ${x - 46 + t} ${my - 2} Q ${x + t} ${my + 18} ${x + 46 + t} ${my - 2}`, fill: "none", stroke: c.lip, "stroke-width": 5, "stroke-linecap": "round" }),
   };
   const mouth = mouths[f.mouth] || mouths.flat;
-  const muzzle = species === "animal" ? el("path", { d: `M ${x - 70 + t} 540 Q ${x + t} 500 ${x + 70 + t} 540 L ${x + 50 + t} 640 Q ${x + t} 670 ${x - 50 + t} 640 Z`, fill: shade(skin, 0.25) }) + el("path", { d: `M ${x - 22 + t} 566 L ${x + 22 + t} 566 L ${x + t} 592 Z`, fill: "#1a0e12" }) : "";
+  const muzzle = species === "animal" ? el("path", { d: `M ${x - 70 + t} 540 Q ${x + t} 500 ${x + 70 + t} 540 L ${x + 50 + t} 640 Q ${x + t} 670 ${x - 50 + t} 640 Z`, fill: shade(c.hair, -0.25) }) + el("path", { d: `M ${x - 22 + t} 566 L ${x + 22 + t} 566 L ${x + t} 592 Z`, fill: "#1a0e12" }) : "";
   const beard = row.premium && String(row.faceKind).startsWith("male") ? el("path", { d: `M ${x - 130 + t} 560 Q ${x + t} 760 ${x + 130 + t} 560 L ${x + 100 + t} 700 Q ${x + t} 740 ${x - 100 + t} 700 Z`, fill: shade(c.hair, -0.1), opacity: 0.85 }) : "";
-  const keyWash = el("path", { d: outline, fill: `url(#${id(litSide < 0 ? "keyL" : "keyR")})`, opacity: 0.55 });
-  const inner = neck + ears + base + shadowPlane + jawPlane + cheekHi + keyWash + age + muzzle + beard + brows + eyesOpen + pupils + eyesClosed + nose + mouth;
-  return { outline, inner };
+  const inner = neck + ears + base + keyWash + age + muzzle + beard + brows + eyesOpen + pupils + eyesClosed + nose + mouth;
+  return { outline, edge, inner };
 }
 
 // ---------------------------------------------------------------- render
@@ -317,9 +350,9 @@ function renderPfpV3(row, opts) {
     el("filter", { id: id("bloom"), x: "-40%", y: "-40%", width: "180%", height: "180%" }, el("feGaussianBlur", { stdDeviation: 14, result: "b" }) + el("feMerge", null, el("feMergeNode", { in: "b" }) + el("feMergeNode", { in: "SourceGraphic" }))),
     el("filter", { id: id("soft"), x: "-30%", y: "-30%", width: "160%", height: "160%" }, el("feGaussianBlur", { stdDeviation: 26 })),
     el("filter", { id: id("grain") }, el("feTurbulence", { type: "fractalNoise", baseFrequency: "0.9", numOctaves: 2, seed: hashStr(nonce) % 100 }) + el("feColorMatrix", { type: "saturate", values: 0 }) + el("feComponentTransfer", null, el("feFuncA", { type: "table", tableValues: "0 0.07" }))),
-    el("clipPath", { id: id("headClip") }, el("path", { d: P(facePts(x, g, turn)) })),
-    el("linearGradient", { id: id("keyL"), x1: 0, y1: 0, x2: 1, y2: 0 }, el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": 0.75 }) + el("stop", { offset: "38%", "stop-color": c.trim, "stop-opacity": 0 })),
-    el("linearGradient", { id: id("keyR"), x1: 1, y1: 0, x2: 0, y2: 0 }, el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": 0.75 }) + el("stop", { offset: "38%", "stop-color": c.trim, "stop-opacity": 0 })),
+    el("clipPath", { id: id("headClip") }, el("path", { d: (String(row.species) === "robot" || String(row.species) === "skeletal") ? P(facePts(x, g, turn)) : smoothFace(x, g, turn) })),
+    el("linearGradient", { id: id("keyL"), x1: 0, y1: 0, x2: 1, y2: 0 }, el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": 0.95 }) + el("stop", { offset: "14%", "stop-color": c.trim, "stop-opacity": 0 })),
+    el("linearGradient", { id: id("keyR"), x1: 1, y1: 0, x2: 0, y2: 0 }, el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": 0.95 }) + el("stop", { offset: "14%", "stop-color": c.trim, "stop-opacity": 0 })),
   ].join(""));
 
   const hair = hairShapes(row, x, g, c);
@@ -329,8 +362,7 @@ function renderPfpV3(row, opts) {
   const grid = layer("bgGrid", el("g", { opacity: 0.22 }, el("path", { d: "M0 700 L1024 700 M0 780 L1024 780 M0 880 L1024 880 M512 640 L120 1024 M512 640 L904 1024 M512 640 L300 1024 M512 640 L724 1024", stroke: c.trim, "stroke-width": 1.5, fill: "none" })));
   const bgFx = layer("bgFx", el("ellipse", { cx: rimX + litSide * 140, cy: 420, rx: 300, ry: 460, fill: c.trim, opacity: 0.34, filter: `url(#${id("soft")})` }) + el("ellipse", { cx: 512, cy: 520, rx: 420, ry: 380, fill: mix(c.mid, "#ffffff", 0.08), opacity: 0.35, filter: `url(#${id("soft")})` }));
   const aura = layer("aura", el("g", { opacity: 0.55 }, el("circle", { cx: 512, cy: 512, r: 400, fill: "none", stroke: c.trim, "stroke-width": 2, "stroke-dasharray": "120 480", opacity: 0.5 }) + el("circle", { cx: 512, cy: 512, r: 430, fill: "none", stroke: c.trim, "stroke-width": 1, "stroke-dasharray": "20 60", opacity: 0.35 })));
-  const rimCore = el("path", { d: hd.outline, fill: "none", stroke: c.trim, "stroke-width": 26, "clip-path": `url(#${id("headClip")})`, transform: `translate(${litSide * 30} 0)` });
-  const rim = layer("rimGlow", el("g", { filter: `url(#${id("bloom")})`, opacity: 0.95 }, rimCore) + el("g", { filter: `url(#${id("soft")})`, opacity: 0.55 }, rimCore) + el("path", { d: hd.outline, fill: "none", stroke: shade(c.trim, 0.35), "stroke-width": 5, "clip-path": `url(#${id("headClip")})`, transform: `translate(${litSide * 8} 0)`, opacity: 0.9 }), { opacity: "0.85" });
+  const rim = layer("rimGlow", el("path", { d: hd.edge, fill: "none", stroke: c.trim, "stroke-width": 7, "stroke-linecap": "round", filter: `url(#${id("bloom")})` }) + el("path", { d: hd.edge, fill: "none", stroke: shade(c.trim, 0.45), "stroke-width": 2.5, "stroke-linecap": "round" }), { opacity: "0.85" });
   const torso = layer("torso", attire(row, x, c, wide));
   const collarFx = layer("collarFx", el("g", { filter: `url(#${id("bloom")})` }, el("path", { d: litSide < 0 ? `M ${x - 360 + t} 1000 L ${x - 340 + t} 820 Q ${x - 300 + t} 740 ${x - 170 + t} 700` : `M ${x + 360 + t} 1000 L ${x + 340 + t} 820 Q ${x + 300 + t} 740 ${x + 170 + t} 700`, stroke: c.trim, "stroke-width": 12, opacity: 0.8, fill: "none", "stroke-linecap": "round" })));
   const hairBack = layer("hairBack", hair.back);
@@ -341,10 +373,11 @@ function renderPfpV3(row, opts) {
   const scan = layer("scanFx", el("rect", { x: 0, y: 480, width: 1024, height: 3, fill: c.trim, opacity: 0.35 }), { opacity: "0.12" });
   const post = el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("vig")})` }) + el("rect", { x: 0, y: 0, width: 1024, height: 1024, filter: `url(#${id("grain")})`, opacity: 0.45 });
 
-  // rimGlow sits ABOVE the head (clipped to it) so the neon edge lands on the jaw and temple.
+  // rimGlow is the lit contour only. It does not trace or cover the face.
   const body = defs + bg + grid + bgFx + aura + hairBack + torso + collarFx + headLayer + rim + hairFront + particles + scan + post;
   const sc = row.scale || {};
-  const attrs = { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 1024 1024", width: size, height: size, "data-asset": "PFP_PORTRAIT", "data-style": "lda-pfp-v2", "data-rig": "v3", "data-pfp-style": row.styleId || "neon-competitive", "data-engine": "procedural-svg", "data-layered": "1", "data-signature": row.signature || "", "data-character-scale": sc.characterHeight, "data-face-scale": sc.faceHeight, "data-species": row.species, "data-face": row.faceKind, "data-age": row.age, "data-archetype": row.archetypeId, "aria-hidden": "true" };
+  const synthetic = String(row.species) === "robot" || String(row.species) === "skeletal";
+  const attrs = { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 1024 1024", width: size, height: size, "data-asset": "PFP_PORTRAIT", "data-style": "lda-pfp-v2", "data-rig": "v3", "data-portrait": "neon-noir", "data-composite": "pure", "data-legacy-overlay": "0", "data-face-fill": synthetic ? "synthetic" : "noir", "data-pfp-style": row.styleId || "neon-competitive", "data-engine": "procedural-svg", "data-layered": "1", "data-signature": row.signature || "", "data-character-scale": sc.characterHeight, "data-face-scale": sc.faceHeight, "data-species": row.species, "data-face": row.faceKind, "data-age": row.age, "data-archetype": row.archetypeId, "aria-hidden": "true" };
   const open = "<svg" + Object.entries(attrs).filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => ` ${k}="${esc(v)}"`).join("") + ">";
   return open + body + "</svg>";
 }

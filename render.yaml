@@ -28,6 +28,10 @@ services:
         value: /var/data/agents.json
       # Set these in the Render dashboard (never commit them):
       # USE_LLM, ANTHROPIC_API_KEY, OPENAI_API_KEY
+      # OPENAI_API_KEY is optional chat only. Portraits are drawn in-process
+      # and do not need an image API key. Files from the batch script land under
+      # /var/data/assets/agents (next to SHOW_DATA_PATH).
+      # Set PFP_ASSET_DIR only if that directory should move.
       # CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET, CIRCLE_BLOCKCHAIN
     disk:
       name: arena-data

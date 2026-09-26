@@ -42,7 +42,10 @@ const {
 const { inferSelectionsFromBrand } = require("./branding/creationSelections");
 // Identifies the running build so clients can reload when a deploy lands.
 const BUILD_ID = String(process.env.RENDER_GIT_COMMIT || process.env.BUILD_ID || Date.now()).slice(0, 12);
-const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls, withBrandVersion } = require("./pfp");
+const { ASSET_TYPE, PFP_STYLE_VERSION, assetUrls, withBrandVersion } = require("./pfp");
+const { assetRootFor, readPortraitSync, buildSeed } = require("./branding/pfpAssets");
+const { composeVisualDNA } = require("./branding/buildVisualDNA");
+const { renderNeonCompetitiveSvg } = require("./branding/localPortrait");
 const { animatedPfpMeta } = require("./motionprofiles");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
@@ -1711,14 +1714,38 @@ class Show {
     return emblem ? emblemSvg(emblem) : null;
   }
 
-  pfpSvgFor(agentId, size, version) {
+  pfpRoot() {
+    return assetRootFor(this.store && this.store.file);
+  }
+
+  brandForPortrait(agentId, version) {
     const numeric = Number(version);
-    const brand = Number.isFinite(numeric) && numeric > 0
-      ? (this.brands.full(agentId, `v${numeric}`) || this.brands.full(agentId))
-      : this.brands.full(agentId);
-    if (!brand || !brand.visualIdentity) return null;
-    const recipe = brand.pfpRecipe && brand.pfpRecipe.colors ? brand.pfpRecipe : recipeFromBrand(brand);
-    return renderPfp(recipe, { size, nonce: agentId });
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return this.brands.full(agentId, `v${numeric}`) || this.brands.full(agentId);
+    }
+    return this.brands.full(agentId);
+  }
+
+  // Procedural SVG is retired. This stays so older callers get no drawing.
+  pfpSvgFor() {
+    return null;
+  }
+
+  pfpImageFor(agentId, size, version) {
+    const brand = this.brandForPortrait(agentId, version);
+    if (!brand || !brand.visualIdentity || !brand.visualIdentity.primaryColor) return null;
+    const ver = Number(version) > 0 ? Number(version) : (Number(brand.version) || 1);
+    const stored = readPortraitSync(this.pfpRoot(), agentId, ver, size);
+    if (stored) return stored;
+    const archetype = (brand.creationSelections && brand.creationSelections.archetype) || brand.archetype;
+    const svg = renderNeonCompetitiveSvg({
+      visualDNA: composeVisualDNA({ archetype, visual: brand.visualIdentity }),
+      seed: buildSeed(`${agentId}_b${ver}`),
+      agentId,
+      archetype,
+      selections: brand.creationSelections || null,
+    });
+    return { buffer: Buffer.from(svg), mime: "image/svg+xml" };
   }
 
   updateSelections(agentId, selections) {
@@ -1800,6 +1827,8 @@ class Show {
         selections,
         brands: this.brands.everyVersion(),
         currentVersion: Number(previous && previous.version || 0),
+        previous,
+        assetRoot: this.pfpRoot(),
         provider: input.provider,
       });
     } catch (err) {
@@ -1855,6 +1884,7 @@ class Show {
       agent: this.agentSummary(draft),
       brand: saved,
       svg: portrait.svg,
+      manifest: portrait.manifest,
       seated: this.busyIds().has(draft.id),
       creationSelections: draft.creationSelections,
     };
@@ -1980,7 +2010,10 @@ class Show {
     const urls = assetUrls(id);
     const version = Number(brand.version) || 1;
     const stamp = (url) => (url ? withBrandVersion(url, { version }) : url);
-    const preview = stamp((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master);
+    const ready = Boolean(brand.visualIdentity && brand.visualIdentity.primaryColor);
+    const preview = ready
+      ? stamp((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master)
+      : null;
     const view = {
       ...brand,
       pfpAssetType: ASSET_TYPE,
@@ -1996,13 +2029,13 @@ class Show {
         ...brand.assets,
         canonicalPfp: preview,
         pfpPortrait: preview,
-        avatar: stamp((brand.assets && brand.assets.avatar) || urls.avatar),
-        avatar48: stamp((brand.assets && brand.assets.avatar48) || urls.sizes["48"]),
-        avatar96: stamp((brand.assets && brand.assets.avatar96) || urls.sizes["96"]),
-        avatar160: stamp((brand.assets && brand.assets.avatar160) || urls.sizes["160"]),
-        avatar256: stamp((brand.assets && brand.assets.avatar256) || urls.sizes["256"]),
-        avatar320: stamp((brand.assets && brand.assets.avatar320) || urls.sizes["320"]),
-        avatar512: stamp((brand.assets && brand.assets.avatar512) || urls.sizes["512"]),
+        avatar: ready ? stamp((brand.assets && brand.assets.avatar) || urls.avatar) : null,
+        avatar48: ready ? stamp((brand.assets && brand.assets.avatar48) || urls.sizes["48"]) : null,
+        avatar96: ready ? stamp((brand.assets && brand.assets.avatar96) || urls.sizes["96"]) : null,
+        avatar160: ready ? stamp((brand.assets && brand.assets.avatar160) || urls.sizes["160"]) : null,
+        avatar256: ready ? stamp((brand.assets && brand.assets.avatar256) || urls.sizes["256"]) : null,
+        avatar320: ready ? stamp((brand.assets && brand.assets.avatar320) || urls.sizes["320"]) : null,
+        avatar512: ready ? stamp((brand.assets && brand.assets.avatar512) || urls.sizes["512"]) : null,
       },
     };
     const motion = animatedPfpMeta(brand, preview);

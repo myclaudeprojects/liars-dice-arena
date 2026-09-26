@@ -487,6 +487,17 @@ function agentPortrait(agent) {
   return `${hero}
     <span class="pfp-sizes" aria-label="Avatar sizes">${small ? `<img class="pfp-mini" src="${esc(small)}" alt="" width="48" height="48">` : ""}${mid ? `<img class="pfp-mini is-96" src="${esc(mid)}" alt="" width="96" height="96">` : ""}</span>`;
 }
+function letterMark(name) {
+  const letter = esc(String(name || "?").replace(/^The /, "")[0] || "?");
+  return `<span class="mark lda-avatar" aria-hidden="true"><span class="lda-avatar-glyph">${letter}</span></span>`;
+}
+function portraitMarkup(svg, url, name) {
+  const art = pfpFrame(svg);
+  if (art) return art;
+  const src = pfpPath(url || "");
+  if (src) return `<img class="mark lda-avatar lda-pfp" src="${esc(src)}" alt="" width="320" height="320">`;
+  return `<span class="pfp-frame">${letterMark(name)}</span>`;
+}
 function pfpFrame(svg) {
   const art = safeSvg(svg);
   if (!art) return "";
@@ -503,7 +514,7 @@ function conceptPortrait(c) {
   const on = c.id === creator.selectedId;
   const accent = hexColor(visual.accentColor) || "#4AD7FF";
   return `<button class="concept-card pfp-concept lda-card${on ? " is-selected" : ""}" type="button" data-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait option ${esc(String((c.conceptNumber || 0)))}" style="--agent-accent:${esc(accent)}">
-    <span class="pfp-concept__image-wrap">${pfpFrame(c.pfpSvg)}<span class="pfp-concept__ring"></span></span>
+    <span class="pfp-concept__image-wrap">${portraitMarkup(c.pfpSvg, c.pfpUrl, creator.form.name)}<span class="pfp-concept__ring"></span></span>
     <span class="concept-copy">
       <span class="concept-name"><b>${esc(creator.form.name)}</b><span class="concept-emblem" style="color:${esc(hexColor(visual.accentColor) || "#e4c27a")}">${safeSvg(c.emblemSvg)}</span></span>
       <span class="brand-title">${esc(c.title)}</span>
@@ -1615,9 +1626,9 @@ function visualOptionGrids(selections) {
       <h2>${esc(label)}</h2>
       <div class="agent-visual-options">${ids.map((id) => {
         const on = current[group] === id;
-        const src = `/assets/agent-creation-previews/${group}/${id}.svg`;
+        const letter = esc(optionLabel(id).replace(/^The /, "")[0] || "?");
         return `<button class="option-card${on ? " is-selected" : ""}" type="button" data-opt-group="${esc(group)}" data-opt-id="${esc(id)}" aria-pressed="${on ? "true" : "false"}">
-          <img src="${esc(src)}" alt="" width="96" height="96">
+          <span class="mark lda-avatar" aria-hidden="true"><span class="lda-avatar-glyph">${letter}</span></span>
           <span>${esc(optionLabel(id))}</span>
         </button>`;
       }).join("")}</div>
@@ -1727,13 +1738,13 @@ function creatorView() {
     body = `<section class="agent-reveal" style="--agent-accent:${esc(accent)};--agent-primary:${esc(primary)}">
       <div class="agent-reveal__aura agent-reveal__glow" aria-hidden="true"></div>
       ${emblem ? `<div class="agent-reveal__emblem" aria-hidden="true">${emblem}</div>` : ""}
-      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-style="neon-competitive" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${pfpFrame(reveal.svg || (c && c.pfpSvg))}</div>
+      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-style="neon-competitive" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${portraitMarkup(reveal.svg, reveal.canonicalPfp, reveal.name || f.name)}</div>
       <div class="agent-reveal__identity agent-reveal__copy">
         <span class="agent-reveal__title">${esc(reveal.title || (c && c.title) || "")}</span>
         <h1>${esc(reveal.name || f.name)}</h1>
         <p>${esc(reveal.tagline || (c && c.tagline) || "")}</p>
       </div>
-      <span class="pfp-sizes" aria-label="Small-size check">${pfpMini(reveal.svg || (c && c.pfpSvg), 48)}${pfpMini(reveal.svg || (c && c.pfpSvg), 96)}</span>
+      <span class="pfp-sizes" aria-label="Small-size check">${pfpMini(reveal.svg, 48)}${pfpMini(reveal.svg, 96)}</span>
       <button class="cta lda-btn lda-btn-primary lda-btn-block agent-reveal__enter" type="button" data-enter-arena="1"${creator.busy ? " disabled" : ""}>Enter the Arena</button>
       ${pfpDebugPanel({
         id: revealId,
@@ -1864,9 +1875,7 @@ async function generateAgent() {
     await refreshLists();
   } catch (ex) {
     if (creator) {
-      creator.error = creator.draft
-        ? "Portrait generation failed. The last portrait was kept."
-        : (ex.message || "Could not generate that portrait.");
+      creator.error = ex.message || "Portrait generation failed. The last portrait was kept.";
       creator.step = 2;
     }
   } finally {
@@ -2061,7 +2070,7 @@ function regenConceptCard(c, name) {
   const on = portraitEdit && c.id === portraitEdit.selectedId;
   const accent = hexColor(visual.accentColor) || "#4AD7FF";
   return `<button class="concept-card pfp-concept lda-card${on ? " is-selected" : ""}" type="button" data-regen-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait option ${esc(String(c.conceptNumber || 0))}" style="--agent-accent:${esc(accent)}">
-    <span class="pfp-concept__image-wrap">${pfpFrame(c.pfpSvg)}<span class="pfp-concept__ring"></span></span>
+    <span class="pfp-concept__image-wrap">${portraitMarkup(c.pfpSvg, c.pfpUrl, name)}<span class="pfp-concept__ring"></span></span>
     <span class="concept-copy"><span class="concept-name"><b>${esc(name)}</b></span><span class="brand-title">${esc(c.title)}</span></span>
     <span class="pfp-select pfp-concept__label">${on ? "Selected" : "Option " + esc(String(c.conceptNumber || ""))}</span>
   </button>`;

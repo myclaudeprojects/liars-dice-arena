@@ -54,7 +54,6 @@ REQUIREMENTS:
 - no watermark
 - no full body composition
 - no complex scene
-- no movie poster layout
 
 IMPORTANT:
 The neon should be controlled and premium.
@@ -137,4 +136,15 @@ One unique canonical Liar's Dice Arena competitor portrait.
 `.trim();
 }
 
-module.exports = { buildPfpPrompt, buildNeonPfpVisualInstruction };
+function promptForAgent({ agent, styleId, selections, variation, treatment } = {}) {
+  const base = buildPfpPrompt({ agent, styleId });
+  const instruction = selections
+    ? buildNeonPfpVisualInstruction({ ...(agent || {}), creationSelections: selections })
+    : "";
+  const variant = variation == null && !treatment
+    ? ""
+    : `CONCEPT VARIANT: ${variation == null ? 0 : variation}\nTREATMENT: ${treatment || "standard"}`;
+  return [base, instruction, variant].filter(Boolean).join("\n\n");
+}
+
+module.exports = { buildPfpPrompt, buildNeonPfpVisualInstruction, promptForAgent };

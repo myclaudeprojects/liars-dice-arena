@@ -1,5 +1,5 @@
-// Character options for Create Agent. These ids drive the existing
-// procedural portrait rig. They are not a second image provider.
+// Character options for Create Agent. These ids feed the neon-competitive
+// prompt. They are not a portrait renderer.
 
 const ARCHETYPE_IDS = Object.freeze([
   "executive", "street", "athlete", "celebrity", "tech", "criminal",

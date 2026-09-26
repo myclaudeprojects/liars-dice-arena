@@ -4,8 +4,9 @@
 // and never replaces an earlier version, so a settled match can still render
 // the brand that was active when it was played.
 //
-// Emblems are monochrome SVG marks. PFP portraits are procedural squares
-// (src/pfp.js), derived into avatar sizes. Hero cards stay pending.
+// Emblems are monochrome SVG marks. PFP portraits are neon-competitive
+// images drawn locally from the visual identity. The letter shows only when
+// there is no identity yet. Hero cards stay pending.
 // Similarity embeddings are not computed; palette and title checks are local.
 
 const { CAST } = require("./characters");
@@ -634,6 +635,7 @@ class BrandBook {
       pfpAssetType: null,
       primaryPfpAssetId: brand.primaryPfpAssetId || null,
       pfpStyleVersion: brand.pfpStyleVersion || null,
+      pfpStyleId: PFP_STYLE_ID,
       avatarUrl: null,
       avatarSizes: null,
     };

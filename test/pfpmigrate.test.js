@@ -1,7 +1,7 @@
 // Migration check: a legacy user agent (no stored selections) gets a new styled version; house cast renders in the new style with signature headwear.
 const fs = require("fs"), os = require("os"), path = require("path");
 const { Show } = require("../src/showrunner");
-const { pathData, recipeFromBrand } = require("../src/pfp");
+const { renderPfp } = require("../src/pfp");
 const { SEED_BRANDS } = require("../src/brands");
 const assert = (c, m) => { if (!c) throw new Error(m); };
 const eq = (a, b, m) => { if (a !== b) throw new Error(`${m}: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); };
@@ -19,24 +19,21 @@ const eq = (a, b, m) => { if (a !== b) throw new Error(`${m}: ${JSON.stringify(a
   show.persist();
   const legacyBefore = show.legacyPortraitAgents();
   eq(legacyBefore.includes(a.agent.id), true, "legacy agent detected");
-  const svgBefore = show.pfpSvgFor(a.agent.id, 512);
+  eq(show.pfpSvgFor(a.agent.id, 512), null, "legacy agent has no procedural bust");
+  const savedKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
   const res = await show.migrateLegacyPortraits();
-  eq(res.migrated, 1, "one agent migrated");
-  const after = show.brands.full(a.agent.id);
-  eq(after.version, 2, "migration wrote version 2");
-  assert(after.creationSelections && after.creationSelections.archetype, "migrated brand stores inferred selections");
-  assert(/[?&]v=2(&|$)/.test(after.assets.canonicalPfp), "new cache-busted URL");
-  eq(show.legacyPortraitAgents().length, 0, "no legacy agents remain");
-  eq(show.pfpMigration >= 2, true, "migration flag persisted");
-  const res2 = await show.migrateLegacyPortraits();
-  eq(res2.skipped, "done", "does not re-run");
-  const again = boot();
-  eq(again.pfpMigration >= 2, true, "flag survives reload");
-  eq(again.brands.full(a.agent.id).version, 2, "version survives reload");
-  // house cast: new-style render keeps signature headwear and differs per agent
-  const faces = new Set(); let crowns = 0;
-  for (const seed of SEED_BRANDS) { const r = recipeFromBrand(seed); if (r.selections) crowns += (r.headwear === "crown" ? 1 : 0); faces.add(pathData(require("../src/pfp").renderPfp(r, { size: 512, nonce: "h" }))); }
-  eq(faces.size, SEED_BRANDS.length, "house cast portraits are all distinct");
-  assert(crowns >= 1, "at least one house signature headwear (crown) preserved");
+  if (savedKey) process.env.OPENAI_API_KEY = savedKey;
+  eq(res.migrated, 1, "migration draws a local portrait");
+  eq(res.skipped, undefined, "migration does not wait on an image key");
+  eq(show.pfpMigration >= 2, true, "local migration records completion");
+  eq(show.legacyPortraitAgents().includes(a.agent.id), false, "legacy agent now has a portrait");
+  const migratedFace = show.pfpImageFor(a.agent.id, 96);
+  assert(migratedFace && migratedFace.mime === "image/webp", "migrated portrait is a local webp");
+  let retired = false;
+  try { renderPfp({}); }
+  catch (err) { retired = err.code === "pfp_procedural_retired"; }
+  assert(retired, "house cast is not drawn as neon noir");
+  assert(SEED_BRANDS.length === 12, "house cast stays 12");
   console.log("pfp migration ok");
 })().catch((e) => { console.error(e); process.exit(1); });

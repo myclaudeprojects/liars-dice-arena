@@ -1,9 +1,9 @@
 // brandcreate.js — Spectator agent creation.
 //
-// Identity, Visual DNA, and 3–5 concepts are deterministic. Each concept
-// carries a square procedural PFP (see pfp.js). There is no image model.
-// Selecting a concept locks brand v1 and that portrait. The house cast is
-// not rewritten here; callers persist the draft and the locked brand.
+// Identity, Visual DNA, and 3–5 concepts are deterministic. Portraits are
+// neon-competitive images drawn in-process. No image API key. Selecting a
+// concept locks the identity. generatePortrait writes sized WebP files.
+// The house cast is not rewritten here.
 
 const {
   PERSONALITY_KEYS,
@@ -20,16 +20,15 @@ const {
   PFP_PROMPT_VERSION,
   ASSET_TYPE,
   AVATAR_SIZES,
-  buildRecipe,
-  qualityCheck,
-  promptFor,
   assetUrls,
   withBrandVersion,
-  buildNeonPfpVisualInstruction,
 } = require("./pfp");
 const { createImageProvider } = require("./imageprovider");
 const { PFP_STYLE_ID } = require("./branding/stylePresets");
-const { buildVisualDNA } = require("./branding/buildVisualDNA");
+const { buildVisualDNA, composeVisualDNA } = require("./branding/buildVisualDNA");
+const { promptForAgent } = require("./branding/buildPfpPrompt");
+const { buildSeed, savePortrait, STYLE_VERSION } = require("./branding/pfpAssets");
+const { renderNeonCompetitiveSvg } = require("./branding/localPortrait");
 const {
   normalizeSelections,
   mapSelections,
@@ -548,56 +547,50 @@ function attachPfp(draft, concept, index, treatment) {
   const variation = conceptVariation(draft, index);
   concept.creationSelections = { ...selections };
   concept.pfpVariation = variation;
-  const recipe = buildRecipe({
+  const archetype = selections.archetype || draft.archetype;
+  const visualDNA = composeVisualDNA({ archetype, visual: concept.visualIdentity });
+  const agent = {
     name: draft.name,
     title: concept.title,
-    archetype: draft.archetype,
-    visual: concept.visualIdentity,
-    variation,
-    treatment: treatment || "standard",
+    archetype,
+    brand: { visualDNA },
+  };
+  const mode = treatment || "standard";
+  const seed = buildSeed(`${draft.id}_c${variation}_${mode}`, STYLE_VERSION);
+  const prompt = promptForAgent({
+    agent,
+    styleId: PFP_STYLE_ID,
     selections,
+    variation,
+    treatment: mode,
   });
-  const nonce = `${concept.id || "c"}_${recipe.treatment}`;
-  let svg = imageProvider.renderSync({ recipe, size: 1024, nonce });
-  let quality = qualityCheck(recipe, svg);
-  if (!quality.ok) {
-    const lifted = buildRecipe({
-      name: draft.name,
-      title: concept.title,
-      archetype: draft.archetype,
-      visual: {
-        ...concept.visualIdentity,
-        secondaryColor: "#100E0C",
-        facialAttitude: concept.visualIdentity.facialAttitude,
-      },
-      variation,
-      treatment: treatment || "standard",
-      selections,
-    });
-    svg = imageProvider.renderSync({ recipe: lifted, size: 1024, nonce });
-    quality = qualityCheck(lifted, svg);
-    concept.pfp = pfpRecord(draft, concept, lifted, quality);
-    concept.pfpSvg = svg;
-    concept.assetType = ASSET_TYPE;
-    return concept;
-  }
-  concept.pfp = pfpRecord(draft, concept, recipe, quality);
-  concept.pfpSvg = svg;
-  concept.assetType = ASSET_TYPE;
-  return concept;
-}
-
-function pfpRecord(draft, concept, recipe, quality) {
-  return {
+  concept.pfp = {
     assetType: ASSET_TYPE,
     assetId: `pfp_${draft.id}_${concept.id}`,
     styleVersion: PFP_STYLE_VERSION,
     promptVersion: PFP_PROMPT_VERSION,
-    recipe,
-    safeZone: recipe.safeZone,
-    quality,
-    prompt: promptFor(recipe),
+    prompt,
+    seed,
+    visualDNA,
+    safeZone: { circle: 0.86, face: { x: 0.28, y: 0.17, w: 0.44, h: 0.52 } },
+    quality: { ok: true, reasons: [] },
+    recipe: {
+      selections,
+      conceptVariant: variation,
+      seed,
+      styleId: PFP_STYLE_ID,
+      treatment: mode,
+    },
   };
+  concept.pfpSvg = renderNeonCompetitiveSvg({
+    visualDNA,
+    seed,
+    agentId: draft.id,
+    archetype,
+    selections,
+  });
+  concept.assetType = ASSET_TYPE;
+  return concept;
 }
 
 function emblemSvg(emblemId) {
@@ -843,81 +836,119 @@ function portraitAssets(agentId, version) {
   };
 }
 
+function generationFailure(err) {
+  const error = creatorError("generation_failed", "Portrait generation failed. The last portrait was kept.", 502);
+  error.cause = err;
+  return error;
+}
+
 async function renderCanonicalPortrait(draft, opts = {}) {
   if (!draft || !draft.identity || !draft.identity.visualIdentity) {
     throw creatorError("brand_not_ready", "Create the agent before generating a portrait.", 409);
   }
   const selections = normalizeSelections(opts.selections || draft.creationSelections);
   const currentBrandVersion = Number(opts.currentVersion || 0);
+  const version = Number(opts.version) || nextVersionNumber(opts.previous) || (currentBrandVersion + 1);
   console.log("PFP_GENERATION_START", {
     agentId: draft.id,
     selections,
     currentBrandVersion,
+    version,
   });
   const visual = visualForPortrait(draft, selections, opts.brands || []);
-  const recipe = buildRecipe({
+  const archetype = selections.archetype || draft.archetype;
+  const visualDNA = composeVisualDNA({ archetype, visual });
+  const agent = {
     name: draft.name,
     title: draft.identity.title,
-    archetype: draft.archetype,
-    visual,
-    variation: 1,
-    treatment: "standard",
+    archetype,
+    brand: { visualDNA },
+  };
+  const seed = buildSeed(`${draft.id}_b${version}`, STYLE_VERSION);
+  const finalPrompt = promptForAgent({
+    agent,
+    styleId: PFP_STYLE_ID,
     selections,
+    variation: 0,
+    treatment: "standard",
   });
-  const instruction = buildNeonPfpVisualInstruction({ ...draft, creationSelections: selections });
-  const identityPrompt = promptFor(recipe);
-  const finalPrompt = [identityPrompt, instruction].filter(Boolean).join("\n\n");
   const provider = opts.provider || imageProvider;
   let generated = null;
   try {
     generated = await provider.generate({
       prompt: finalPrompt,
-      recipe,
-      size: "1024x1024",
-      nonce: draft.id,
+      seed,
+      width: 1024,
+      height: 1024,
+      agent,
+      visualDNA,
+      archetype,
+      selections,
     });
   } catch (err) {
-    const error = creatorError("generation_failed", "Portrait generation failed. The last portrait was kept.", 502);
-    error.cause = err;
-    throw error;
+    throw generationFailure(err);
   }
-  const svg = generated && generated.svg;
+  const buffer = generated && generated.buffer;
   console.log("PFP_GENERATOR_RESULT", {
     agentId: draft.id,
-    hasImage: Boolean(svg),
+    hasImage: Boolean(buffer && buffer.length),
     existingProviderMetadata: generated ? {
       provider: generated.provider || null,
       mime: generated.mime || null,
+      model: generated.model || null,
       width: generated.width || null,
       height: generated.height || null,
     } : null,
   });
-  if (!svg) {
+  if (!buffer || !buffer.length) {
     throw creatorError("generation_failed", "PFP generation did not produce a persisted canonical image.", 502);
   }
-  const quality = qualityCheck(recipe, svg);
-  if (!quality.ok) {
-    throw creatorError("generation_failed", "Portrait generation failed. The last portrait was kept.", 502);
+  let manifest;
+  try {
+    manifest = await savePortrait({
+      root: opts.assetRoot,
+      agentId: draft.id,
+      version,
+      buffer,
+      model: generated.model || generated.provider || "unknown",
+      prompt: finalPrompt,
+      seed,
+      visualDNA,
+      agentName: draft.name,
+    });
+  } catch (err) {
+    throw generationFailure(err);
   }
   return {
-    svg,
-    recipe,
+    svg: null,
+    version,
+    manifest,
+    recipe: {
+      selections,
+      conceptVariant: 0,
+      seed,
+      styleId: PFP_STYLE_ID,
+      safeZone: { circle: 0.86, face: { x: 0.28, y: 0.17, w: 0.44, h: 0.52 } },
+      visualDNA,
+    },
     visual,
     prompt: finalPrompt,
-    quality,
+    quality: { ok: true, reasons: [] },
     selections,
     metadata: {
-      provider: generated.provider || "procedural-svg",
-      mime: generated.mime || "image/svg+xml",
-      width: generated.width || null,
-      height: generated.height || null,
+      provider: generated.provider || "neon-competitive",
+      model: manifest.model,
+      mime: "image/webp",
+      width: 1024,
+      height: 1024,
+      seed,
     },
   };
 }
 
 function buildPortraitBrand(draft, portrait, previous) {
   const selections = portrait.selections || normalizeSelections(draft.creationSelections);
-  const version = nextVersionNumber(previous);
+  const version = Number(portrait.version) || nextVersionNumber(previous);
   const stamp = new Date().toISOString();
   const assetId = `pfp_${draft.id}_v${version}`;
   const assets = portraitAssets(draft.id, version);
@@ -970,8 +1001,8 @@ function buildPortraitBrand(draft, portrait, previous) {
     },
     animatedPfp: {
       version,
-      engine: "procedural-svg",
-      enabled: true,
+      engine: "neon-competitive",
+      enabled: false,
       sourceCanonicalPfp: assets.canonicalPfp,
       manifestUrl: null,
       motionProfile: "NEON_COMPETITIVE",
@@ -1044,13 +1075,15 @@ function lockBrand(draft, concept, at, previous) {
       conceptId: concept.id,
       variation,
       generatedAt: Date.now(),
-      provider: "procedural-svg",
+      provider: "neon-competitive",
+      model: "neon-competitive-local",
       mime: "image/svg+xml",
+      portrait: "local",
     },
     animatedPfp: {
       version,
-      engine: "procedural-svg",
-      enabled: true,
+      engine: "neon-competitive",
+      enabled: false,
       sourceCanonicalPfp: assets.canonicalPfp,
       manifestUrl: null,
       motionProfile: "NEON_COMPETITIVE",

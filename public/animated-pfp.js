@@ -2,8 +2,8 @@
 //
 // Layered SVG portraits (lda-pfp-v2) still move their groups: bg, grid, torso,
 // head, eyes, pupils, rim, aura, scan. Library portraits are static webp/png
-// frames. Those keep the image still and play a CSS neon pulse + sheen on the
-// wrapper. Watch seats stay on the still frame so the table is not shimmering.
+// frames. Those keep the picture as-is and play a small CSS float, the same
+// idle idea as the rig's breath. Watch seats stay on the still frame.
 // prefers-reduced-motion and save-data stay on the poster.
 (function (root, factory) {
   const api = factory();
@@ -80,8 +80,8 @@
   const HERO_CONTEXTS = Object.freeze([
     "watch", "profile", "reveal", "hero", "roster", "matchup", "create",
   ]);
-  // Raster frames use a CSS overlay. Watch is intentionally absent: a live
-  // table should not pulse every seat.
+  // Raster frames use a CSS float. Watch is intentionally absent: a live
+  // table should not bob every seat.
   const OVERLAY_CONTEXTS = Object.freeze([
     "profile", "reveal", "hero", "roster", "matchup", "create",
   ]);
@@ -172,7 +172,7 @@
     return /\.(?:webp|png|jpe?g)(?:\?|$)/i.test(text);
   }
 
-  // rig: layered SVG. overlay: static mint frame plus CSS. still: poster only.
+  // rig: layered SVG. overlay: still image with a CSS idle float. still: poster only.
   function classifyPortraitMotion({ context = "", src = "", reducedMotion = false, lowPower = false, enabled = true, layered = false } = {}) {
     if (!shouldAnimate({ context, reducedMotion, lowPower, enabled })) return "still";
     if (layered) return "rig";

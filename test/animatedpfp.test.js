@@ -177,10 +177,11 @@ assert(app.includes('"profile"'), "agent profile opts in");
 assert(app.includes("animatePfp: false"), "history replay stays on the poster");
 assert(app.includes('context: "roster"'), "roster portraits opt into overlay motion");
 assert(app.includes('data-context="create"'), "create options opt in");
-assert(app.includes("lda-pfp-sheen") === false, "motion lives in css, not the app script");
+assert(!app.includes("lda-pfp-idle"), "the idle float lives in css");
 assert(!app.includes('context: "market"') && !app.includes('context: "history"'), "market and history rows are not animated mounts");
 const css = fs.readFileSync(path.join(publicDir, "app.css"), "utf8");
-assert(css.includes("lda-pfp-sheen") && css.includes("lda-pfp-pulse"), "raster portraits get a pulse and sheen");
-assert(css.includes(".animated-pfp.is-overlay::before") && css.includes("opacity: 0 !important"), "reduced motion drops the overlay");
+assert(css.includes("lda-pfp-idle") && css.includes("translate3d"), "raster portraits get an idle float");
+assert(!css.includes("lda-pfp-sheen") && !css.includes("lda-pfp-pulse"), "raster motion is not a neon sheen");
+assert(css.includes(".animated-pfp.is-overlay img") && /is-overlay img \{\s*animation: none !important/.test(css), "reduced motion holds the portrait still");
 
 console.log("animated pfp ok");

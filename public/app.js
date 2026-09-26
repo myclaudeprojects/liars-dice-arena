@@ -1674,8 +1674,16 @@ function visualOptionGrids(selections) {
   return html + rest;
 }
 
+function pageHead(title, opts) {
+  const o = opts || {};
+  const kicker = o.kicker ? `<p class="kicker">${esc(o.kicker)}</p>` : "";
+  const actions = o.actions ? `<div class="page-head__actions">${o.actions}</div>` : "";
+  const lede = o.lede ? `<p class="fine page-head__lede">${esc(o.lede)}</p>` : "";
+  return `<header class="page-head"><div class="page-head__titles">${kicker}<h1 class="page">${esc(title)}</h1></div>${actions}</header>${lede}`;
+}
+
 function createAgentButton() {
-  return `<button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-create-agent="1">Create agent</button>`;
+  return `<button class="lda-btn lda-btn-primary" type="button" data-create-agent="1">Create agent</button>`;
 }
 
 function sliderField(key, label) {
@@ -2104,7 +2112,7 @@ function creatorView() {
         <summary>Advanced / Developer Options</summary>
         <div class="advanced-config__body">
           <label>Short description <span class="fine">(optional)</span><textarea name="shortDescription" maxlength="240" placeholder="A quiet closer who spends one lie and waits.">${esc(f.shortDescription)}</textarea></label>
-          <button class="ghost" type="button" data-more-traits="1">${creator.moreTraits ? "Hide extra traits" : "More traits"}</button>
+          <button class="lda-btn lda-btn-ghost" type="button" data-more-traits="1">${creator.moreTraits ? "Hide extra traits" : "More traits"}</button>
           ${creator.moreTraits ? `
             ${sliderField("confidence", "Confidence")}
             ${sliderField("patience", "Patience")}
@@ -2118,12 +2126,16 @@ function creatorView() {
       </details>`;
   } else if (step === 2) {
     body = `<section class="brand-options">
-      <div class="brand-concepts__header">
-        <span class="kicker">Character options</span>
-        <h2>One portrait. These choices build it.</h2>
-        <p class="fine">Previews are examples. Generate agent locks one neon-competitive identity.</p>
+      <div class="section-head">
+        <div class="section-head__titles">
+          <span class="kicker">Character options</span>
+          <h2>One portrait. These choices build it.</h2>
+        </div>
+        <div class="section-head__actions">
+          <button class="lda-btn lda-btn-ghost" type="button" data-random-look="1">Randomize again</button>
+        </div>
       </div>
-      <button class="ghost lda-btn" type="button" data-random-look="1">Randomize again</button>
+      <p class="fine">Previews are examples. Generate agent locks one neon-competitive identity.</p>
       ${visualOptionGrids(creator.selections)}
       <label>Refine<textarea name="refine" maxlength="160" placeholder="Optional note. The options above decide the portrait.">${esc(f.refine)}</textarea></label>
     </section>`;
@@ -2166,8 +2178,7 @@ function creatorView() {
   const nextAttr = step === 1 ? "data-creator-next" : step === 2 ? "data-creator-generate" : "data-enter-arena";
   const working = creator.statusLabel || "Working.";
   return `<div class="creator">
-    <p class="kicker">${esc(kicker)}</p>
-    <h1 class="page">Create agent</h1>
+    ${pageHead("Create agent", { kicker })}
     ${body}
     ${creator.busy ? `<p class="fine creator-status" role="status">${esc(working)}</p>` : ""}
     ${creator.error ? `<div class="err lda-error" role="alert">${esc(creator.error)}</div>` : ""}
@@ -2395,10 +2406,10 @@ function agentsView() {
     const body = listsError
       ? "The connection blinked. This tab will try again."
       : "Records show up when the show answers.";
-    return `<h1 class="page">Agents</h1>${createAgentButton()}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
+    return `${pageHead("Agents", { actions: createAgentButton() })}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
   }
-  if (!agents.length) return `<h1 class="page">Agents</h1>${createAgentButton()}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
-  return `<h1 class="page">Agents</h1><p class="fine">Characters, not algorithms with a hat on. Records are from matches they actually played.</p>${createAgentButton()}<div class="agent-roster">` +
+  if (!agents.length) return `${pageHead("Agents", { actions: createAgentButton() })}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
+  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}<div class="agent-roster">` +
     agents.map((a) => {
       const roster = a.roster === "user" ? (a.status === "READY" ? "Your competitor" : "Brand in progress") : "";
       return `<button class="agent-card" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
@@ -2557,12 +2568,17 @@ function agentDetail(a) {
     return `<div class="rowbtn moment-note"><span class="portrait-plate portrait-plate--market">${facePlate(a, 96)}</span><span><b>${esc(m.title)}</b><div class="fine">${esc(m.dek || "")}</div>${watch}</span></div>`;
   }).join("");
   const tendencies = presentApi() && presentApi().tendencyLines ? presentApi().tendencyLines(a) : [];
+  const resume = a.roster === "user" && a.status && a.status !== "READY"
+    ? `<div class="page-head__actions"><button class="lda-btn lda-btn-primary" type="button" data-resume-agent="1">Continue branding</button></div>`
+    : "";
   return `
-    <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="agents">All agents</button>
+    <header class="page-head">
+      <div class="page-head__actions"><button class="lda-btn lda-btn-ghost" type="button" data-back="agents">All agents</button></div>
+      ${resume}
+    </header>
     <div class="agent-hero" data-cast="${esc(a.id)}"${brandStyle(a)}>${agentPortrait(a)}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
     ${portraitEditor(a)}
     ${pfpDebugPanel(a)}
-    ${a.roster === "user" && a.status && a.status !== "READY" ? `<button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-resume-agent="1">Continue branding</button>` : ""}
     ${argusDetail(a)}
     ${a.roster === "user" && a.playable ? `<p class="fine">User roster. The show seats this agent against the house cast when a chair is free${a.seated ? ", and they are on the slate now" : ""}.</p>` : ""}
     <p class="fine">${esc(a.archetype)}</p>
@@ -2587,10 +2603,10 @@ function historyView() {
     const body = listsError
       ? "The connection blinked. This tab will try again."
       : "Finished matches will show here in a moment.";
-    return `<h1 class="page">History</h1>${line}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
+    return `${pageHead("History")}${line}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
   }
-  if (!history.length) return `<h1 class="page">History</h1>${line}${emptyState("No stories yet", "Nothing has finished", "When a match settles, the story and the replay land here. Your line above stays at zero until you pick a winner.")}`;
-  return `<h1 class="page">History</h1>${line}` + history.map((h) => `
+  if (!history.length) return `${pageHead("History")}${line}${emptyState("No stories yet", "Nothing has finished", "When a match settles, the story and the replay land here. Your line above stays at zero until you pick a winner.")}`;
+  return `${pageHead("History")}${line}` + history.map((h) => `
     <button class="rowbtn lda-card lda-match story-card" type="button" data-match="${esc(h.matchId)}">
       ${castLine(h.seats)}
       ${storyMarkup(h)}
@@ -2652,13 +2668,13 @@ function matchReplay(m) {
   const dek = (m.story && m.story.dek) || "";
   const extra = api && api.storyLines ? api.storyLines(m).filter((line) => line !== dek) : [];
   return `
-    <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-back="history">All stories</button>
+    <header class="page-head"><div class="page-head__actions"><button class="lda-btn lda-btn-ghost" type="button" data-back="history">All stories</button></div></header>
     ${kicker ? `<div class="story-kicker">${esc(kicker)}</div>` : ""}
     <h1 class="page">${esc(m.story && m.story.title || "Match")}</h1>
     <p>${esc(dek)}</p>
     ${extra.map((line) => `<p class="fine">${esc(line)}</p>`).join("")}
     ${stage}
-    <div class="replay-meta"><span class="fine">${at}</span><button class="ghost" type="button" data-replay>Play again</button></div>
+    <div class="replay-meta"><span class="fine">${at}</span><button class="lda-btn lda-btn-ghost" type="button" data-replay>Play again</button></div>
     ${m.share ? shareBlock({ ...m.share, matchId: m.matchId }) : ""}
     <ol class="log">${beats}</ol>`;
 }
@@ -2678,7 +2694,7 @@ function castBoard() {
 function profile() {
   if (!me) return `<p class="fine">Setting up your test-credit book…</p>`;
   return `
-    <h1 class="page">Your record</h1>
+    ${pageHead("Your record")}
     <section class="section"><h2>Career</h2>${careerBlock(me)}</section>
     <div class="statgrid">
       ${ui()

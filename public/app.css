@@ -1820,6 +1820,12 @@ body {
   gap: 12px;
 }
 .visual-group { margin: 0 0 18px; }
+.visual-section { border: 1px solid var(--lda-line); border-radius: 12px; padding: 6px 14px; margin: 0 0 12px; }
+.visual-section > summary { cursor: pointer; padding: 8px 0; font-size: 15px; list-style: none; display: flex; justify-content: space-between; align-items: baseline; }
+.visual-section > summary::-webkit-details-marker { display: none; }
+.visual-section > summary::after { content: "+"; opacity: .6; }
+.visual-section[open] > summary::after { content: "–"; }
+.visual-section[open] > summary { margin-bottom: 8px; }
 .visual-group h2 { font-size: 15px; margin: 0 0 8px; }
 .option-card {
   appearance: none;

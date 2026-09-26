@@ -201,6 +201,28 @@ function agent(show, name) {
   assert(!dumped.includes(TEST_KEY.slice(2)), "public config omits the raw key");
   assert(!Object.prototype.hasOwnProperty.call(hidden, "privateKey"), "no privateKey field");
 
+  eq(hidden.siteUrl, "https://liarsdicearc.app/", "house site is prefilled");
+  eq(hidden.xUrl, "https://x.com/LiarsDiceArc", "house X is prefilled");
+  eq(hidden.telegramUrl, "https://t.me/tradewarzhq", "house Telegram is prefilled");
+  eq(hidden.creatorFeeWallet, "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488", "house creator-fee wallet is prefilled");
+  const branded = argusPublicConfig({
+    ARGUS_MINT_ENABLED: "1",
+    PUBLIC_BASE_URL: "https://liarsdicearc.app",
+    LDA_SITE_URL: "https://example.com/arena",
+    LDA_X_URL: "https://x.com/Example",
+    LDA_TELEGRAM_URL: "https://t.me/example",
+    ARGUS_CREATOR_WALLET: "0x2222222222222222222222222222222222222222",
+  });
+  eq(branded.publicBase, "https://liarsdicearc.app", "public base stays the app origin");
+  eq(branded.siteUrl, "https://example.com/arena/", "LDA_SITE_URL replaces the website");
+  eq(branded.xUrl, "https://x.com/Example", "LDA_X_URL replaces X");
+  eq(branded.telegramUrl, "https://t.me/example", "LDA_TELEGRAM_URL replaces Telegram");
+  eq(branded.creatorFeeWallet, "0x2222222222222222222222222222222222222222", "ARGUS_CREATOR_WALLET replaces the fee wallet");
+  const canonHost = argusPublicConfig({ PUBLIC_BASE_URL: "https://www.liarsdicearc.app" });
+  eq(canonHost.siteUrl, "https://www.liarsdicearc.app/", "a canonical public base becomes the website");
+  const badWallet = argusPublicConfig({ ARGUS_CREATOR_WALLET: "not-an-address" });
+  eq(badWallet.creatorFeeWallet, "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488", "a bad fee wallet keeps the house default");
+
   const houseOnly = argusPublicConfig({ ARGUS_MINT_ENABLED: "1", HOUSE_PRIVATE_KEY: TEST_KEY });
   eq(houseOnly.sponsored, false, "house key is not a mint key");
   eq(houseOnly.mintWallet, null, "house key is not published as the creator");
@@ -442,6 +464,9 @@ function agent(show, name) {
   assert(app.includes("Launch with server mint"), "server mint button");
   assert(app.includes("data-argus-sponsor"), "server mint action");
   assert(app.includes("server mint wallet"), "ui names the on-chain creator");
+  assert(app.includes("Intended creator-fee wallet"), "ui shows the house creator-fee wallet");
+  assert(app.includes("does not take a separate fee recipient"), "ui says the signer receives the creator share");
+  assert(app.includes("siteUrl"), "launch suggestions receive the house site");
   assert(!app.includes("ARGUS_MINT_KEY"), "client does not mention the env key");
   assert(!mintJs.includes("ARGUS_MINT_KEY"), "wallet bundle does not mention the env key");
   assert(mintJs.includes("runLaunch"), "browser launch helper remains");

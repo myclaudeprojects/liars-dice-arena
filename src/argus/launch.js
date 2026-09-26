@@ -147,6 +147,50 @@
     return base + "/";
   }
 
+  // House profile for a new Argus token. Env can replace these; see argusPublicConfig.
+  // Portal #7 launch() has no creator-address argument. The signing wallet is the
+  // on-chain creator. creatorFeeWallet is shown and stored with the suggestion only.
+  const HOUSE_LAUNCH_DEFAULTS = {
+    siteUrl: "https://liarsdicearc.app/",
+    xUrl: "https://x.com/LiarsDiceArc",
+    telegramUrl: "https://t.me/tradewarzhq",
+    creatorFeeWallet: "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488",
+  };
+
+  function withSlash(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    return raw.replace(/\/+$/, "") + "/";
+  }
+
+  function hostOf(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      return new URL(/^https?:\/\//i.test(raw) ? raw : "https://" + raw).hostname.replace(/^www\./i, "").toLowerCase();
+    } catch {
+      return "";
+    }
+  }
+
+  function marketingSite(body) {
+    const explicit = String(body.siteUrl || "").trim();
+    if (/^https?:\/\//i.test(explicit)) return withSlash(explicit);
+    if (hostOf(body.publicBase) === "liarsdicearc.app") return withSlash(body.publicBase);
+    return HOUSE_LAUNCH_DEFAULTS.siteUrl;
+  }
+
+  function socialValue(value, fallback) {
+    const text = cleanText(value, 120);
+    return text || fallback;
+  }
+
+  function feeWallet(value) {
+    const raw = cleanText(value, 42);
+    try { return ethers.getAddress(raw || HOUSE_LAUNCH_DEFAULTS.creatorFeeWallet); }
+    catch { return ethers.getAddress(HOUSE_LAUNCH_DEFAULTS.creatorFeeWallet); }
+  }
+
   function tickerBody(name) {
     const cleaned = cleanText(name, 32);
     const rest = /^lda /i.test(cleaned) ? cleaned.slice(4).trim() : cleaned;
@@ -203,8 +247,8 @@
 
   function suggestLaunch(input) {
     const body = input || {};
-    const site = launchSiteUrl(body.publicBase);
-    const base = site.replace(/\/$/, "");
+    const site = marketingSite(body);
+    const base = launchSiteUrl(body.publicBase).replace(/\/$/, "");
     const agentId = encodeURIComponent(body.agentId || "");
     const fallback = base + "/api/show/agents/" + agentId + "/pfp.svg";
     const candidates = [];
@@ -219,8 +263,9 @@
       launchImage: fitImageUri(candidates, fallback),
       launchWebsite: site,
       launchDescription: brandDescription(body.description, site),
-      launchX: "",
-      launchTelegram: "",
+      launchX: socialValue(body.xUrl, HOUSE_LAUNCH_DEFAULTS.xUrl),
+      launchTelegram: socialValue(body.telegramUrl, HOUSE_LAUNCH_DEFAULTS.telegramUrl),
+      creatorFeeWallet: feeWallet(body.creatorFeeWallet),
       launchBuy: "5",
       launchSell: "5",
       launchCreator: "100",
@@ -601,6 +646,7 @@ function encodeLaunch(abi, prepared) {
     HOOK_FLAGS,
     BUNDLE_SHA256,
     BUNDLE_URL,
+    HOUSE_LAUNCH_DEFAULTS,
     IMAGE_URI_MAX_BYTES,
     ARC_CHAIN,
     loadAbi,

@@ -35,6 +35,9 @@ services:
       # The on-chain creator is this key's address. Do not commit the value.
       # PUBLIC_BASE_URL, ARC_RPC_URL, ARC_RPC_URLS confirm the receipt on two hosts.
       # Those RPCs also price a minted token's market cap. Holders are read from Arcscan.
+      # LDA_SITE_URL, LDA_X_URL, LDA_TELEGRAM_URL, and ARGUS_CREATOR_WALLET
+      # prefill the launch form. Portal #7 still records the signing wallet
+      # as the on-chain creator.
     disk:
       name: arena-data
       mountPath: /var/data

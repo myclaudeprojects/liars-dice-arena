@@ -1733,35 +1733,55 @@ function argusAgentId() {
   return (creator.reveal && creator.reveal.agentId) || (creator.draft && creator.draft.agent && creator.draft.agent.id) || "";
 }
 
+function houseLaunchArgs(cfg, extra) {
+  const offer = cfg || {};
+  const more = extra || {};
+  return {
+    name: more.name != null ? more.name : creator.form.name,
+    description: more.description != null ? more.description : creator.form.shortDescription,
+    agentId: more.agentId || argusAgentId(),
+    publicBase: offer.publicBase,
+    siteUrl: offer.siteUrl,
+    xUrl: offer.xUrl,
+    telegramUrl: offer.telegramUrl,
+    creatorFeeWallet: offer.creatorFeeWallet,
+    takenTickers: more.takenTickers || takenArgusTickers(),
+    canonicalPfp: more.canonicalPfp,
+  };
+}
+
+function suggestedLaunch(cfg, extra) {
+  const tools = window.ArgusLaunch;
+  const args = houseLaunchArgs(cfg, extra);
+  if (tools && tools.suggestLaunch) return tools.suggestLaunch(args);
+  const house = (tools && tools.HOUSE_LAUNCH_DEFAULTS) || {};
+  return {
+    launchName: args.name || "",
+    launchWebsite: args.siteUrl || house.siteUrl || "",
+    launchDescription: args.description || "",
+    launchX: args.xUrl || house.xUrl || "",
+    launchTelegram: args.telegramUrl || house.telegramUrl || "",
+    creatorFeeWallet: args.creatorFeeWallet || house.creatorFeeWallet || "",
+  };
+}
+
 async function loadArgusConfig() {
   if (!creator) return;
   try {
     const cfg = await api("/api/show/argus/config");
     if (!creator) return;
-    creator.argusConfig = cfg && cfg.enabled ? cfg : { enabled: false, publicBase: (cfg && cfg.publicBase) || "" };
+    creator.argusConfig = cfg && cfg.enabled ? cfg : { enabled: false, publicBase: (cfg && cfg.publicBase) || "", siteUrl: cfg && cfg.siteUrl, xUrl: cfg && cfg.xUrl, telegramUrl: cfg && cfg.telegramUrl, creatorFeeWallet: cfg && cfg.creatorFeeWallet };
     argusOffer = cfg || argusOffer;
   } catch {
     if (creator) creator.argusConfig = { enabled: false };
   }
   if (!creator || creator.launch) return;
-  const tools = window.ArgusLaunch;
   const cfg = creator.argusConfig || {};
   const canonical = creator.reveal && creator.reveal.canonicalPfp;
   try {
-    if (tools && tools.suggestLaunch) {
-      creator.launch = tools.suggestLaunch({
-        name: creator.form.name,
-        description: creator.form.shortDescription,
-        agentId: argusAgentId(),
-        publicBase: cfg.publicBase,
-        takenTickers: takenArgusTickers(),
-        canonicalPfp: canonical,
-      });
-    } else {
-      creator.launch = { launchName: creator.form.name || "" };
-    }
+    creator.launch = suggestedLaunch(cfg, { canonicalPfp: canonical });
   } catch {
-    if (creator && !creator.launch) creator.launch = { launchName: creator.form.name || "" };
+    if (creator && !creator.launch) creator.launch = suggestedLaunch(cfg, { canonicalPfp: canonical });
   }
 }
 
@@ -1822,8 +1842,9 @@ function argusPanel() {
     <h2>Launch on Argus</h2>
     <p class="fine">This agent is already saved. Creating the agent and minting a token are separate steps. ${creator.agentPlayable === false ? "Use Enter the Arena to skip the token. Finish branding from their page when you want them in the show. If the launch fails, the saved agent is unchanged." : "Use Enter the Arena to skip. If the launch fails, this agent still plays."}</p>
     <p class="fine">Connect wallet only links MetaMask or Rabby, an injected wallet on Arc (chain 5042). Connecting does not mint the token.</p>
-    <p class="fine">The fields below are already filled in. Review or edit the name, ticker, description, image, and the rest, then tap <b>Sign create on Arc</b>. That signature creates the Portal #7 token. It turns this agent metadata into an on-chain Argus token. The wallet that signs is the on-chain creator.</p>
+    <p class="fine">The fields below are already filled from this agent and the house profile. Review or edit the name, ticker, description, image, website, X, and Telegram, then tap <b>Sign create on Arc</b>. That signature creates the Portal #7 token. It turns this agent metadata into an on-chain Argus token. The wallet that signs is the on-chain creator.</p>
     <p class="fine">Defaults: 5% buy tax, 5% sell tax, 100% to the creator, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply.</p>
+    ${f.creatorFeeWallet ? `<p class="fine">Intended creator-fee wallet: ${esc(f.creatorFeeWallet)}. Portal #7 does not take a separate fee recipient. The creator share accrues to the wallet that signs. On Sign create on Arc, that is the connected wallet. On Launch with server mint, that is the server mint wallet, not a hidden key and not this house address unless they are the same.</p>` : ""}
     ${sponsorNote ? `<p class="fine">${esc(sponsorNote)}</p>` : ""}
     <p class="fine">${esc(wallet)}</p>
     ${f.status ? `<p class="fine" role="status">${esc(f.status)}</p>` : ""}
@@ -1836,6 +1857,7 @@ function argusPanel() {
       ${argusField("launchX", "X", f.launchX)}
       ${argusField("launchTelegram", "Telegram", f.launchTelegram)}
     </div>
+    ${f.creatorFeeWallet ? `<label>Creator-fee wallet <span class="fine">(house default, not the signing wallet)</span><input type="text" value="${esc(f.creatorFeeWallet)}" readonly tabindex="-1"></label>` : ""}
     <details class="advanced-config">
       <summary>Tax, allocation, and value</summary>
       <div class="advanced-config__body">
@@ -2184,17 +2206,14 @@ function openArgusLaunch(agent) {
   };
   creator.step = 3;
   creator.agentPlayable = agent.playable !== false;
-  creator.argusConfig = argusOffer && argusOffer.enabled ? argusOffer : { enabled: false, publicBase: (argusOffer && argusOffer.publicBase) || "" };
-  if (window.ArgusLaunch && window.ArgusLaunch.suggestLaunch) {
-    creator.launch = window.ArgusLaunch.suggestLaunch({
-      name: creator.form.name,
-      description: creator.form.shortDescription,
-      agentId: agent.id,
-      publicBase: creator.argusConfig.publicBase,
-      takenTickers: takenArgusTickers().filter((symbol) => symbol !== (agent.argus && agent.argus.symbol)),
-      canonicalPfp: creator.reveal.canonicalPfp,
-    });
-  }
+  creator.argusConfig = argusOffer && argusOffer.enabled ? argusOffer : { enabled: false, publicBase: (argusOffer && argusOffer.publicBase) || "", siteUrl: argusOffer && argusOffer.siteUrl, xUrl: argusOffer && argusOffer.xUrl, telegramUrl: argusOffer && argusOffer.telegramUrl, creatorFeeWallet: argusOffer && argusOffer.creatorFeeWallet };
+  creator.launch = suggestedLaunch(creator.argusConfig, {
+    name: creator.form.name,
+    description: creator.form.shortDescription,
+    agentId: agent.id,
+    takenTickers: takenArgusTickers().filter((symbol) => symbol !== (agent.argus && agent.argus.symbol)),
+    canonicalPfp: creator.reveal.canonicalPfp,
+  });
   focusAgent = null;
   tab = "agents";
   painted = "";

@@ -4,10 +4,18 @@ html, body { margin: 0; background: var(--lda-bg); color: var(--lda-text); font-
 :root {
   --coming-soon-h: 56px;
   --shell-sticky-top: calc(64px + var(--coming-soon-h) + env(safe-area-inset-top));
+  /* Fixed tab bar plus a gap, so the last row can scroll clear of it. */
+  --tabbar-clear: calc(132px + env(safe-area-inset-bottom));
+}
+@media (min-width: 820px) {
+  :root {
+    /* Desktop bar floats 18px off the bottom and sits on the content column. */
+    --tabbar-clear: calc(164px + env(safe-area-inset-bottom));
+  }
 }
 html {
   scroll-padding-top: var(--shell-sticky-top);
-  scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  scroll-padding-bottom: var(--tabbar-clear);
   overflow-anchor: none;
 }
 body { min-height: 100dvh; overflow-x: clip; }
@@ -130,7 +138,7 @@ html.coming-soon-dismissed .top {
   border: 1px solid var(--lda-line); font-size: 13px; color: var(--lda-gold);
   white-space: nowrap;
 }
-#view { width: min(100%, 1180px); max-width: 1180px; margin: 0 auto; padding: 16px 16px 116px; }
+#view { width: min(100%, 1180px); max-width: 1180px; margin: 0 auto; padding: 16px 16px var(--tabbar-clear); }
 #match, #market { overflow-anchor: none; }
 #market:empty, #sheet:empty { display: none; }
 .tabs {
@@ -1096,7 +1104,7 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   margin-top: 0;
 }
 .argus-split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
-.creator-actions { display: flex; flex-direction: column; gap: var(--space-2); }
+.creator-actions { display: flex; flex-direction: column; gap: var(--space-2); scroll-margin-bottom: var(--tabbar-clear); }
 .creator-actions .ghost,
 .creator-actions .cta { margin-top: 0; }
 

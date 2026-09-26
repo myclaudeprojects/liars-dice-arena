@@ -1723,6 +1723,17 @@ class Show {
     };
   }
 
+  // A draft that has not finished creation has no brand yet. Rather than a letter, the
+  // roster shows the closest library portrait for its options; the chosen one replaces it.
+  provisionalBrand(draft) {
+    if (!draft || !portraitLib.enabled()) return null;
+    const entry = portraitLib.match(normalizeSelections(draft.creationSelections), { count: 1, seed: "draft:" + draft.id })[0];
+    if (!entry) return null;
+    const url = withBrandVersion(portraitLib.urlFor(entry), { version: 1 });
+    return { provisional: true, version: 0, status: draft.status, pfpStatus: draft.status, pfpUrl: url, canonicalPfp: url, avatarUrl: url,
+      avatarSizes: { 48: url, 96: url, 160: url, 256: url, 320: url, 512: url }, portrait: { id: entry.id, file: entry.file, url, kind: "image", provisional: true } };
+  }
+
   agentSummary(draft) {
     return {
       id: draft.id,
@@ -1732,6 +1743,7 @@ class Show {
       archetype: draft.archetype,
       archetypeLabel: draft.archetypeLabel,
       argus: publicArgus(draft.argus),
+      brand: draft.status === "READY" ? this.brands.publicOf(draft.id) : this.provisionalBrand(draft),
     };
   }
 
@@ -1958,7 +1970,7 @@ class Show {
       id: c.id, name: c.name, archetype: c.archetype, hue: c.hue, style: c.style, line: c.line,
       record: this.records.line(c.id), won: r.won, lost: r.lost, streak: r.streak,
       form: r.form, played: r.played, knownFor: this.records.knownFor(c.id),
-      brand: ready ? this.brands.publicOf(c.id) : null,
+      brand: ready ? this.brands.publicOf(c.id) : this.provisionalBrand(draft),
       roster,
       status: draft ? draft.status : "READY",
       playable: roster === "house" || ready,

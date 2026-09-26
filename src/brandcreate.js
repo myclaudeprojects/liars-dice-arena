@@ -34,6 +34,7 @@ const {
   normalizeSelections,
   mapSelections,
   visualOptionGroups,
+  GROUP_SECTIONS,
 } = require("./branding/creationSelections");
 
 const imageProvider = createImageProvider();
@@ -1110,6 +1111,7 @@ module.exports = {
   renderCanonicalPortrait,
   buildPortraitBrand,
   visualOptionGroups,
+  GROUP_SECTIONS,
   normalizeSelections,
   publicDraft,
   creatorError,

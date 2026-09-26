@@ -1602,26 +1602,65 @@ function defaultVisualSelections() {
     colorPalette: "cyan",
     background: "abstract",
     accessories: "none",
+    skinTone: "auto",
+    hairStyle: "auto",
+    hairColor: "auto",
+    eyes: "auto",
+    facialHair: "auto",
+    headwear: "auto",
+    pose: "auto",
+    fx: "none",
   };
 }
+
+// Live option catalogue from the server (falls back to VISUAL_GROUPS until it loads).
+let liveVisualGroups = null;   // [{ id, label, section, options:[{id,label,preview}] }]
+let liveVisualSections = null; // [{ id, label, groups:[...] }]
+async function loadVisualOptions() {
+  try {
+    const j = await api("/api/show/agents/brand/options");
+    if (j && Array.isArray(j.visualOptions) && j.visualOptions.length) { liveVisualGroups = j.visualOptions; liveVisualSections = Array.isArray(j.visualSections) ? j.visualSections : null; }
+  } catch { /* keep fallback */ }
+}
+loadVisualOptions();
 
 function optionLabel(id) {
   return String(id || "").replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
-function visualOptionGrids(selections) {
-  const current = selections || defaultVisualSelections();
-  return VISUAL_GROUPS.map(([group, label, ids]) => `<section class="visual-group">
+function visualGroupList() {
+  if (liveVisualGroups) return liveVisualGroups.map((g) => [g.id, g.label, g.options.map((o) => o.id), g.section || "identity"]);
+  return VISUAL_GROUPS.map(([id, label, ids]) => [id, label, ids, "identity"]);
+}
+
+function visualGroupHtml(group, label, ids, current) {
+  return `<section class="visual-group">
       <h2>${esc(label)}</h2>
       <div class="agent-visual-options">${ids.map((id) => {
-        const on = current[group] === id;
+        const on = (current[group] || (id === "auto" || id === "none" ? id : "")) === id;
         const src = `/assets/agent-creation-previews/${group}/${id}.svg`;
         return `<button class="option-card${on ? " is-selected" : ""}" type="button" data-opt-group="${esc(group)}" data-opt-id="${esc(id)}" aria-pressed="${on ? "true" : "false"}">
-          <img src="${esc(src)}" alt="" width="96" height="96">
+          <img src="${esc(src)}" alt="" width="96" height="96" loading="lazy">
           <span>${esc(optionLabel(id))}</span>
         </button>`;
       }).join("")}</div>
-    </section>`).join("");
+    </section>`;
+}
+
+function visualOptionGrids(selections) {
+  const current = { ...defaultVisualSelections(), ...(selections || {}) };
+  const groups = visualGroupList();
+  const sections = liveVisualSections || [{ id: "identity", label: "Identity", groups: groups.map((g) => g[0]) }];
+  const byId = Object.fromEntries(groups.map((g) => [g[0], g]));
+  const placed = new Set();
+  const html = sections.map((sec, i) => {
+    const inner = (sec.groups || []).map((gid) => { const g = byId[gid]; if (!g) return ""; placed.add(gid); return visualGroupHtml(g[0], g[1], g[2], current); }).join("");
+    if (!inner) return "";
+    const chosen = (sec.groups || []).filter((gid) => current[gid] && current[gid] !== "auto" && current[gid] !== "none" && byId[gid]).length;
+    return `<details class="visual-section"${i < 2 ? " open" : ""}><summary><b>${esc(sec.label)}</b> <span class="fine">${chosen ? chosen + " set" : "defaults"}</span></summary>${inner}</details>`;
+  }).join("");
+  const rest = groups.filter((g) => !placed.has(g[0])).map((g) => visualGroupHtml(g[0], g[1], g[2], current)).join("");
+  return html + rest;
 }
 
 function createAgentButton() {

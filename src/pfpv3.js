@@ -161,6 +161,31 @@ function scene(row, c, id, r) {
     for (let i = 0; i < 140; i++) parts.push(el("circle", { cx: rand() * 1024, cy: rand() * 1024, r: rand() * 2.4, fill: "#ffffff", opacity: 0.3 + rand() * 0.7 }));
     parts.push(el("circle", { cx: 820, cy: 220, r: 120, fill: mix(deep, a, 0.35) }), el("circle", { cx: 780, cy: 190, r: 120, fill: deep, opacity: 0.55 }));
     parts.push(el("ellipse", { cx: 820, cy: 236, rx: 200, ry: 26, fill: "none", stroke: a, "stroke-width": 4, opacity: 0.6 }));
+  } else if (bg === "dice_table") {
+    parts.push(el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("felt")})` }));
+    parts.push(el("ellipse", { cx: 512, cy: 980, rx: 620, ry: 160, fill: "#5a3b22", opacity: 0.8 }), el("ellipse", { cx: 512, cy: 960, rx: 560, ry: 120, fill: mix(deep, "#144b39", 0.6) }));
+    const die = (cx, cy, rot, pips) => el("g", { transform: `rotate(${rot} ${cx} ${cy})`, opacity: 0.85 }, el("rect", { x: cx - 36, y: cy - 36, width: 72, height: 72, rx: 12, fill: "#f4efe6" }) + pips.map(([px, py]) => el("circle", { cx: cx + px, cy: cy + py, r: 7, fill: "#1a1a17" })).join(""));
+    parts.push(die(130, 900, -18, [[-18, -18], [18, 18], [18, -18], [-18, 18]]), die(880, 920, 12, [[0, 0]]), die(210, 960, 30, [[-18, -18], [0, 0], [18, 18]]));
+    for (let i = 0; i < 7; i++) parts.push(el("circle", { cx: 760 + i * 24, cy: 900 - i * 6, r: 28, fill: i % 2 ? a : "#e8c458", stroke: "#f4efe6", "stroke-width": 4, "stroke-dasharray": "14 16", opacity: 0.8 }));
+  } else if (bg === "rooftop") {
+    for (let i = 0; i < 12; i++) { const w = 50 + rand() * 90, h = 120 + rand() * 260, x0 = i * 90 - 30; parts.push(el("rect", { x: x0, y: 700 - h, width: w, height: h, fill: mix(deep, mid, 0.6) })); for (let k = 0; k < 8; k++) if (rand() > 0.5) parts.push(el("rect", { x: x0 + 8 + rand() * (w - 16), y: 700 - h + 10 + rand() * (h - 30), width: 6, height: 8, fill: rand() > 0.7 ? a : "#ffe9b0", opacity: 0.6 })); }
+    parts.push(el("rect", { x: 0, y: 700, width: 1024, height: 324, fill: shade(deep, -0.3) }), el("rect", { x: 0, y: 690, width: 1024, height: 14, fill: mix(deep, "#c9d3d8", 0.25) }));
+    for (let i = 0; i < 9; i++) parts.push(el("rect", { x: 40 + i * 120, y: 640, width: 12, height: 60, fill: mix(deep, "#c9d3d8", 0.25) }));
+    parts.push(el("circle", { cx: 840, cy: 160, r: 70, fill: "#f4efe6", opacity: 0.85 }), el("circle", { cx: 810, cy: 140, r: 70, fill: deep, opacity: 0.9 }));
+  } else if (bg === "boardroom") {
+    for (let i = 0; i < 5; i++) parts.push(el("rect", { x: 40 + i * 200, y: 60, width: 150, height: 520, fill: "#1b2230", opacity: 0.7 }), el("rect", { x: 48 + i * 200, y: 70, width: 134, height: 500, fill: mix(deep, a, 0.12), opacity: 0.8 }));
+    parts.push(el("rect", { x: 0, y: 720, width: 1024, height: 304, fill: "#2a1e14" }), el("rect", { x: 0, y: 712, width: 1024, height: 10, fill: "#6b4a2a" }));
+    parts.push(el("rect", { x: 60, y: 600, width: 904, height: 120, rx: 14, fill: "#3a2a1a" }), el("rect", { x: 80, y: 610, width: 864, height: 12, rx: 6, fill: shade("#3a2a1a", 0.3), opacity: 0.6 }));
+  } else if (bg === "neon_alley") {
+    parts.push(el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: mix(deep, a, 0.08) }));
+    parts.push(el("polygon", { points: "0,0 300,0 420,1024 0,1024", fill: shade(deep, -0.2) }), el("polygon", { points: "1024,0 720,0 600,1024 1024,1024", fill: shade(deep, -0.2) }));
+    for (let i = 0; i < 6; i++) parts.push(el("rect", { x: 120 + (i % 2) * 20, y: 140 + i * 130, width: 160, height: 60, rx: 10, fill: i % 2 ? a : mix(a, "#ffffff", 0.4), opacity: 0.6, filter: `url(#${id("bloom")})` }), el("rect", { x: 740 - (i % 2) * 20, y: 200 + i * 120, width: 140, height: 50, rx: 10, fill: i % 2 ? "#ff5aa8" : a, opacity: 0.55, filter: `url(#${id("bloom")})` }));
+    parts.push(el("rect", { x: 0, y: 860, width: 1024, height: 164, fill: shade(deep, -0.35) }), el("rect", { x: 0, y: 860, width: 1024, height: 164, fill: `url(#${id("fog")})`, opacity: 0.9 }));
+  } else if (bg === "bunker") {
+    for (let i = 0; i < 6; i++) parts.push(el("rect", { x: 0, y: 40 + i * 160, width: 1024, height: 130, fill: i % 2 ? "#1c2126" : "#161a1f" }), el("rect", { x: 0, y: 170 + i * 160, width: 1024, height: 6, fill: "#2f3841" }));
+    for (let i = 0; i < 8; i++) parts.push(el("circle", { cx: 60 + i * 130, cy: 100, r: 10, fill: "#2f3841", stroke: "#3f4a55", "stroke-width": 3 }));
+    parts.push(el("rect", { x: 380, y: 60, width: 264, height: 26, rx: 6, fill: "#3a2a12" }), el("rect", { x: 380, y: 60, width: 264, height: 26, rx: 6, fill: a, opacity: 0.35, filter: `url(#${id("bloom")})` }));
+    parts.push(el("path", { d: "M300 60 L 300 900 M724 60 L724 900", stroke: "#2f3841", "stroke-width": 16 }));
   } else if (bg === "custom") {
     parts.push(el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("customGrad")})` }));
   } else { // abstract
@@ -191,6 +216,26 @@ function hairShapes(row, x, g, c) {
       + el("path", { d: `M ${L - 30} ${top + 140} L ${L - 40} ${top + 560} L ${L + 20} ${top + 560} Z`, fill: base, opacity: 0.8 });
     front = el("path", { d: `M ${L - 20} ${top + 220} L ${L - 16} ${top + 40} L ${x - 40 + t} ${top - 60} L ${x + 140 + t} ${top - 40} L ${R + 16} ${top + 60} L ${R + 6} ${top + 220} L ${R - 40} ${top + 90} L ${x + 30 + t} ${top + 34} L ${x - 50 + t} ${top + 110} Z`, fill: base })
       + el("path", { d: `M ${x - 20 + t} ${top - 44} L ${x + 120 + t} ${top - 26} L ${x + 30 + t} ${top + 4} Z`, fill: hi, opacity: 0.5 });
+  } else if (style === "buzz") {
+    front = el("path", { d: `M ${L + 12} ${top + 120} L ${L + 8} ${top + 36} Q ${x + t} ${top - 34} ${R - 8} ${top + 36} L ${R - 12} ${top + 120} L ${R - 44} ${top + 70} Q ${x + t} ${top + 30} ${L + 44} ${top + 70} Z`, fill: base, opacity: 0.85 });
+  } else if (style === "undercut") {
+    front = el("path", { d: `M ${L + 30} ${top + 110} L ${L + 30} ${top + 20} L ${x - 40 + t} ${top - 70} L ${x + 130 + t} ${top - 56} L ${R - 30} ${top + 24} L ${R - 30} ${top + 110} L ${R - 60} ${top + 60} L ${x + 60 + t} ${top + 30} L ${L + 70} ${top + 60} Z`, fill: base })
+      + el("path", { d: `M ${L + 8} ${top + 140} L ${L + 6} ${top + 60} L ${L + 30} ${top + 40} L ${L + 34} ${top + 130} Z M ${R - 8} ${top + 140} L ${R - 6} ${top + 60} L ${R - 30} ${top + 40} L ${R - 34} ${top + 130} Z`, fill: dark, opacity: 0.9 })
+      + el("path", { d: `M ${x - 30 + t} ${top - 50} L ${x + 110 + t} ${top - 40} L ${x + 40 + t} ${top - 4} Z`, fill: hi, opacity: 0.6 });
+  } else if (style === "braids") {
+    const strands = []; for (let i = 0; i < 6; i++) { const sx = L - 10 + i * ((R - L + 20) / 5); const sy = top + 500 + (i % 2) * 40; const d = `M ${sx} ${top + 60} Q ${sx - 20 + (i % 2) * 40} ${top + 300} ${sx + (i < 3 ? -30 : 30)} ${sy}`; strands.push(el("path", { d, fill: "none", stroke: dark, "stroke-width": 26, "stroke-linecap": "round" }) + el("path", { d, fill: "none", stroke: base, "stroke-width": 12, "stroke-dasharray": "22 16", "stroke-linecap": "round" })); }
+    back = strands.join("");
+    front = el("path", { d: `M ${L + 4} ${top + 130} L ${L} ${top + 40} Q ${x + t} ${top - 60} ${R} ${top + 40} L ${R - 4} ${top + 130} L ${R - 40} ${top + 60} Q ${x + t} ${top + 20} ${L + 40} ${top + 60} Z`, fill: base })
+      + el("path", { d: `M ${L + 20} ${top + 60} L ${R - 20} ${top + 60} M ${L + 40} ${top + 20} L ${R - 40} ${top + 20}`, stroke: hi, "stroke-width": 4, opacity: 0.5 });
+  } else if (style === "mohawk") {
+    const spikes = []; for (let i = 0; i < 7; i++) { const px = x - 60 + i * 20 + t; spikes.push(`${px},${top + 40} ${px + 10},${top - 150 - (i % 2) * 30} ${px + 20},${top + 40}`); }
+    front = el("polygon", { points: spikes.join(" "), fill: base }) + el("path", { d: `M ${x - 70 + t} ${top + 60} L ${x + 70 + t} ${top + 60} L ${x + 50 + t} ${top + 20} L ${x - 50 + t} ${top + 20} Z`, fill: base })
+      + el("path", { d: `M ${x - 40 + t} ${top - 60} L ${x + t} ${top - 150} L ${x + 30 + t} ${top - 40} Z`, fill: hi, opacity: 0.55 })
+      + el("path", { d: `M ${L + 8} ${top + 130} L ${L + 6} ${top + 50} L ${x - 70 + t} ${top + 30} L ${x - 60 + t} ${top + 110} Z M ${R - 8} ${top + 130} L ${R - 6} ${top + 50} L ${x + 70 + t} ${top + 30} L ${x + 60 + t} ${top + 110} Z`, fill: dark, opacity: 0.8 });
+  } else if (style === "bun") {
+    back = el("circle", { cx: x + t, cy: top - 70, r: 70, fill: dark }) + el("circle", { cx: x - 16 + t, cy: top - 84, r: 40, fill: base, opacity: 0.9 });
+    front = el("path", { d: `M ${L + 2} ${top + 140} L ${L - 2} ${top + 40} Q ${x + t} ${top - 60} ${R + 2} ${top + 40} L ${R - 2} ${top + 140} L ${R - 40} ${top + 70} Q ${x + t} ${top + 24} ${L + 40} ${top + 70} Z`, fill: base })
+      + el("path", { d: `M ${L + 30} ${top + 40} L ${x + t} ${top - 40} M ${R - 30} ${top + 40} L ${x + t} ${top - 40}`, stroke: hi, "stroke-width": 5, opacity: 0.45, fill: "none" });
   } else if (style === "wild") {
     const spikes = []; for (let i = 0; i < 9; i++) { const px = L + 10 + i * ((R - L - 20) / 8); const ph = top - 40 - ((i * 37) % 60); spikes.push(`${px},${top + 70} ${px + 24},${ph} ${px + 48},${top + 60}`); }
     front = el("polygon", { points: spikes.join(" "), fill: base }) + el("path", { d: `M ${L + 4} ${top + 140} L ${L} ${top + 60} L ${R} ${top + 60} L ${R - 4} ${top + 140} L ${x + t} ${top + 40} Z`, fill: base })
@@ -209,6 +254,10 @@ function headwear(row, x, g, c) {
   if (kind === "hood" || kind === "cowl") return el("path", { d: `M ${L - 70} ${top + 560} L ${L - 40} ${top + 60} Q ${x + t} ${top - 150} ${R + 40} ${top + 60} L ${R + 70} ${top + 560} L ${R - 20} ${top + 420} L ${R - 44} ${top + 70} Q ${x + t} ${top - 60} ${L + 44} ${top + 70} L ${L + 20} ${top + 420} Z`, fill: c.clothDeep }) + el("path", { d: `M ${L - 40} ${top + 60} Q ${x + t} ${top - 150} ${R + 40} ${top + 60} L ${R + 24} ${top + 80} Q ${x + t} ${top - 120} ${L - 24} ${top + 80} Z`, fill: c.trim, opacity: 0.35 });
   if (kind === "helm") return el("path", { d: `M ${L - 6} ${top + 60} Q ${x + t} ${top - 120} ${R + 6} ${top + 60} L ${R + 6} ${top + 150} L ${L - 6} ${top + 150} Z`, fill: "#14161c" }) + el("path", { d: `M ${L + 8} ${top + 48} Q ${x + t} ${top - 96} ${R - 8} ${top + 48}`, fill: "none", stroke: c.trim, "stroke-width": 5, "stroke-linecap": "round" });
   if (kind === "halfmask") return el("path", { d: `M ${x - 8 + t} 488 C ${x + 70 + t} 460 ${R - 8} 510 ${R - 18} 590 C ${R - 36} 660 ${x + 36 + t} 688 ${x + t} 700 C ${x - 20 + t} 640 ${x - 24 + t} 560 ${x - 8 + t} 488 Z`, fill: "#14161c", opacity: 0.94 }) + el("path", { d: `M ${x + 4 + t} 500 C ${x + 80 + t} 478 ${R - 28} 530 ${R - 36} 610`, fill: "none", stroke: c.trim, "stroke-width": 4, "stroke-linecap": "round" });
+  if (kind === "beanie") return el("path", { d: `M ${L - 10} ${top + 150} L ${L - 6} ${top + 20} Q ${x + t} ${top - 120} ${R + 6} ${top + 20} L ${R + 10} ${top + 150} L ${R - 30} ${top + 130} L ${L + 30} ${top + 130} Z`, fill: c.clothDeep }) + el("path", { d: `M ${L - 12} ${top + 90} L ${R + 12} ${top + 90} L ${R + 12} ${top + 150} L ${L - 12} ${top + 150} Z`, fill: shade(c.clothDeep, 0.12) }) + el("circle", { cx: x + t, cy: top - 110, r: 22, fill: c.trim });
+  if (kind === "bandana") return el("path", { d: `M ${L - 14} ${top + 120} L ${L - 8} ${top + 40} Q ${x + t} ${top - 40} ${R + 8} ${top + 40} L ${R + 14} ${top + 120} L ${R + 60} ${top + 200} L ${R + 20} ${top + 210} L ${R - 10} ${top + 140} L ${L + 10} ${top + 140} Z`, fill: c.trim, opacity: 0.9 }) + el("path", { d: `M ${L + 20} ${top + 70} L ${R - 20} ${top + 70} M ${L + 40} ${top + 100} L ${R - 40} ${top + 100}`, stroke: shade(c.trim, -0.35), "stroke-width": 3, fill: "none", opacity: 0.6 });
+  if (kind === "visor") return el("path", { d: `M ${L - 24} 380 L ${R + 24} 380 L ${R + 12} 470 L ${L - 12} 470 Z`, fill: "#0b0e14", opacity: 0.92 }) + el("path", { d: `M ${L - 10} 396 L ${R + 10} 396`, stroke: c.trim, "stroke-width": 5, "stroke-linecap": "round", opacity: 0.9 }) + el("path", { d: `M ${L} 430 L ${R} 430`, stroke: c.trim, "stroke-width": 2, opacity: 0.35 });
+  if (kind === "helmet") return el("path", { d: `M ${L - 6} ${top + 60} Q ${x + t} ${top - 120} ${R + 6} ${top + 60} L ${R + 6} ${top + 150} L ${L - 6} ${top + 150} Z`, fill: "#14161c" }) + el("path", { d: `M ${L + 8} ${top + 48} Q ${x + t} ${top - 96} ${R - 8} ${top + 48}`, fill: "none", stroke: c.trim, "stroke-width": 5, "stroke-linecap": "round" }) + el("path", { d: `M ${L - 6} ${top + 150} L ${L - 20} ${top + 240} L ${L + 10} ${top + 240} Z M ${R + 6} ${top + 150} L ${R + 20} ${top + 240} L ${R - 10} ${top + 240} Z`, fill: "#14161c" });
   if (kind === "halo") return el("ellipse", { cx: x + t, cy: top - 40, rx: 150, ry: 22, fill: "none", stroke: c.trim, "stroke-width": 8, opacity: 0.85 });
   if (kind === "ears") return el("path", { d: `M ${L + 10} ${top + 60} L ${L - 30} ${top - 110} L ${L + 90} ${top + 10} Z M ${R - 10} ${top + 60} L ${R + 30} ${top - 110} L ${R - 90} ${top + 10} Z`, fill: c.hair });
   return "";
@@ -227,12 +276,16 @@ function accessory(row, x, g, c, id) {
   if (kind === "scar_tattoo") return el("path", { d: `M ${x + 40 + t} 340 L ${x + 90 + t} 470 M ${x + 44 + t} 360 L ${x + 72 + t} 352 M ${x + 62 + t} 410 L ${x + 90 + t} 402`, fill: "none", stroke: shade(c.skinDeep, -0.2), "stroke-width": 6, "stroke-linecap": "round" }) + el("path", { d: `M ${x - 130 + t} 560 l -30 40 l 30 40 l 30 -40 z M ${x - 150 + t} 640 l 20 30`, fill: "none", stroke: c.trim, "stroke-width": 5, opacity: 0.85 });
   if (kind === "pet") return el("g", null, el("ellipse", { cx: R + 150, cy: 840, rx: 70, ry: 52, fill: shade(c.cloth, -0.1) }) + el("circle", { cx: R + 200, cy: 790, r: 40, fill: shade(c.cloth, -0.1) }) + el("path", { d: `M ${R + 175} 760 l -18 -40 l 34 20 z M ${R + 225} 760 l 18 -40 l -34 20 z`, fill: shade(c.cloth, -0.1) }) + el("circle", { cx: R + 186, cy: 786, r: 6, fill: c.trim }) + el("circle", { cx: R + 214, cy: 786, r: 6, fill: c.trim }));
   if (kind === "prop") return el("rect", { x: R + 110, y: 560, width: 26, height: 300, rx: 12, fill: "#2a2d34", transform: `rotate(-12 ${R + 123} 710)` }) + el("circle", { cx: R + 100, cy: 548, r: 40, fill: "#2a2d34" }) + el("circle", { cx: R + 100, cy: 548, r: 26, fill: "#4b4f58" }) + el("circle", { cx: R + 100, cy: 548, r: 10, fill: c.trim });
+  if (kind === "dice") { const die = (cx, cy, rot, pips) => el("g", { transform: `rotate(${rot} ${cx} ${cy})` }, el("rect", { x: cx - 44, y: cy - 44, width: 88, height: 88, rx: 14, fill: "#f4efe6", stroke: "#b9ad95", "stroke-width": 3 }) + pips.map(([px, py]) => el("circle", { cx: cx + px, cy: cy + py, r: 8, fill: "#1a1a17" })).join("")); return die(R + 120, 800, -14, [[-22, -22], [22, 22], [0, 0], [-22, 22], [22, -22]]) + die(R + 60, 880, 18, [[0, 0]]); }
+  if (kind === "chips") { const chip = (cx, cy, col) => el("g", null, el("circle", { cx, cy, r: 40, fill: col, stroke: "#f4efe6", "stroke-width": 6, "stroke-dasharray": "20 22" }) + el("circle", { cx, cy, r: 22, fill: shade(col, -0.25) })); return chip(R + 80, 900, c.trim) + chip(R + 150, 860, "#e8c458") + chip(R + 120, 800, "#f4efe6"); }
+  if (kind === "cards") { const card = (cx, cy, rot, col) => el("g", { transform: `rotate(${rot} ${cx} ${cy})` }, el("rect", { x: cx - 40, y: cy - 60, width: 80, height: 120, rx: 10, fill: "#f7f2e8", stroke: "#cfc3a8", "stroke-width": 3 }) + el("polygon", { points: `${cx},${cy - 30} ${cx + 22},${cy} ${cx},${cy + 30} ${cx - 22},${cy}`, fill: col })); return card(R + 70, 840, -22, "#1a1a17") + card(R + 120, 820, 0, c.trim) + card(R + 170, 840, 22, "#c8382c"); }
+  if (kind === "cigar") { const sm = []; for (let i = 0; i < 4; i++) sm.push(el("path", { d: `M ${x + 130 + t} ${612 - i * 6} q 30 -50 ${10 + i * 26} -${90 + i * 40}`, fill: "none", stroke: "#dfe6ee", "stroke-width": 7 - i, "stroke-linecap": "round", opacity: 0.3 - i * 0.05 })); return el("rect", { x: x + 44 + t, y: 626, width: 90, height: 18, rx: 8, fill: "#5a3b22", transform: `rotate(-10 ${x + 44 + t} 635)` }) + el("rect", { x: x + 122 + t, y: 612, width: 16, height: 16, rx: 6, fill: "#ff7a2a", filter: `url(#${id("bloom")})` }) + sm.join(""); }
   if (kind === "unique_fx") { const s = []; const rand = rng(hashStr("fx" + x)); for (let i = 0; i < 10; i++) { const px = x + (rand() - 0.5) * 760 + t, py = 200 + rand() * 600, sz = 12 + rand() * 34; s.push(el("polygon", { points: `${px},${py - sz} ${px + sz * 0.7},${py} ${px},${py + sz} ${px - sz * 0.7},${py}`, fill: c.trim, opacity: 0.5 + rand() * 0.5, filter: `url(#${id("bloom")})` })); } return s.join(""); }
   return "";
 }
 
 // ---------------------------------------------------------------- attire
-function attire(row, x, c, wide) {
+function attire(row, x, c, wide, id) {
   const kind = String(row.attire || "casual"), t = (row.turn || 0) * 10;
   const sw = wide ? 1.12 : 1; // shoulder width factor
   const L = x - 360 * sw + t, R = x + 360 * sw + t;
@@ -257,6 +310,14 @@ function attire(row, x, c, wide) {
     detail = el("path", { d: `M ${L + 40} 840 L ${x - 160 + t} 700 L ${x + t} 760 L ${x + 160 + t} 700 L ${R - 40} 840 Z`, fill: c.trim, opacity: 0.85 }) + el("path", { d: `M ${x - 200 + t} 720 L ${x - 120 + t} 1024 M ${x + 200 + t} 720 L ${x + 120 + t} 1024`, stroke: "#ffd76a", "stroke-width": 6, fill: "none" });
   } else if (kind === "cyber_gear") {
     detail = el("path", { d: `M ${x - 240 + t} 720 L ${x - 60 + t} 700 L ${x - 90 + t} 900 L ${x - 260 + t} 880 Z`, fill: "#2b3340" }) + el("path", { d: `M ${x + 240 + t} 720 L ${x + 60 + t} 700 L ${x + 90 + t} 900 L ${x + 260 + t} 880 Z`, fill: "#2b3340" }) + el("path", { d: `M ${x - 220 + t} 760 L ${x - 120 + t} 750 M ${x + 220 + t} 760 L ${x + 120 + t} 750 M ${x - 50 + t} 780 L ${x + 50 + t} 780`, stroke: c.trim, "stroke-width": 6, fill: "none" }) + el("circle", { cx: x + t, cy: 840, r: 14, fill: c.trim });
+  } else if (kind === "trench_coat") {
+    detail = el("path", { d: `M ${x - 80 + t} 690 L ${x - 250 + t} 1024 L ${x - 60 + t} 1024 L ${x + t} 840 Z M ${x + 80 + t} 690 L ${x + 250 + t} 1024 L ${x + 60 + t} 1024 L ${x + t} 840 Z`, fill: shade(base, -0.18) }) + el("path", { d: `M ${x - 80 + t} 690 L ${x - 200 + t} 760 L ${x - 120 + t} 780 Z M ${x + 80 + t} 690 L ${x + 200 + t} 760 L ${x + 120 + t} 780 Z`, fill: lit, opacity: 0.6 }) + el("path", { d: `M ${x - 60 + t} 700 L ${x + t} 840 L ${x + 60 + t} 700`, fill: "none", stroke: deep, "stroke-width": 6 }) + el("rect", { x: L + 60, y: 960, width: R - L - 120, height: 28, rx: 6, fill: deep });
+  } else if (kind === "bomber_jacket") {
+    detail = el("path", { d: `M ${x - 190 + t} 700 Q ${x + t} 660 ${x + 190 + t} 700 L ${x + 170 + t} 740 Q ${x + t} 700 ${x - 170 + t} 740 Z`, fill: deep }) + el("path", { d: `M ${x - 28 + t} 700 L ${x - 34 + t} 1024 L ${x + 34 + t} 1024 L ${x + 28 + t} 700 Z`, fill: "#1a1c22" }) + el("path", { d: `M ${x - 6 + t} 720 L ${x - 6 + t} 1010`, stroke: c.trim, "stroke-width": 4 }) + el("path", { d: `M ${L + 30} 880 L ${x - 70 + t} 1024 M ${R - 30} 880 L ${x + 70 + t} 1024`, stroke: shade(base, 0.25), "stroke-width": 14, opacity: 0.5 }) + el("rect", { x: x + 120 + t, y: 840, width: 90, height: 30, rx: 6, fill: c.trim, opacity: 0.85 });
+  } else if (kind === "robe") {
+    detail = el("path", { d: `M ${x - 120 + t} 690 L ${x + t} 1024 L ${x - 260 + t} 1024 Z M ${x + 120 + t} 690 L ${x + t} 1024 L ${x + 260 + t} 1024 Z`, fill: shade(base, -0.2) }) + el("path", { d: `M ${x - 120 + t} 690 L ${x + t} 1024 M ${x + 120 + t} 690 L ${x + t} 1024`, stroke: "#e8c458", "stroke-width": 10, fill: "none" }) + el("path", { d: `M ${L + 60} 900 L ${R - 60} 900 L ${R - 70} 940 L ${L + 70} 940 Z`, fill: "#e8c458", opacity: 0.85 });
+  } else if (kind === "plate_armor") {
+    detail = el("path", { d: `M ${x - 260 + t} 700 L ${x - 60 + t} 690 L ${x - 100 + t} 880 L ${x - 300 + t} 860 Z M ${x + 260 + t} 700 L ${x + 60 + t} 690 L ${x + 100 + t} 880 L ${x + 300 + t} 860 Z`, fill: "#6b7683" }) + el("path", { d: `M ${x - 240 + t} 720 L ${x - 90 + t} 712 M ${x + 240 + t} 720 L ${x + 90 + t} 712`, stroke: "#c9d3da", "stroke-width": 5, opacity: 0.7 }) + el("path", { d: `M ${x - 120 + t} 760 L ${x + 120 + t} 760 L ${x + 90 + t} 1024 L ${x - 90 + t} 1024 Z`, fill: "#4f5a66" }) + el("path", { d: `M ${x - 90 + t} 800 L ${x + 90 + t} 800 M ${x - 80 + t} 880 L ${x + 80 + t} 880 M ${x - 70 + t} 960 L ${x + 70 + t} 960`, stroke: "#8e99a6", "stroke-width": 5 }) + el("circle", { cx: x + t, cy: 830, r: 16, fill: c.trim, filter: `url(#${id("bloom")})` });
   } else if (kind === "minimal") {
     detail = "";
   } else { // casual
@@ -269,7 +330,10 @@ function attire(row, x, c, wide) {
 function head(row, x, g, c, f, id) {
   const turn = row.turn || 0, t = turn * 14, species = String(row.species || "human");
   const litSide = turn >= 0 ? -1 : 1;
-  const noir = "#100E12";
+  const chosenTone = row.selections && row.selections.skinTone && row.selections.skinTone !== "auto";
+  // Neon Noir keeps the face a dark silhouette. A chosen skin tone shows as an undertone
+  // (warm / olive / deep / cool) without ever painting a lit skin colour.
+  const noir = chosenTone ? mix("#100E12", c.skin, row.selections.skinTone === "synthetic" ? 0.3 : 0.24) : "#100E12";
   const neck = el("path", { d: `M ${x - 70 + t} ${FACE_BOTTOM - 80} L ${x + 70 + t} ${FACE_BOTTOM - 80} L ${x + 90 + t} 760 L ${x - 90 + t} 760 Z`, fill: noir });
 
   if (species === "robot" || species === "skeletal") {
@@ -302,7 +366,8 @@ function head(row, x, g, c, f, id) {
   const closed = (cx) => el("path", { d: `M ${cx - ew} ${eyeY + 2} Q ${cx} ${eyeY + 12} ${cx + ew} ${eyeY + 2}`, fill: "none", stroke: line, "stroke-width": 5, "stroke-linecap": "round" });
   const eyeGlow = f.glow > 0.05 ? el("g", { filter: `url(#${id("bloom")})`, opacity: Math.min(0.55, f.glow * 0.7) }, el("ellipse", { cx: x - gap + t, cy: eyeY, rx: ew + 4, ry: eh + 3, fill: c.trim }) + el("ellipse", { cx: x + gap + t, cy: eyeY, rx: ew + 4, ry: eh + 3, fill: c.trim })) : "";
   const eyesOpen = el("g", { "data-layer": "eyesOpen" }, eyeGlow + eye(x - gap + t) + eye(x + gap + t) + lid(x - gap + t) + lid(x + gap + t));
-  const pupils = el("g", { "data-layer": "pupils" }, iris(x - gap + t) + iris(x + gap + t));
+  const irisAlt = (cx) => el("circle", { cx, cy: eyeY + 1, r: irisR, fill: c.irisAlt }) + el("circle", { cx: cx - 5, cy: eyeY - 5, r: 4, fill: "#ffffff", opacity: 0.9 });
+  const pupils = el("g", { "data-layer": "pupils" }, iris(x - gap + t) + (c.irisAlt ? irisAlt(x + gap + t) : iris(x + gap + t)));
   const eyesClosed = el("g", { "data-layer": "eyesClosed", opacity: "0" }, el("ellipse", { cx: x - gap + t, cy: eyeY, rx: ew + 2, ry: eh + 2, fill: noir }) + el("ellipse", { cx: x + gap + t, cy: eyeY, rx: ew + 2, ry: eh + 2, fill: noir }) + closed(x - gap + t) + closed(x + gap + t));
   const [bIn, bOut, bW] = f.brow;
   const brow = (cx, dir) => el("path", { d: `M ${cx - dir * (ew + 10)} ${eyeY - 56 - bOut} L ${cx} ${eyeY - 66 - (bIn + bOut) / 2} L ${cx + dir * (ew + 12)} ${eyeY - 60 - bIn}`, fill: "none", stroke: shade(c.hair, -0.15), "stroke-width": 8 * bW, "stroke-linecap": "round", "stroke-linejoin": "round" });
@@ -319,9 +384,31 @@ function head(row, x, g, c, f, id) {
   };
   const mouth = mouths[f.mouth] || mouths.flat;
   const muzzle = species === "animal" ? el("path", { d: `M ${x - 70 + t} 540 Q ${x + t} 500 ${x + 70 + t} 540 L ${x + 50 + t} 640 Q ${x + t} 670 ${x - 50 + t} 640 Z`, fill: shade(c.hair, -0.25) }) + el("path", { d: `M ${x - 22 + t} 566 L ${x + 22 + t} 566 L ${x + t} 592 Z`, fill: "#1a0e12" }) : "";
-  const beard = row.premium && String(row.faceKind).startsWith("male") ? el("path", { d: `M ${x - 130 + t} 560 Q ${x + t} 760 ${x + 130 + t} 560 L ${x + 100 + t} 700 Q ${x + t} 740 ${x - 100 + t} 700 Z`, fill: shade(c.hair, -0.1), opacity: 0.85 }) : "";
-  const inner = neck + ears + base + keyWash + age + muzzle + beard + brows + eyesOpen + pupils + eyesClosed + nose + mouth;
+  const fh = String(row.facialHair || "auto");
+  const facialHair = fh === "stubble" ? el("path", { d: `M ${x - 120 + t} 560 Q ${x + t} 740 ${x + 120 + t} 560 L ${x + 96 + t} 690 Q ${x + t} 730 ${x - 96 + t} 690 Z`, fill: shade(c.hair, -0.05), opacity: 0.28 })
+    : fh === "goatee" ? el("path", { d: `M ${x - 44 + t} 650 Q ${x + t} 740 ${x + 44 + t} 650 L ${x + 30 + t} 706 Q ${x + t} 724 ${x - 30 + t} 706 Z`, fill: shade(c.hair, -0.1), opacity: 0.92 }) + el("path", { d: `M ${x - 40 + t} 604 Q ${x + t} 596 ${x + 40 + t} 604 L ${x + 34 + t} 616 Q ${x + t} 610 ${x - 34 + t} 616 Z`, fill: shade(c.hair, -0.1), opacity: 0.9 })
+    : fh === "beard" ? el("path", { d: `M ${x - 140 + t} 540 Q ${x - 150 + t} 720 ${x + t} 760 Q ${x + 150 + t} 720 ${x + 140 + t} 540 L ${x + 120 + t} 640 Q ${x + t} 700 ${x - 120 + t} 640 Z`, fill: shade(c.hair, -0.1), opacity: 0.94 }) + el("path", { d: `M ${x - 40 + t} 604 Q ${x + t} 596 ${x + 40 + t} 604 L ${x + 34 + t} 618 Q ${x + t} 612 ${x - 34 + t} 618 Z`, fill: shade(c.hair, -0.1) })
+    : fh === "mustache" ? el("path", { d: `M ${x - 56 + t} 606 Q ${x - 24 + t} 588 ${x + t} 604 Q ${x + 24 + t} 588 ${x + 56 + t} 606 L ${x + 44 + t} 622 Q ${x + t} 614 ${x - 44 + t} 622 Z`, fill: shade(c.hair, -0.1) })
+    : "";
+  const beard = fh === "auto" && row.premium && String(row.faceKind).startsWith("male") ? el("path", { d: `M ${x - 130 + t} 560 Q ${x + t} 760 ${x + 130 + t} 560 L ${x + 100 + t} 700 Q ${x + t} 740 ${x - 100 + t} 700 Z`, fill: shade(c.hair, -0.1), opacity: 0.85 }) : "";
+  const inner = neck + ears + base + keyWash + age + muzzle + beard + facialHair + brows + eyesOpen + pupils + eyesClosed + nose + mouth;
   return { outline, edge, inner };
+}
+
+// ---------------------------------------------------------------- effects
+function fxLayer(kind, c, id, nonce) {
+  if (!kind || kind === "none") return "";
+  const rand = rng(hashStr(nonce + kind));
+  const a = c.trim;
+  let inner = "";
+  if (kind === "halo_ring") inner = el("circle", { cx: 512, cy: 470, r: 330, fill: "none", stroke: a, "stroke-width": 10, opacity: 0.85, filter: `url(#${id("bloom")})` }) + el("circle", { cx: 512, cy: 470, r: 330, fill: "none", stroke: shade(a, 0.4), "stroke-width": 3 });
+  else if (kind === "scanlines") { const lines = []; for (let y = 0; y < 1024; y += 8) lines.push(`M0 ${y} H1024`); inner = el("path", { d: lines.join(" "), stroke: "#000000", "stroke-width": 3, opacity: 0.22 }) + el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: a, opacity: 0.05 }); }
+  else if (kind === "glitch") { const bars = []; for (let i = 0; i < 9; i++) { const y = rand() * 1024, h = 6 + rand() * 30, dx = (rand() - 0.5) * 60; bars.push(el("rect", { x: dx, y, width: 1024, height: h, fill: i % 2 ? a : "#ff2e6a", opacity: 0.18 + rand() * 0.2 })); } inner = bars.join("") + el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: "none", stroke: a, "stroke-width": 2, opacity: 0.3 }); }
+  else if (kind === "embers") { const dots = []; for (let i = 0; i < 40; i++) dots.push(el("circle", { cx: rand() * 1024, cy: 300 + rand() * 724, r: 2 + rand() * 5, fill: i % 3 ? "#ff8a3d" : "#ffd27a", opacity: 0.4 + rand() * 0.6, filter: `url(#${id("bloom")})` })); inner = dots.join(""); }
+  else if (kind === "rain") { const drops = []; for (let i = 0; i < 70; i++) { const px = rand() * 1024, py = rand() * 1024; drops.push(`M${px.toFixed(0)} ${py.toFixed(0)} l -8 ${22 + rand() * 30}`); } inner = el("path", { d: drops.join(" "), stroke: "#dfe6ee", "stroke-width": 2, opacity: 0.45, "stroke-linecap": "round" }) + el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: "#0b1a2a", opacity: 0.18 }); }
+  else if (kind === "haze") inner = el("ellipse", { cx: 512, cy: 900, rx: 700, ry: 260, fill: "#dfe6ee", opacity: 0.22, filter: `url(#${id("soft")})` }) + el("ellipse", { cx: 300, cy: 700, rx: 400, ry: 160, fill: a, opacity: 0.12, filter: `url(#${id("soft")})` });
+  else if (kind === "chip_storm") { const bits = []; for (let i = 0; i < 16; i++) { const px = rand() * 1024, py = rand() * 700, r = 14 + rand() * 18, rot = rand() * 360; bits.push(i % 2 ? el("circle", { cx: px, cy: py, r, fill: i % 4 ? a : "#e8c458", stroke: "#f4efe6", "stroke-width": 3, "stroke-dasharray": "8 10", opacity: 0.8 }) : el("rect", { x: px - r, y: py - r, width: r * 2, height: r * 2, rx: 6, fill: "#f4efe6", opacity: 0.85, transform: `rotate(${rot.toFixed(0)} ${px} ${py})` })); } inner = bits.join(""); }
+  return layer("fx", inner);
 }
 
 // ---------------------------------------------------------------- render
@@ -350,12 +437,20 @@ function renderPfpV3(row, opts) {
     el("filter", { id: id("bloom"), x: "-40%", y: "-40%", width: "180%", height: "180%" }, el("feGaussianBlur", { stdDeviation: 14, result: "b" }) + el("feMerge", null, el("feMergeNode", { in: "b" }) + el("feMergeNode", { in: "SourceGraphic" }))),
     el("filter", { id: id("soft"), x: "-30%", y: "-30%", width: "160%", height: "160%" }, el("feGaussianBlur", { stdDeviation: 26 })),
     el("filter", { id: id("grain") }, el("feTurbulence", { type: "fractalNoise", baseFrequency: "0.9", numOctaves: 2, seed: hashStr(nonce) % 100 }) + el("feColorMatrix", { type: "saturate", values: 0 }) + el("feComponentTransfer", null, el("feFuncA", { type: "table", tableValues: "0 0.07" }))),
+    el("clipPath", { id: id("tipClip") }, el("rect", { x: 0, y: FACE_TOP + 250, width: 1024, height: 800 })),
     el("clipPath", { id: id("headClip") }, el("path", { d: (String(row.species) === "robot" || String(row.species) === "skeletal") ? P(facePts(x, g, turn)) : smoothFace(x, g, turn) })),
     el("linearGradient", { id: id("keyL"), x1: 0, y1: 0, x2: 1, y2: 0 }, el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": 0.95 }) + el("stop", { offset: "14%", "stop-color": c.trim, "stop-opacity": 0 })),
     el("linearGradient", { id: id("keyR"), x1: 1, y1: 0, x2: 0, y2: 0 }, el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": 0.95 }) + el("stop", { offset: "14%", "stop-color": c.trim, "stop-opacity": 0 })),
   ].join(""));
 
   const hair = hairShapes(row, x, g, c);
+  if (c.hairTip) { // "dipped": lower part of the hair takes the accent
+    const tip = hairShapes(row, x, g, { ...c, hair: c.hairTip });
+    hair.back = hair.back + el("g", { "clip-path": `url(#${id("tipClip")})`, opacity: 0.9 }, tip.back);
+    hair.front = hair.front + el("g", { "clip-path": `url(#${id("tipClip")})`, opacity: 0.9 }, tip.front);
+  }
+  const tilt = Number(row.tilt) || 0; // chin up / down: whole head shifts and features slide
+  const fxKind = String(row.fx || "none");
   const hd = head(row, x, g, c, f, id);
 
   const bg = layer("bg", el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("sky")})` }) + scene(row, c, id, 0));
@@ -363,18 +458,20 @@ function renderPfpV3(row, opts) {
   const bgFx = layer("bgFx", el("ellipse", { cx: rimX + litSide * 140, cy: 420, rx: 300, ry: 460, fill: c.trim, opacity: 0.34, filter: `url(#${id("soft")})` }) + el("ellipse", { cx: 512, cy: 520, rx: 420, ry: 380, fill: mix(c.mid, "#ffffff", 0.08), opacity: 0.35, filter: `url(#${id("soft")})` }));
   const aura = layer("aura", el("g", { opacity: 0.55 }, el("circle", { cx: 512, cy: 512, r: 400, fill: "none", stroke: c.trim, "stroke-width": 2, "stroke-dasharray": "120 480", opacity: 0.5 }) + el("circle", { cx: 512, cy: 512, r: 430, fill: "none", stroke: c.trim, "stroke-width": 1, "stroke-dasharray": "20 60", opacity: 0.35 })));
   const rim = layer("rimGlow", el("path", { d: hd.edge, fill: "none", stroke: c.trim, "stroke-width": 7, "stroke-linecap": "round", filter: `url(#${id("bloom")})` }) + el("path", { d: hd.edge, fill: "none", stroke: shade(c.trim, 0.45), "stroke-width": 2.5, "stroke-linecap": "round" }), { opacity: "0.85" });
-  const torso = layer("torso", attire(row, x, c, wide));
-  const collarFx = layer("collarFx", el("g", { filter: `url(#${id("bloom")})` }, el("path", { d: litSide < 0 ? `M ${x - 360 + t} 1000 L ${x - 340 + t} 820 Q ${x - 300 + t} 740 ${x - 170 + t} 700` : `M ${x + 360 + t} 1000 L ${x + 340 + t} 820 Q ${x + 300 + t} 740 ${x + 170 + t} 700`, stroke: c.trim, "stroke-width": 12, opacity: 0.8, fill: "none", "stroke-linecap": "round" })));
+  const torso = layer("torso", attire(row, x, c, wide, id));
+  const trim2 = row.secondaryAccent || c.trim;
+  const collarFx = layer("collarFx", el("g", { filter: `url(#${id("bloom")})` }, el("path", { d: litSide < 0 ? `M ${x - 360 + t} 1000 L ${x - 340 + t} 820 Q ${x - 300 + t} 740 ${x - 170 + t} 700` : `M ${x + 360 + t} 1000 L ${x + 340 + t} 820 Q ${x + 300 + t} 740 ${x + 170 + t} 700`, stroke: trim2, "stroke-width": 12, opacity: 0.8, fill: "none", "stroke-linecap": "round" })));
   const hairBack = layer("hairBack", hair.back);
-  const headLayer = layer("head", hd.inner + layer("accessory", accessory(row, x, g, c, id)));
+  const headLayer = layer("head", el("g", { transform: tilt ? `translate(0 ${tilt * -18}) scale(1 ${tilt < 0 ? 1.04 : 0.97})` : undefined, "transform-origin": "512 440" }, hd.inner + layer("accessory", accessory(row, x, g, c, id))));
   const hairFront = layer("hairFront", hair.front + headwear(row, x, g, c));
   const rand = rng(hashStr(nonce + "p"));
   const particles = layer("particles", Array.from({ length: 18 }, () => el("circle", { cx: rand() * 1024, cy: rand() * 1024, r: 1.5 + rand() * 3, fill: c.trim, opacity: 0.2 + rand() * 0.5 })).join(""));
   const scan = layer("scanFx", el("rect", { x: 0, y: 480, width: 1024, height: 3, fill: c.trim, opacity: 0.35 }), { opacity: "0.12" });
+  const fx = fxLayer(fxKind, c, id, nonce);
   const post = el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("vig")})` }) + el("rect", { x: 0, y: 0, width: 1024, height: 1024, filter: `url(#${id("grain")})`, opacity: 0.45 });
 
   // rimGlow is the lit contour only. It does not trace or cover the face.
-  const body = defs + bg + grid + bgFx + aura + hairBack + torso + collarFx + headLayer + rim + hairFront + particles + scan + post;
+  const body = defs + bg + grid + bgFx + aura + hairBack + torso + collarFx + headLayer + rim + hairFront + particles + scan + fx + post;
   const sc = row.scale || {};
   const synthetic = String(row.species) === "robot" || String(row.species) === "skeletal";
   const attrs = { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 1024 1024", width: size, height: size, "data-asset": "PFP_PORTRAIT", "data-style": "lda-pfp-v2", "data-rig": "v3", "data-portrait": "neon-noir", "data-composite": "pure", "data-legacy-overlay": "0", "data-face-fill": synthetic ? "synthetic" : "noir", "data-pfp-style": row.styleId || "neon-competitive", "data-engine": "procedural-svg", "data-layered": "1", "data-signature": row.signature || "", "data-character-scale": sc.characterHeight, "data-face-scale": sc.faceHeight, "data-species": row.species, "data-face": row.faceKind, "data-age": row.age, "data-archetype": row.archetypeId, "aria-hidden": "true" };

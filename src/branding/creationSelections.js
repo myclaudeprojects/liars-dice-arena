@@ -4,6 +4,7 @@
 const ARCHETYPE_IDS = Object.freeze([
   "executive", "street", "athlete", "celebrity", "tech", "criminal",
   "antihero", "comedian", "animal", "primal", "robot_ai", "experimental",
+  "gambler", "dealer", "hacker", "royalty",
 ]);
 
 const BODY_TYPE_IDS = Object.freeze([
@@ -19,6 +20,7 @@ const EXPRESSION_IDS = Object.freeze([
 const ATTIRE_IDS = Object.freeze([
   "formal", "casual", "streetwear", "sports", "tactical", "luxury",
   "business", "hood_mask", "performance_costume", "cyber_gear", "minimal",
+  "trench_coat", "bomber_jacket", "robe", "plate_armor",
 ]);
 
 const PALETTE_IDS = Object.freeze([
@@ -29,12 +31,25 @@ const PALETTE_IDS = Object.freeze([
 const BACKGROUND_IDS = Object.freeze([
   "city_night", "underground", "club", "casino", "studio", "tech_lab",
   "vault", "arena", "space", "abstract", "custom",
+  "dice_table", "rooftop", "boardroom", "neon_alley", "bunker",
 ]);
 
 const ACCESSORY_IDS = Object.freeze([
   "glasses", "hat_cap", "mask", "headphones", "smoke", "jewelry",
   "scar_tattoo", "pet", "prop", "unique_fx", "none",
+  "dice", "chips", "cards", "cigar",
 ]);
+
+// ---- second-tier groups. "auto" means "derive it the old way", so every agent
+// created before these existed renders exactly as it did.
+const SKIN_TONE_IDS = Object.freeze(["auto", "porcelain", "fair", "olive", "tan", "brown", "deep", "ebony", "synthetic"]);
+const HAIR_STYLE_IDS = Object.freeze(["auto", "bald", "buzz", "cropped", "swept", "undercut", "asymmetric", "long", "wild", "braids", "mohawk", "bun"]);
+const HAIR_COLOR_IDS = Object.freeze(["auto", "black", "brown", "blond", "red", "silver", "white", "neon", "dipped"]);
+const EYE_IDS = Object.freeze(["auto", "brown", "hazel", "green", "blue", "gray", "glow", "heterochromia"]);
+const FACIAL_HAIR_IDS = Object.freeze(["auto", "none", "stubble", "goatee", "beard", "mustache"]);
+const HEADWEAR_IDS = Object.freeze(["auto", "none", "cap", "beanie", "crown", "hood", "helmet", "halo", "bandana", "visor"]);
+const POSE_IDS = Object.freeze(["auto", "facing", "quarter_left", "quarter_right", "chin_up", "chin_down"]);
+const FX_IDS = Object.freeze(["none", "halo_ring", "scanlines", "glitch", "embers", "rain", "haze", "chip_storm"]);
 
 const GROUPS = Object.freeze({
   archetype: ARCHETYPE_IDS,
@@ -44,7 +59,23 @@ const GROUPS = Object.freeze({
   colorPalette: PALETTE_IDS,
   background: BACKGROUND_IDS,
   accessories: ACCESSORY_IDS,
+  skinTone: SKIN_TONE_IDS,
+  hairStyle: HAIR_STYLE_IDS,
+  hairColor: HAIR_COLOR_IDS,
+  eyes: EYE_IDS,
+  facialHair: FACIAL_HAIR_IDS,
+  headwear: HEADWEAR_IDS,
+  pose: POSE_IDS,
+  fx: FX_IDS,
 });
+
+// How the option UI clusters the groups.
+const GROUP_SECTIONS = Object.freeze([
+  { id: "identity", label: "Identity", groups: ["archetype", "bodyType", "skinTone", "expression", "pose"] },
+  { id: "face", label: "Hair & face", groups: ["hairStyle", "hairColor", "facialHair", "eyes", "headwear"] },
+  { id: "look", label: "Look", groups: ["attire", "colorPalette", "accessories"] },
+  { id: "scene", label: "Scene", groups: ["background", "fx"] },
+]);
 
 const GROUP_LABELS = Object.freeze({
   archetype: "Archetype",
@@ -54,6 +85,14 @@ const GROUP_LABELS = Object.freeze({
   colorPalette: "Color palette",
   background: "Background",
   accessories: "Accessories",
+  skinTone: "Skin tone",
+  hairStyle: "Hair style",
+  hairColor: "Hair color",
+  eyes: "Eyes",
+  facialHair: "Facial hair",
+  headwear: "Headwear",
+  pose: "Pose",
+  fx: "Effects",
 });
 
 const DEFAULT_SELECTIONS = Object.freeze({
@@ -64,6 +103,14 @@ const DEFAULT_SELECTIONS = Object.freeze({
   colorPalette: "cyan",
   background: "abstract",
   accessories: "none",
+  skinTone: "auto",
+  hairStyle: "auto",
+  hairColor: "auto",
+  eyes: "auto",
+  facialHair: "auto",
+  headwear: "auto",
+  pose: "auto",
+  fx: "none",
 });
 
 const PALETTE_HEX = Object.freeze({
@@ -140,6 +187,14 @@ function normalizeSelections(input) {
     colorPalette: pick(PALETTE_IDS, src.colorPalette, DEFAULT_SELECTIONS.colorPalette),
     background: pick(BACKGROUND_IDS, src.background, DEFAULT_SELECTIONS.background),
     accessories: pick(ACCESSORY_IDS, src.accessories, DEFAULT_SELECTIONS.accessories),
+    skinTone: pick(SKIN_TONE_IDS, src.skinTone, DEFAULT_SELECTIONS.skinTone),
+    hairStyle: pick(HAIR_STYLE_IDS, src.hairStyle, DEFAULT_SELECTIONS.hairStyle),
+    hairColor: pick(HAIR_COLOR_IDS, src.hairColor, DEFAULT_SELECTIONS.hairColor),
+    eyes: pick(EYE_IDS, src.eyes, DEFAULT_SELECTIONS.eyes),
+    facialHair: pick(FACIAL_HAIR_IDS, src.facialHair, DEFAULT_SELECTIONS.facialHair),
+    headwear: pick(HEADWEAR_IDS, src.headwear, DEFAULT_SELECTIONS.headwear),
+    pose: pick(POSE_IDS, src.pose, DEFAULT_SELECTIONS.pose),
+    fx: pick(FX_IDS, src.fx, DEFAULT_SELECTIONS.fx),
   };
 }
 
@@ -158,6 +213,7 @@ function silhouetteOf(selections, species) {
   if (s.bodyType === "male_muscular" || s.bodyType === "heavy_set" || s.bodyType === "female_athletic") return "BROAD_IMPOSING";
   if (s.bodyType === "male_lean" || s.bodyType === "female_lean" || s.bodyType === "young_adult" || s.bodyType === "elder") return "SLIM_ELEGANT";
   if (s.archetype === "experimental" || s.archetype === "comedian") return "ASYMMETRIC_CHAOTIC";
+  if (s.archetype === "royalty" || s.archetype === "dealer" || s.archetype === "gambler") return "SLIM_ELEGANT";
   return "COMPACT_AGGRESSIVE";
 }
 
@@ -170,9 +226,27 @@ function hairOf(selections, species) {
   if (s.archetype === "street" || s.archetype === "experimental" || s.archetype === "criminal") return "asymmetric";
   if (species === "primal" || s.archetype === "antihero") return "wild";
   if (s.bodyType === "male_muscular" || s.bodyType === "young_adult") return "cropped";
-  if (s.archetype === "executive" || s.archetype === "tech") return "swept";
+  if (s.archetype === "executive" || s.archetype === "tech" || s.archetype === "dealer") return "swept";
+  if (s.archetype === "hacker") return "asymmetric";
+  if (s.archetype === "royalty") return "long";
   return "swept";
 }
+
+// Explicit choices override the derived defaults ("auto").
+function resolveHair(selections, species) {
+  const s = normalizeSelections(selections);
+  if (s.hairStyle === "auto") return hairOf(s, species);
+  if (species === "robot" || species === "skeletal") return "none";
+  return s.hairStyle === "bald" ? "none" : s.hairStyle;
+}
+function resolveHeadwear(selections, species) {
+  const s = normalizeSelections(selections);
+  if (s.headwear === "auto") return s.archetype === "royalty" ? "crown" : headwearOf(s, species);
+  if (s.headwear === "none") return species === "animal" ? "ears" : "";
+  return s.headwear;
+}
+const POSE_TURN = Object.freeze({ facing: 0, quarter_left: -1, quarter_right: 1, chin_up: 0, chin_down: 0 });
+const POSE_TILT = Object.freeze({ chin_up: -1, chin_down: 1 });
 
 function headwearOf(selections, species) {
   const s = normalizeSelections(selections);
@@ -193,9 +267,17 @@ function mapSelections(input) {
     silhouette: silhouetteOf(selections, species),
     attitude: ATTITUDE[selections.expression] || "STOIC",
     intensity: INTENSITY[selections.expression] || 1,
-    turn: TURN[selections.expression] || 0,
-    hair: hairOf(selections, species),
-    headwear: headwearOf(selections, species),
+    turn: selections.pose !== "auto" ? (POSE_TURN[selections.pose] || 0) : (TURN[selections.expression] || 0),
+    hair: resolveHair(selections, species),
+    headwear: resolveHeadwear(selections, species),
+    hairLocked: selections.hairStyle !== "auto",
+    skinTone: selections.skinTone,
+    hairColor: selections.hairColor,
+    eyes: selections.eyes,
+    facialHair: selections.facialHair,
+    pose: selections.pose,
+    tilt: POSE_TILT[selections.pose] || 0,
+    fx: selections.fx,
     accent: PALETTE_HEX[selections.colorPalette] || PALETTE_HEX.cyan,
     secondaryAccent: selections.colorPalette === "multi" ? "#F43B5F" : "",
     attire: selections.attire,
@@ -216,7 +298,7 @@ const HUMAN_HAIR = Object.freeze(["swept", "cropped", "asymmetric", "long", "wil
 function conceptVariantFor(mapped, variant) {
   const v = Math.abs(Math.floor(Number(variant) || 0));
   if (!mapped || v === 0) return { variant: 0, hair: mapped ? mapped.hair : "swept", turn: mapped ? mapped.turn : 0, intensity: mapped ? mapped.intensity : 1, jawShift: 0, glowShift: 0 };
-  const lockedHair = mapped.hair === "none" || mapped.headwear === "hood";
+  const lockedHair = mapped.hair === "none" || mapped.headwear === "hood" || mapped.hairLocked;
   let hair = mapped.hair;
   if (!lockedHair) {
     const pool = HUMAN_HAIR.filter((h) => h !== mapped.hair);
@@ -298,9 +380,11 @@ function inferSelectionsFromBrand(brand) {
 }
 
 function visualOptionGroups() {
+  const sectionOf = (id) => (GROUP_SECTIONS.find((sec) => sec.groups.includes(id)) || {}).id || "identity";
   return Object.keys(GROUPS).map((id) => ({
     id,
     label: GROUP_LABELS[id],
+    section: sectionOf(id),
     options: GROUPS[id].map((optionId) => ({
       id: optionId,
       label: optionLabel(optionId),
@@ -314,6 +398,12 @@ function previewSelections(group, id) {
   if (!Object.prototype.hasOwnProperty.call(GROUPS, group)) return null;
   if (!GROUPS[group].includes(id)) return null;
   selections[group] = id;
+  if (group === "facialHair" || group === "hairStyle" || group === "hairColor") { selections.bodyType = "male_lean"; selections.headwear = "none"; }
+  if (group === "hairColor" && id !== "auto") selections.hairStyle = "long";
+  if (group === "skinTone") { selections.hairStyle = "buzz"; selections.accessories = "none"; }
+  if (group === "eyes") { selections.expression = "intense"; selections.accessories = "none"; }
+  if (group === "headwear") { selections.hairStyle = "cropped"; }
+  if (group === "fx") { selections.background = "studio"; }
   if (group === "archetype") {
     if (id === "robot_ai") {
       selections.bodyType = "full_robot";
@@ -409,5 +499,6 @@ module.exports = {
   inferSelectionsFromBrand,
   conceptVariantFor,
   visualOptionGroups,
+  GROUP_SECTIONS,
   previewSelections,
 };

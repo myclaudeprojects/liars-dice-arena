@@ -34,7 +34,15 @@ const SKIN = Object.freeze({
   ash: ["#E4DEEA", "#B7AEC4", "#7A7088", "#9A8498"],
   metal: ["#E6E9EE", "#B4BCC8", "#6E7886", "#8A94A4"],
   ember: ["#F0C2A4", "#C47A52", "#7A3E2C", "#B55248"],
+  // explicit skin tones (creation option "skinTone")
+  fair: ["#F3D6C1", "#DBAF93", "#A8785A", "#BE6A66"],
+  tan: ["#D9A67A", "#B07A50", "#7A5033", "#A3574A"],
+  brown: ["#B9814F", "#8A5A36", "#5A3822", "#874338"],
+  ebony: ["#7A4A2E", "#54301C", "#2E1A10", "#5A2A24"],
+  synthetic: ["#D6DCE8", "#9AA6BE", "#5E687E", "#7F86A6"],
 });
+const HAIR_COLORS = Object.freeze({ black: "#15121A", brown: "#4A2E1E", blond: "#D9B46A", red: "#A8402A", silver: "#B9BEC8", white: "#EDEDF0" });
+const EYE_COLORS = Object.freeze({ brown: "#4A2A18", hazel: "#7A5A2A", green: "#2F7A55", blue: "#2C63B8", gray: "#7C8794" });
 
 function hashString(text) {
   let h = 2166136261;
@@ -166,7 +174,8 @@ function buildRecipe(input) {
   const primary = validHex(visual.primaryColor) || "#101216";
   const secondary = validHex(visual.secondaryColor) || "#1F232A";
   let accent = validHex(visual.accentColor) || "#4AD7FF";
-  const tone = skinKey(src.archetype, visual.emblem, src.name);
+  const explicitTone = mapped && mapped.skinTone && mapped.skinTone !== "auto" ? ({ porcelain: "porcelain", fair: "fair", olive: "olive", tan: "tan", brown: "brown", deep: "deep", ebony: "ebony", synthetic: "synthetic" })[mapped.skinTone] : null;
+  const tone = explicitTone || skinKey(src.archetype, visual.emblem, src.name);
   let pack = SKIN[tone];
   let attitude = ATTITUDES.includes(visual.facialAttitude) ? visual.facialAttitude : "STOIC";
   if (mapped) {
@@ -178,6 +187,7 @@ function buildRecipe(input) {
     accent = (src.keepVisualAccent && visualAccent) ? visualAccent : (paletteAccent || accent);
     attitude = ATTITUDES.includes(mapped.attitude) ? mapped.attitude : attitude;
     if (mapped.species === "robot" || mapped.species === "skeletal") pack = SKIN.metal;
+    else if (explicitTone) pack = SKIN[explicitTone];                 // a chosen skin tone wins over body-type defaults
     else if (mapped.species === "animal" || mapped.species === "primal") pack = SKIN.ember;
     else if (mapped.age === "elder") pack = SKIN.ash;
     else if (mapped.faceKind === "female_lean" || mapped.faceKind === "female_athletic") pack = SKIN.porcelain;
@@ -234,6 +244,10 @@ function buildRecipe(input) {
     palette: mapped ? mapped.palette : "",
     secondaryAccent: mapped ? mapped.secondaryAccent : "",
     selections: mapped ? mapped.selections : null,
+    facialHair: mapped ? mapped.facialHair : "auto",
+    eyesKind: mapped ? mapped.eyes : "auto",
+    tilt: mapped ? mapped.tilt : 0,
+    fx: mapped ? mapped.fx : "none",
     bodyLanguage: visual.bodyLanguage || "",
     motif: visual.backgroundMotif || "SIGNAL_HALO",
     lighting: visual.lightingStyle || "COOL_NEON_EDGE",
@@ -251,14 +265,19 @@ function buildRecipe(input) {
       skinShadow: pack[1],
       skinDeep: pack[2],
       lip: mix(pack[3], "#241014", 0.42),
-      hair: mapped && mapped.age === "elder" ? "#C9C3BA" : hair,
+      hair: mapped && mapped.hairColor && mapped.hairColor !== "auto"
+        ? (mapped.hairColor === "neon" ? accent : mapped.hairColor === "dipped" ? (mapped.age === "elder" ? "#C9C3BA" : hair) : HAIR_COLORS[mapped.hairColor] || hair)
+        : (mapped && mapped.age === "elder" ? "#C9C3BA" : hair),
+      hairTip: mapped && mapped.hairColor === "dipped" ? accent : "",
       cloth: primary,
       clothDeep: shade(primary, -0.32),
       trim: accent,
       edge,
       mid: darker ? "#07080C" : mix("#0C0E14", secondary, 0.22),
       glow: darker ? mix("#0C0E14", accent, 0.12) : mix("#12141A", accent, 0.3),
-      iris: mapped && (mapped.species === "robot" || mapped.species === "skeletal") ? accent : iris,
+      iris: mapped && (mapped.species === "robot" || mapped.species === "skeletal") ? accent
+        : (mapped && mapped.eyes && mapped.eyes !== "auto" ? (mapped.eyes === "glow" ? accent : mapped.eyes === "heterochromia" ? EYE_COLORS.blue : EYE_COLORS[mapped.eyes] || iris) : iris),
+      irisAlt: mapped && mapped.eyes === "heterochromia" ? EYE_COLORS.green : "",
       sclera: mapped && (mapped.species === "robot" || mapped.species === "skeletal") ? "#10141C" : (tone === "ash" || tone === "metal" ? "#E7E4F2" : "#F6F1EA"),
     },
     signature: signatureOf(headwear),
@@ -1054,7 +1073,7 @@ function pathData(svg) {
 
 // Bump whenever the portrait RENDER changes for an unchanged brand (new rig, new style rules).
 // It rides along in every portrait URL, so browsers/CDNs that cached the old look fetch again.
-const PFP_STYLE_STAMP = 4;
+const PFP_STYLE_STAMP = 5;
 
 function withBrandVersion(url, agent) {
   if (!url) return url;

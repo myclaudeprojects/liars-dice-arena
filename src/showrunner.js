@@ -37,6 +37,7 @@ const {
   renderCanonicalPortrait,
   buildPortraitBrand,
   visualOptionGroups,
+  GROUP_SECTIONS,
   normalizeSelections,
 } = require("./brandcreate");
 const { inferSelectionsFromBrand } = require("./branding/creationSelections");
@@ -1900,6 +1901,7 @@ class Show {
       roster: "user",
       houseCast: CAST.length,
       visualOptions: visualOptionGroups(),
+      visualSections: GROUP_SECTIONS,
     };
   }
 

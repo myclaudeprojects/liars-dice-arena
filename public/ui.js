@@ -39,10 +39,23 @@
     return `<span class="lda-palette" data-cast="${esc(id)}" aria-hidden="true"><i class="is-primary"></i><i class="is-secondary"></i><i class="is-accent"></i></span>`;
   }
 
+  // Keep this in step with app.js pfpPath. size=, v= (brand version), and s= (style
+  // stamp) are allowed in any order. Dropping s= here is what painted letter shells
+  // after portrait URLs gained &s=3.
+  function portraitUrl(url) {
+    const text = String(url || "");
+    const m = text.match(/^(\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg)(?:\?(.*))?$/i);
+    if (!m) return "";
+    if (!m[2]) return text;
+    const ok = m[2].split("&").every((kv) => (
+      /^size=(?:48|96|160|256|320|512|1024)$/.test(kv) || /^v=\d+$/.test(kv) || /^s=\d+$/.test(kv)
+    ));
+    return ok ? text : "";
+  }
+
   function avatar(name, hue, id, opts) {
     const o = opts || {};
-    const src = typeof o.src === "string" ? o.src : "";
-    const safeSrc = /^\/api\/show\/agents\/[a-z0-9_%.-]+\/pfp\.svg(?:\?(?:size=(?:48|96|160|256|320|512|1024)|v=\d+)(?:&(?:size=(?:48|96|160|256|320|512|1024)|v=\d+))?)?$/i.test(src) ? src : "";
+    const safeSrc = portraitUrl(typeof o.src === "string" ? o.src : "");
     if (safeSrc) {
       const w = [48, 96, 160, 256, 320, 512, 1024].includes(Number(o.size)) ? Number(o.size) : 96;
       const castAttr = id ? ` data-cast="${esc(id)}"` : "";

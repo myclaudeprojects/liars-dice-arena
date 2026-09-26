@@ -1172,6 +1172,13 @@ function stageReadout(stage, m) {
   return "LIVE MATCH";
 }
 
+function diceShown(seat, m) {
+  const api = presentApi();
+  if (api && api.displayedDice) return api.displayedDice(m, seat);
+  if (!seat || seat.alive === false) return 0;
+  return seat.dice || 0;
+}
+
 function diceFor(seat, m, beats, frame) {
   const loss = beats.find((b) => b.type === "lose-die" && b.id === seat.id);
   const reveal = m.reveal && m.reveal.find((r) => r.id === seat.id);
@@ -1259,7 +1266,8 @@ function youBlock(m, beats) {
 }
 
 function seatBlock(seat, m, beats, frame, stage, activeId, animatePfp) {
-  const diceLabel = seat.alive === false ? "out" : `${seat.dice} dice`;
+  const shownDice = diceShown(seat, m);
+  const diceLabel = shownDice === 0 ? "out" : `${shownDice} dice`;
   const api = presentApi();
   let react = api ? (api.reactionsOf(m)[seat.id] || "neutral") : "neutral";
   const earlyReveal = frame && !frame.done && m.reveal && m.reveal.length && !frame.showReaction;
@@ -1373,7 +1381,7 @@ function tableView(m, beats, opts) {
   const quietBid = pres.state === "THINKING" || showLiar;
   const punch = frame ? !!frame.punch : !!bidBeat;
   const pips = [1, 2, 3, 4, 5].map((level) => `<i class="${level <= intensity ? "on" : ""}${level <= intensity && intensity >= 4 ? " hot" : ""}"></i>`).join("");
-  const score = `${a.alive === false ? 0 : a.dice}–${b.alive === false ? 0 : b.dice}`;
+  const score = `${diceShown(a, m)}–${diceShown(b, m)}`;
   const stage = api && api.broadcastStage ? api.broadcastStage(shownState) : (shownState === "THINKING" ? "thinking" : shownState === "CALL" ? "call" : shownState === "ROLLING" ? "roll" : "live");
   const activeId = m.activeAgentId || pres.actorId || (m.thinking && m.thinking.agentId) || null;
   const whoNow = pres.state === "THINKING" && m.thinking

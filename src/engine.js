@@ -56,6 +56,16 @@ function isHigherBid(A, B) {
   return false;
 }
 
+// A table bid is a claim about every live cup, so it may exceed the bidder's
+// own dice. It may not exceed the dice those cups still hold, and it must
+// be a strictly higher integer bid on a real face.
+function bidAllowed(currentBid, count, face, totalDice) {
+  if (!Number.isInteger(count) || !Number.isInteger(face) || !Number.isInteger(totalDice)) return false;
+  if (totalDice < 1 || count < 1 || count > totalDice) return false;
+  if (face < 1 || face > DICE_SIDES) return false;
+  return isHigherBid(currentBid, { count, face });
+}
+
 class Match {
   constructor({ seats, diceCount = 5, seed = Date.now(), onesWild = true }) {
     // seats: array of { id, name }
@@ -173,13 +183,11 @@ class Match {
 
     if (action.type === "bid") {
       const bid = { count: action.count, face: action.face, byId: actor.id };
-      if (!Number.isInteger(bid.count) || !Number.isInteger(bid.face)) {
-        return { ok: false, error: "bid_must_be_integers" };
-      }
-      if (bid.count > this.totalDice()) {
-        return { ok: false, error: "bid_exceeds_total_dice" };
-      }
-      if (!isHigherBid(this.currentBid, bid)) {
+      if (!bidAllowed(this.currentBid, bid.count, bid.face, this.totalDice())) {
+        if (!Number.isInteger(bid.count) || !Number.isInteger(bid.face)) {
+          return { ok: false, error: "bid_must_be_integers" };
+        }
+        if (bid.count > this.totalDice()) return { ok: false, error: "bid_exceeds_total_dice" };
         return { ok: false, error: "bid_not_higher" };
       }
       this.currentBid = bid;
@@ -294,4 +302,4 @@ class Match {
   }
 }
 
-module.exports = { Match, countFace, isHigherBid, makeRng, DICE_SIDES };
+module.exports = { Match, countFace, isHigherBid, bidAllowed, makeRng, DICE_SIDES };

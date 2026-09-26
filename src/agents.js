@@ -10,7 +10,7 @@
 // A ready Anthropic and OpenAI adapter live in llm.js. This keeps the engine and
 // game loop free of any vendor specifics.
 
-const { DICE_SIDES, isHigherBid, makeRng } = require("./engine");
+const { DICE_SIDES, isHigherBid, bidAllowed, makeRng } = require("./engine");
 
 // Decision stream. Separate from the dice rng so a personality change does
 // not reshuffle cups that the seed already determined.
@@ -221,11 +221,13 @@ class MockAgent {
     }
     const bluffing = targetCount > heldNow + expNow;
     const step = currentBid ? targetCount - currentBid.count : null;
+    const thought = gatePersonalClaim(bluffing
+      ? `I only really have ${heldNow}. Pushing ${targetCount}×${faceName(bestFace)} to pressure them.`
+      : `Holding ${heldNow} ${faceName(bestFace)}s, expecting ~${expNow.toFixed(1)} more. ${targetCount}×${faceName(bestFace)} is honest.`,
+    you.dice.length);
     return {
       action: { type: "bid", count: targetCount, face: bestFace },
-      thought: bluffing
-        ? `I only really have ${heldNow}. Pushing ${targetCount}×${faceName(bestFace)} to pressure them.`
-        : `Holding ${heldNow} ${faceName(bestFace)}s, expecting ~${expNow.toFixed(1)} more. ${targetCount}×${faceName(bestFace)} is honest.`,
+      thought,
       decision: {
         challenged: false,
         bestFace: best.face,
@@ -274,6 +276,20 @@ class LLMAgent {
 
 function faceName(f) { return String(f); }
 
+// Personal possession ("I have 9 sixes", "Holding 8 6s") cannot exceed the
+// dice in that cup. A table bid ("Pushing 6×3") is a different claim and
+// stays. An illegal personal count is replaced with a true ceiling, not a
+// guessed face total.
+function gatePersonalClaim(thought, diceHeld) {
+  const cap = Math.max(0, Math.floor(Number(diceHeld) || 0));
+  const text = typeof thought === "string" ? thought : "";
+  const re = /\b(i\s+only\s+really\s+have|i\s+have|i['’]ve\s+got|i\s+got|i['’]m\s+holding|i\s+hold|holding)\s+(\d+)(?:\s+(?:ones|twos|threes|fours|fives|sixes|\d+s))?\b/gi;
+  return text.replace(re, (full, _verb, num) => {
+    if (Number(num) <= cap) return full;
+    return `no more than ${cap} dice`;
+  }).slice(0, 200);
+}
+
 function buildSystemPrompt(persona) {
   return `You are a player in a live game of Liar's Dice, betting real USDC on the Arc blockchain. Spectators are watching.
 
@@ -315,31 +331,34 @@ function parseAction(raw, view) {
   const a = obj.action;
   if (a.type === "challenge") {
     if (!view.currentBid) return null; // illegal to challenge nothing
-    return { action: { type: "challenge" }, thought };
+    const held = view.you && Array.isArray(view.you.dice) ? view.you.dice.length : 0;
+    return { action: { type: "challenge" }, thought: gatePersonalClaim(thought, held) };
   }
   if (a.type === "bid") {
     const count = Number(a.count), face = Number(a.face);
-    if (!Number.isInteger(count) || !Number.isInteger(face)) return null;
-    if (face < 1 || face > DICE_SIDES) return null;
-    if (count < 1 || count > view.totalDice) return null;
-    if (!isHigherBid(view.currentBid, { count, face })) return null;
-    return { action: { type: "bid", count, face }, thought };
+    const held = view.you && Array.isArray(view.you.dice) ? view.you.dice.length : 0;
+    if (!bidAllowed(view.currentBid, count, face, view.totalDice)) return null;
+    return { action: { type: "bid", count, face }, thought: gatePersonalClaim(thought, held) };
   }
   return null;
 }
 
 // A guaranteed-legal move for when the model misbehaves.
 function safeFallback(view, why) {
-  if (view.currentBid) {
+  const total = view && Number.isInteger(view.totalDice) ? view.totalDice : 0;
+  if (view && view.currentBid) {
     // minimal legal raise, or challenge if we're at the ceiling
     let count = view.currentBid.count, face = view.currentBid.face + 1;
     if (face > DICE_SIDES) { face = 2; count++; }
-    if (count > view.totalDice) {
+    if (!bidAllowed(view.currentBid, count, face, total)) {
       return { action: { type: "challenge" }, thought: `(${why}) At the ceiling — calling.` };
     }
     return { action: { type: "bid", count, face }, thought: `(${why}) Safe raise.` };
   }
-  return { action: { type: "bid", count: 1, face: 2 }, thought: `(${why}) Opening light.` };
+  if (bidAllowed(null, 1, 2, total)) {
+    return { action: { type: "bid", count: 1, face: 2 }, thought: `(${why}) Opening light.` };
+  }
+  return { action: { type: "challenge" }, thought: `(${why}) No legal bid.` };
 }
 
 // ---- RemoteAgent: a community agent behind an HTTP endpoint --------------
@@ -374,6 +393,6 @@ class RemoteAgent {
 }
 
 module.exports = {
-  MockAgent, LLMAgent, RemoteAgent, parseAction, safeFallback,
+  MockAgent, LLMAgent, RemoteAgent, parseAction, safeFallback, gatePersonalClaim,
   expectedMatches, myMatches, bidFacts, decisionRng, callSlackLimit,
 };

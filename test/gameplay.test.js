@@ -254,6 +254,7 @@ function fmt(n) { return n.toFixed(3); }
       if (m.narrative.headline === "LIAR." && m.bid && m.bid.callerId && !caller) caller = { ...m.bid };
       if (m.reveal && m.narrative.pace === "reveal" && !revealSnap) {
         revealSnap = {
+          bid: m.bid && m.bid.count,
           seats: m.seats.map((s) => ({ id: s.id, dice: s.dice })),
           shown: m.reveal.map((r) => ({ id: r.id, n: r.dice.length })),
         };
@@ -274,13 +275,12 @@ function fmt(n) { return n.toFixed(3); }
   assert(revealSnap, "reveal snapshot");
   const shown = Object.fromEntries(revealSnap.shown.map((r) => [r.id, r.n]));
   const seated = Object.fromEntries(revealSnap.seats.map((s) => [s.id, s.dice]));
-  let dropped = 0;
+  let cupDice = 0;
   for (const id of Object.keys(shown)) {
-    if (seated[id] === shown[id] - 1) dropped++;
-    else if (seated[id] === 0 && shown[id] === 1) dropped++;
-    else assert(seated[id] === shown[id], "seat dice match the reveal or the lost die");
+    eq(seated[id], shown[id], "reveal keeps the cups that the bid was about");
+    cupDice += shown[id];
   }
-  eq(dropped, 1, "reveal syncs the lost die immediately");
+  assert(revealSnap.bid == null || revealSnap.bid <= cupDice, "the live bid does not exceed the dice still shown");
 
   const waits = [];
   const clock = { turnDelayMs: 100, revealDelayMs: 200, settleHoldMs: 400 };

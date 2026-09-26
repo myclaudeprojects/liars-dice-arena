@@ -5,6 +5,7 @@ const { SEED_BRANDS, BrandBook } = require("../src/brands");
 const { recipeFromBrand, renderPfp, qualityCheck, pathData } = require("../src/pfp");
 const {
   MOTION_PROFILES, profileForBrand, animatedPfpMeta, shouldAnimate,
+  isRasterPortrait, classifyPortraitMotion, OVERLAY_CONTEXTS,
   blinkWindow, blinkClosed, poseAt, applyPose,
 } = require("../src/motionprofiles");
 
@@ -69,15 +70,29 @@ eq(meta.motionProfile, "NEON_COMPETITIVE", "created agent uses the neon rig");
 eq(profileForBrand({ archetype: "TRICKSTER", visualIdentity: { motionLanguage: "CHAOTIC_UNEVEN" } }), "NEON_COMPETITIVE", "trickster concept");
 eq(profileForBrand({ archetype: "MACHINE", visualIdentity: { motionLanguage: "MECHANICAL_PRECISE" } }), "NEON_COMPETITIVE", "machine concept");
 
-for (const context of ["watch", "profile", "reveal", "hero"]) {
+for (const context of ["watch", "profile", "reveal", "hero", "roster", "matchup", "create"]) {
   assert(shouldAnimate({ context }), context + " plays");
 }
-for (const context of ["leaderboard", "market", "history", "roster", "list"]) {
+for (const context of ["leaderboard", "market", "history", "list"]) {
   assert(!shouldAnimate({ context }), context + " stays static");
 }
 assert(!shouldAnimate({ context: "watch", reducedMotion: true }), "reduced motion is a poster");
+assert(!shouldAnimate({ context: "roster", reducedMotion: true }), "reduced motion keeps roster still");
 assert(!shouldAnimate({ context: "reveal", lowPower: true }), "save-data is a poster");
 assert(!shouldAnimate({ context: "hero", enabled: false }), "disabled portrait stays still");
+
+assert(isRasterPortrait("/assets/portraits/dracula_1.webp"), "webp is a raster frame");
+assert(isRasterPortrait("/assets/portraits/bank_0000.png?v=2"), "png query is a raster frame");
+assert(!isRasterPortrait("/api/show/agents/dracula/pfp.svg"), "svg rig is not a raster frame");
+assert(!OVERLAY_CONTEXTS.includes("watch"), "watch seats do not take the raster overlay");
+for (const context of ["roster", "matchup", "hero", "profile", "reveal", "create"]) {
+  eq(classifyPortraitMotion({ context, src: "/assets/portraits/athena_1.webp" }), "overlay", context + " webp uses the overlay");
+}
+eq(classifyPortraitMotion({ context: "watch", src: "/assets/portraits/athena_1.webp" }), "still", "watch webp stays a still frame");
+eq(classifyPortraitMotion({ context: "market", src: "/assets/portraits/athena_1.webp" }), "still", "market rows stay still");
+eq(classifyPortraitMotion({ context: "roster", src: "/assets/portraits/athena_1.webp", reducedMotion: true }), "still", "overlay respects reduced motion");
+eq(classifyPortraitMotion({ context: "watch", src: "/api/show/agents/dracula/pfp.svg", layered: true }), "rig", "layered watch seats keep the svg rig");
+eq(classifyPortraitMotion({ context: "profile", src: "/api/show/agents/dracula/pfp.svg" }), "rig", "svg profile still loads the rig");
 
 const gaps = [0, 1, 2, 3, 4].map((i) => blinkWindow(MOTION_PROFILES.ELEGANT_SMOKE, 42, i).gap);
 assert(new Set(gaps.map((n) => Math.round(n))).size > 1, "blink gaps are not a fixed loop");
@@ -157,10 +172,15 @@ const html = fs.readFileSync(path.join(publicDir, "app.html"), "utf8");
 assert(html.includes("animated-pfp.js") && html.indexOf("animated-pfp.js") < html.indexOf("app.js"), "runtime loads before the app");
 assert(app.includes('context: "watch"'), "watch seats opt in");
 assert(app.includes('data-context="reveal"'), "create reveal opts in");
-assert(app.includes('context: "hero"'), "arena hero opts in");
+assert(app.includes('? "hero" : "matchup"'), "arena hero and matchup plates opt in");
 assert(app.includes('"profile"'), "agent profile opts in");
 assert(app.includes("animatePfp: false"), "history replay stays on the poster");
-assert(app.includes("facePlate(a, 320)") && !app.includes('context: "roster"'), "roster rows are not animated mounts");
+assert(app.includes('context: "roster"'), "roster portraits opt into overlay motion");
+assert(app.includes('data-context="create"'), "create options opt in");
+assert(app.includes("lda-pfp-sheen") === false, "motion lives in css, not the app script");
 assert(!app.includes('context: "market"') && !app.includes('context: "history"'), "market and history rows are not animated mounts");
+const css = fs.readFileSync(path.join(publicDir, "app.css"), "utf8");
+assert(css.includes("lda-pfp-sheen") && css.includes("lda-pfp-pulse"), "raster portraits get a pulse and sheen");
+assert(css.includes(".animated-pfp.is-overlay::before") && css.includes("opacity: 0 !important"), "reduced motion drops the overlay");
 
 console.log("animated pfp ok");

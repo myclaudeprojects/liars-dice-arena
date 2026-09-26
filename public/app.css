@@ -957,9 +957,16 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
     transform: none !important;
     opacity: 1;
   }
-  .animated-pfp [data-layer] {
+  .animated-pfp [data-layer],
+  .animated-pfp.is-overlay::before,
+  .animated-pfp.is-overlay::after {
     animation: none !important;
     transform: none !important;
+  }
+  .animated-pfp.is-overlay::before,
+  .animated-pfp.is-overlay::after {
+    opacity: 0 !important;
+    box-shadow: none !important;
   }
   .stage-roll .dice-tray::before { opacity: 0; animation: none !important; }
 }
@@ -1082,6 +1089,83 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 }
 .animated-pfp[data-state="loser"] {
   filter: saturate(0.85) brightness(0.88);
+}
+/* Static mint frames stay put. The wrapper carries a slow neon pulse and sheen. */
+.animated-pfp.is-playing.is-overlay {
+  isolation: isolate;
+}
+.animated-pfp.is-playing.is-overlay::before,
+.animated-pfp.is-playing.is-overlay::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.animated-pfp.is-playing.is-overlay::before {
+  inset: 0;
+  z-index: 2;
+  animation: lda-pfp-pulse 3.6s ease-in-out infinite;
+  animation-delay: var(--pfp-delay, 0s);
+}
+.animated-pfp.is-playing.is-overlay::after {
+  top: -10%;
+  bottom: -10%;
+  left: 0;
+  z-index: 2;
+  width: 38%;
+  border-radius: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--lda-text) 16%, transparent) 40%,
+    color-mix(in srgb, var(--agent-accent, var(--lda-pfp-neon)) 62%, transparent) 50%,
+    color-mix(in srgb, var(--lda-text) 14%, transparent) 60%,
+    transparent
+  );
+  mix-blend-mode: screen;
+  animation: lda-pfp-sheen 5.8s ease-in-out infinite;
+  animation-delay: var(--pfp-delay, 0s);
+}
+.animated-pfp.is-paused.is-overlay::before,
+.animated-pfp.is-paused.is-overlay::after {
+  animation-play-state: paused;
+}
+.animated-pfp[data-context="watch"]::before,
+.animated-pfp[data-context="watch"]::after {
+  animation: none;
+  opacity: 0;
+}
+.agent-card__portrait > .animated-pfp {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.pfp-concept__image-wrap.animated-pfp {
+  border-radius: 16px;
+  background: var(--lda-avatar-bg);
+  box-shadow: none;
+}
+@keyframes lda-pfp-pulse {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--agent-accent, var(--lda-pfp-neon)) 28%, transparent),
+      inset 0 0 12px color-mix(in srgb, var(--agent-accent, var(--lda-pfp-neon)) 8%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1.5px color-mix(in srgb, var(--agent-accent, var(--lda-pfp-neon)) 82%, transparent),
+      inset 0 0 26px color-mix(in srgb, var(--agent-accent, var(--lda-pfp-neon)) 32%, transparent);
+  }
+}
+@keyframes lda-pfp-sheen {
+  0% { transform: translateX(-130%) skewX(-16deg); opacity: 0; }
+  16% { opacity: 0.72; }
+  46% { opacity: 0.22; }
+  100% { transform: translateX(280%) skewX(-16deg); opacity: 0; }
 }
 .agent-hero .pfp-sizes { justify-content: center; margin-bottom: var(--space-3); }
 .swatches { display: flex; gap: var(--space-1); }

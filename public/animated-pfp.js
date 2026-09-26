@@ -1,10 +1,10 @@
-// Layered idle motion for procedural SVG portraits.
+// Idle motion for agent portraits.
 //
-// House cast and created agents are lda-pfp-v2 drawings in the neon-competitive
-// style, not webp layer packs and not a Pixi/GSAP stage. Groups in the SVG
-// (bg, grid, torso, head, eyes, pupils, rim, aura, scan) are the rig.
-// This runtime moves those groups. List rows never opt in: only mounts marked
-// .animated-pfp with a hero context play.
+// Layered SVG portraits (lda-pfp-v2) still move their groups: bg, grid, torso,
+// head, eyes, pupils, rim, aura, scan. Library portraits are static webp/png
+// frames. Those keep the image still and play a CSS neon pulse + sheen on the
+// wrapper. Watch seats stay on the still frame so the table is not shimmering.
+// prefers-reduced-motion and save-data stay on the poster.
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -77,7 +77,14 @@
     marketHot: { speed: 1.04, amp: 0.9, aura: 1.18 },
   });
 
-  const HERO_CONTEXTS = Object.freeze(["watch", "profile", "reveal", "hero"]);
+  const HERO_CONTEXTS = Object.freeze([
+    "watch", "profile", "reveal", "hero", "roster", "matchup", "create",
+  ]);
+  // Raster frames use a CSS overlay. Watch is intentionally absent: a live
+  // table should not pulse every seat.
+  const OVERLAY_CONTEXTS = Object.freeze([
+    "profile", "reveal", "hero", "roster", "matchup", "create",
+  ]);
   const LAYER_KEYS = Object.freeze([
     "bg", "bgGrid", "bgFx", "torso", "head", "hairFront", "hairBack",
     "eyesOpen", "eyesClosed", "pupils", "collarFx", "rimGlow", "aura", "particles", "scanFx",
@@ -158,6 +165,19 @@
   function shouldAnimate({ reducedMotion = false, lowPower = false, context = "", enabled = true } = {}) {
     if (enabled === false || reducedMotion || lowPower) return false;
     return HERO_CONTEXTS.includes(context);
+  }
+
+  function isRasterPortrait(url) {
+    const text = String(url || "").split("#")[0];
+    return /\.(?:webp|png|jpe?g)(?:\?|$)/i.test(text);
+  }
+
+  // rig: layered SVG. overlay: static mint frame plus CSS. still: poster only.
+  function classifyPortraitMotion({ context = "", src = "", reducedMotion = false, lowPower = false, enabled = true, layered = false } = {}) {
+    if (!shouldAnimate({ context, reducedMotion, lowPower, enabled })) return "still";
+    if (layered) return "rig";
+    if (isRasterPortrait(src)) return OVERLAY_CONTEXTS.includes(context) ? "overlay" : "still";
+    return "rig";
   }
 
   function breathPeriod(profile) {
@@ -360,6 +380,39 @@
     return job;
   }
 
+  function portraitSrc(node) {
+    const declared = (node.getAttribute && node.getAttribute("data-pfp-src")) || "";
+    if (declared) return declared;
+    const img = node.querySelector && node.querySelector("img[src]");
+    return img ? (img.getAttribute("src") || "") : "";
+  }
+
+  function portraitLayered(node) {
+    return !!(node.querySelector && node.querySelector("svg [data-layer]"));
+  }
+
+  function markStill(node) {
+    node.classList.add("is-static");
+    node.classList.remove("is-playing", "is-overlay");
+    if (node.dataset) node.dataset.pfpMode = "still";
+  }
+
+  function startOverlay(node) {
+    node.classList.add("is-playing", "is-overlay");
+    node.classList.remove("is-static");
+    node.dataset.pfpMode = "overlay";
+    if (!node.style.getPropertyValue("--pfp-delay")) {
+      const seed = seedFromId(node.dataset.agent || portraitSrc(node) || "pfp");
+      node.style.setProperty("--pfp-delay", ((seed % 3400) / 1000).toFixed(2) + "s");
+    }
+    ensureObserver();
+    ensureVisibility();
+    if (observer && node.dataset.pfpObserved !== "1") {
+      observer.observe(node);
+      node.dataset.pfpObserved = "1";
+    }
+  }
+
   function applyLive(node) {
     const svg = node.querySelector && node.querySelector("svg");
     if (!svg) return;
@@ -383,7 +436,8 @@
       for (const entry of entries) {
         const node = entry.target;
         node.dataset.pfpVisible = entry.isIntersecting ? "1" : "0";
-        if (!entry.isIntersecting) {
+        node.classList.toggle("is-paused", !entry.isIntersecting);
+        if (!entry.isIntersecting && node.dataset.pfpMode === "rig") {
           const svg = node.querySelector("svg");
           if (svg) applyPose(svg, { rest: true });
         }
@@ -430,12 +484,19 @@
   function startNode(node) {
     const svg = node.querySelector("svg");
     if (!svg || !svg.querySelector("[data-layer]")) {
-      node.classList.add("is-static");
-      node.classList.remove("is-playing");
+      const mode = classifyPortraitMotion({
+        context: node.getAttribute("data-context") || "",
+        src: portraitSrc(node),
+        enabled: node.getAttribute("data-enabled") !== "0",
+        layered: false,
+      });
+      if (mode === "overlay") startOverlay(node);
+      else markStill(node);
       return;
     }
     node.classList.add("is-playing");
-    node.classList.remove("is-static");
+    node.classList.remove("is-static", "is-overlay");
+    node.dataset.pfpMode = "rig";
     node.dataset.pfpLive = "1";
     if (!node.dataset.pfpKey) {
       node.dataset.pfpKey = `${node.dataset.agent || "pfp"}:${node.dataset.context || "hero"}`;
@@ -459,7 +520,7 @@
     }
     const svg = parseSvg(text);
     if (!svg || !svg.querySelector("[data-layer]")) {
-      node.classList.add("is-static");
+      markStill(node);
       return;
     }
     svg.setAttribute("aria-hidden", "true");
@@ -475,6 +536,20 @@
   }
 
   function arm(node) {
+    const mode = classifyPortraitMotion({
+      context: node.getAttribute("data-context") || "",
+      src: portraitSrc(node),
+      enabled: node.getAttribute("data-enabled") !== "0",
+      layered: portraitLayered(node),
+    });
+    if (mode === "overlay") {
+      startOverlay(node);
+      return;
+    }
+    if (mode === "still") {
+      markStill(node);
+      return;
+    }
     if (node.dataset.pfpLive === "1" && node.querySelector("svg [data-layer]")) {
       playing.add(node);
       applyLive(node);
@@ -486,8 +561,8 @@
       return;
     }
     const src = node.dataset.pfpSrc || "";
-    if (!src) {
-      node.classList.add("is-static");
+    if (!src || isRasterPortrait(src)) {
+      markStill(node);
       return;
     }
     if (readyText.has(src)) {
@@ -498,7 +573,7 @@
       if (!node.isConnected || (node.dataset.pfpSrc || "") !== src) return;
       upgrade(node, text);
     }).catch(() => {
-      if (node.isConnected) node.classList.add("is-static");
+      if (node.isConnected) markStill(node);
     });
   }
 
@@ -506,32 +581,37 @@
     if (!root || typeof root.querySelectorAll !== "function") return 0;
     const nodes = [...root.querySelectorAll(".animated-pfp")];
     if (root.matches && root.matches(".animated-pfp")) nodes.unshift(root);
+    const unique = [...new Set(nodes)];
     if (environmentBlocksMotion()) {
-      nodes.forEach((node) => {
-        node.classList.add("is-static");
-        node.classList.remove("is-playing");
-      });
+      unique.forEach(markStill);
       return 0;
     }
-    const eligible = nodes.filter((node) => {
-      if (node.closest && node.closest("[hidden]")) return false;
-      return shouldAnimate({
-        context: node.getAttribute("data-context") || "",
-        enabled: node.getAttribute("data-enabled") !== "0",
-      });
-    });
-    const rank = { reveal: 0, hero: 1, profile: 2, watch: 3 };
-    eligible.sort((a, b) => (rank[a.getAttribute("data-context")] ?? 9) - (rank[b.getAttribute("data-context")] ?? 9));
-    const chosen = new Set(eligible.slice(0, MAX_PLAYING));
-    nodes.forEach((node) => {
-      if (!chosen.has(node)) {
-        node.classList.add("is-static");
-        node.classList.remove("is-playing");
+    const overlay = [];
+    const rig = [];
+    unique.forEach((node) => {
+      if (node.closest && node.closest("[hidden]")) {
+        markStill(node);
         return;
       }
-      arm(node);
+      const mode = classifyPortraitMotion({
+        context: node.getAttribute("data-context") || "",
+        src: portraitSrc(node),
+        enabled: node.getAttribute("data-enabled") !== "0",
+        layered: portraitLayered(node),
+      });
+      if (mode === "overlay") overlay.push(node);
+      else if (mode === "rig") rig.push(node);
+      else markStill(node);
     });
-    return chosen.size;
+    overlay.forEach(startOverlay);
+    const rank = { reveal: 0, hero: 1, profile: 2, watch: 3, matchup: 4, create: 5, roster: 6 };
+    rig.sort((a, b) => (rank[a.getAttribute("data-context")] ?? 9) - (rank[b.getAttribute("data-context")] ?? 9));
+    const chosen = new Set(rig.slice(0, MAX_PLAYING));
+    rig.forEach((node) => {
+      if (!chosen.has(node)) markStill(node);
+      else arm(node);
+    });
+    return overlay.length + chosen.size;
   }
 
   return {
@@ -539,12 +619,15 @@
     MOTION_TO_PROFILE,
     STATE_MOD,
     HERO_CONTEXTS,
+    OVERLAY_CONTEXTS,
     LAYER_KEYS,
     POSTER_OPACITY,
     MAX_PLAYING,
     profileForBrand,
     animatedPfpMeta,
     shouldAnimate,
+    isRasterPortrait,
+    classifyPortraitMotion,
     blinkWindow,
     blinkClosed,
     poseAt,

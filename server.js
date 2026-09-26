@@ -192,7 +192,7 @@ function publicState() {
 // ---- http ---------------------------------------------------------------
 const PUBLIC = path.join(__dirname, "public");
 const PAGES = { "/": "app.html", "/legacy": "landing.html", "/arena": "index.html", "/leaderboard": "leaderboard.html", "/how-it-works": "how.html", "/agents": "agents.html" };
-const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".txt": "text/plain" };
+const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".txt": "text/plain", ".json": "application/json" };
 function sendAbs(res, full) {
   if (!fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }
   res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" });
@@ -300,6 +300,14 @@ const server = http.createServer(async (req, res) => {
     return sendAbs(res, path.join(__dirname, "src", "argus", "launch.js"));
   }
   if (url.startsWith("/static/")) return sendFile(res, url.slice("/static/".length));
+  // Generated portrait library (public/assets/portraits/*.webp). URLs carry ?v=&s= stamps, so cache hard.
+  const portraitFile = url.match(/^\/assets\/portraits\/([a-z0-9_.-]+\.(?:webp|png|jpg))(?:\?.*)?$/i);
+  if (req.method === "GET" && portraitFile) {
+    const full = path.join(PUBLIC, "assets", "portraits", portraitFile[1]);
+    if (!full.startsWith(path.join(PUBLIC, "assets", "portraits")) || !fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }
+    res.writeHead(200, { "content-type": MIME[path.extname(full).toLowerCase()] || "application/octet-stream", "cache-control": /[?&]v=\d+/.test(url) ? "public, max-age=31536000, immutable" : "public, max-age=3600" });
+    return fs.createReadStream(full).pipe(res);
+  }
   if (url.startsWith("/api/agents")) return agentsApi(req, res, url);
   if (url === "/api/pool") return json(res, 200, { walletKind: wallet.kind, poolAddress: pool?.poolWallet?.address || null, open: !!(pool && pool.open), closeAt: state.betCloseAt, matchNo: state.matchNo, chain: wallet.chainInfo ? wallet.chainInfo() : null, minStake: MIN_STAKE });
 

@@ -1,0 +1,1798 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "poolManager_",
+        "type": "address",
+        "internalType": "contract IV4PoolManager"
+      },
+      {
+        "name": "positionManager_",
+        "type": "address",
+        "internalType": "contract IV4PositionManagerPad"
+      },
+      {
+        "name": "stateView_",
+        "type": "address",
+        "internalType": "contract IV4StateView"
+      },
+      {
+        "name": "tokenImpl_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "lockerImpl_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "splitterImpl_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "defaultQuoteAsset_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "treasury_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "treasuryBps_",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "devBuyMaxBps_",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "admin_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "registry_",
+        "type": "address",
+        "internalType": "contract IArgusQuoteRouteRegistry"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "DefaultQuoteNotRevocable",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "DelayAboveCeiling",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "DelayNotRaised",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "DevBuyExceedsCap",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "DividendWithoutRewardTracker",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "ExpectConvertOutOfRange",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "FailedDeployment",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "HookCodeMustBeSubmitted",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "HookDeployFailed",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "HookHasNoCode",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "hook",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "name": "HookSaltInvalid",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "produced",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "mask",
+        "type": "uint160",
+        "internalType": "uint160"
+      }
+    ]
+  },
+  {
+    "name": "HookStoreDeployFailed",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "HookStoreMalformed",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "HookStoreUnreadable",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "InsufficientBalance",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "balance",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "needed",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "name": "InvalidAllocation",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "InvalidConfig",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "LaunchGriefed",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "LiquidityOverflow",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "NotAdmin",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "NotQueued",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "NotSingleSided",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "PayoutAssetChanged",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "payoutAsset",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "name": "PointerUnchanged",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "PoolMispriced",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "PositionLiquidityMismatch",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "PositionNotDelivered",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "PositionPoolMismatch",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "PositionRangeMismatch",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "PriceOutOfRange",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "QuoteAlreadyApproved",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "QuoteConsumed",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "QuoteNotApproved",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "QuoteNotConvertible",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "QuoteShape",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "ReentrancyGuardReentrantCall",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "RewardTrackerWithoutDividend",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "SafeERC20FailedOperation",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "name": "SeedFailed",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "SplitterRegistryMismatch",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "SupplyNotAnchored",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "SupplyTooLarge",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "TaxTooHigh",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "TickRangeInvalid",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "TimelockNotElapsed",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "eta",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ]
+  },
+  {
+    "name": "UnexpectedCallback",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "ZeroAddress",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "ZeroTaxNotAllowed",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "CurveOpened",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "poolId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "locker",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "liquidity",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "tickLower",
+        "type": "int24",
+        "indexed": false,
+        "internalType": "int24"
+      },
+      {
+        "name": "tickUpper",
+        "type": "int24",
+        "indexed": false,
+        "internalType": "int24"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "DevBuy",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "creator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "quoteIn",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokensOut",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "FeeConfigured",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "hook",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "lpFeeBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "buyTaxBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "sellTaxBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "treasuryBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "creatorBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "burnBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "dividendBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "liquidityBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "HookCodeStored",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "store",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "length",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "codeHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "PartsDeployed",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "locker",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "hook",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "splitter",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "PointerCancelled",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "kind",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "enum ArgusV4Portal7.Pointer"
+      },
+      {
+        "name": "value",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "PointerChanged",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "kind",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "enum ArgusV4Portal7.Pointer"
+      },
+      {
+        "name": "previous",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "value",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "PointerQueued",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "kind",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "enum ArgusV4Portal7.Pointer"
+      },
+      {
+        "name": "value",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "eta",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "QuoteApproved",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "quote",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "QuoteRevoked",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "quote",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "TimelockDelayCancelled",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "pending",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "TimelockDelayQueued",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "previous",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "pending",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "eta",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "TimelockDelayRaised",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "previous",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "current",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "TokenCreated",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "creator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "symbol",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "poolId",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "imageURI",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "website",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "twitter",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "telegram",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "DEV_BUY_MAX_TICK_MOVE",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int24",
+        "internalType": "int24"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "LAUNCH_STRUCT_WORDS",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "MAX_TAX_BPS",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "MAX_TIMELOCK_DELAY",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "MAX_USABLE_TICK",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int24",
+        "internalType": "int24"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "MIN_USABLE_TICK",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int24",
+        "internalType": "int24"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "PERMIT2",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "POOL_FEE",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint24",
+        "internalType": "uint24"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "TICK_SPACING",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int24",
+        "internalType": "int24"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "TOTAL_FEE_FLOOR_BPS",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "admin",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "allTokens",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "approveQuote",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "cancelPointer",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "kind",
+        "type": "uint8",
+        "internalType": "enum ArgusV4Portal7.Pointer"
+      },
+      {
+        "name": "value",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "cancelTimelockDelay",
+    "type": "function",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "defaultQuoteAsset",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "devBuyMaxBps",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "executePointer",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "kind",
+        "type": "uint8",
+        "internalType": "enum ArgusV4Portal7.Pointer"
+      },
+      {
+        "name": "value",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "executeTimelockDelay",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "expected",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "getTokens",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "offset",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "limit",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "page",
+        "type": "address[]",
+        "internalType": "address[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "hookCreate2Salt",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "creator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "hookSalt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "name": "hookInitCodeHash",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "splitter_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "buyTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "sellTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "launch",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "p",
+        "type": "tuple",
+        "components": [
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "totalSupply",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "startFdvUsdc6",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "bondFdvUsdc6",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "buyTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "creatorBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "burnBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "dividendBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "liquidityBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "devBuyQuote",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "quoteAsset",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "expectConvert",
+            "type": "uint8",
+            "internalType": "uint8"
+          }
+        ],
+        "internalType": "struct V4HookedLaunchParams7"
+      },
+      {
+        "name": "meta",
+        "type": "tuple",
+        "components": [
+          {
+            "name": "imageURI",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "website",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "twitter",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "telegram",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "internalType": "string"
+          }
+        ],
+        "internalType": "struct V4TokenMeta"
+      },
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "hookSalt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "launches",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "creator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tickStart",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "tokenIsToken0",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "locker",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "hook",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "splitter",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "buyTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "sellTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "tickBond",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "quoteAsset",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "lockerImpl",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "pendingTimelockDelay",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "delay",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "eta",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "pointerEta",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "op",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "eta",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "pointerOp",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "kind",
+        "type": "uint8",
+        "internalType": "enum ArgusV4Portal7.Pointer"
+      },
+      {
+        "name": "value",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "name": "poolIdFor",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "hook",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "name": "poolManager",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IV4PoolManager"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "positionManager",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IV4PositionManagerPad"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "predictHook",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "creator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "hookSalt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "buyTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "sellTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "hook",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "mask",
+        "type": "uint160",
+        "internalType": "uint160"
+      },
+      {
+        "name": "valid",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "predictSplitter",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "creator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "predictToken",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "creator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "hook",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "queueHookCode",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "hookCode",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "store",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "eta",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "queuePointer",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "kind",
+        "type": "uint8",
+        "internalType": "enum ArgusV4Portal7.Pointer"
+      },
+      {
+        "name": "value",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "eta",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "queueTimelockDelay",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "newDelay",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "eta",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "quoteApproved",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "approved",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "registry",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IArgusQuoteRouteRegistry"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "revokeQuote",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "splitterImpl",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "stateView",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IV4StateView"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "timelockDelay",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "tokenCount",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "tokenImpl",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "totalFeeBpsOf",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "onBuy",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "onSell",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "treasury",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "treasuryBps",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "unlockCallback",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "data",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  }
+]

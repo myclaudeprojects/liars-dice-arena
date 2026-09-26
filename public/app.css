@@ -873,6 +873,8 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 .creator { display: flex; flex-direction: column; gap: var(--space-3); }
 .creator label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--type-ui); color: var(--lda-text-secondary); }
 .creator input[type="text"],
+.creator input[type="url"],
+.creator input[type="number"],
 .creator textarea,
 .creator select {
   width: 100%;
@@ -995,6 +997,8 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   border-radius: var(--radius-pill);
   box-shadow: inset 0 0 0 1px var(--lda-line-strong);
 }
+.argus-launch { display: flex; flex-direction: column; gap: var(--space-2); }
+.argus-split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .creator-actions { display: flex; flex-direction: column; gap: var(--space-2); }
 .creator-actions .ghost,
 .creator-actions .cta { margin-top: 0; }

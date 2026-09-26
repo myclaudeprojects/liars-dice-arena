@@ -41,6 +41,7 @@ const {
   normalizeSelections,
 } = require("./brandcreate");
 const { inferSelectionsFromBrand } = require("./branding/creationSelections");
+const { publicArgus } = require("./argus/launch");
 // Identifies the running build so clients can reload when a deploy lands.
 const BUILD_ID = String(process.env.RENDER_GIT_COMMIT || process.env.BUILD_ID || Date.now()).slice(0, 12);
 const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls, withBrandVersion } = require("./pfp");
@@ -1593,6 +1594,32 @@ class Show {
     return { agent: this.agentSummary(draft), identity: draft.identity, resumed: false };
   }
 
+  // Attach a Portal #7 launch after the receipt has already been checked on Arc.
+  // A failed or missing mint leaves the saved agent playable.
+  attachArgusMint(agentId, launch) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
+    const next = publicArgus({ ...(launch || {}), status: "minted" });
+    if (!next || !next.txHash || !next.poolId || !next.tokenAddress) {
+      throw creatorError("bad_mint", "That transaction did not decode as an Argus launch.", 400);
+    }
+    const prev = draft.argus;
+    if (prev && prev.status === "minted" && prev.txHash && prev.txHash.toLowerCase() !== next.txHash.toLowerCase()) {
+      throw creatorError("already_minted", "This agent already has an Argus token.", 409);
+    }
+    if (prev && prev.txHash && prev.txHash.toLowerCase() === next.txHash.toLowerCase()) {
+      return { agent: this.agentSummary(draft), argus: publicArgus(prev) };
+    }
+    draft.argus = {
+      ...next,
+      name: (launch && launch.name) || draft.name,
+      mintedAt: new Date().toISOString(),
+    };
+    draft.updatedAt = draft.argus.mintedAt;
+    this.persist();
+    return { agent: this.agentSummary(draft), argus: publicArgus(draft.argus) };
+  }
+
   generateConcepts(agentId, opts = {}) {
     const draft = this.userAgents.get(agentId);
     if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
@@ -1703,6 +1730,7 @@ class Show {
       roster: "user",
       archetype: draft.archetype,
       archetypeLabel: draft.archetypeLabel,
+      argus: publicArgus(draft.argus),
     };
   }
 
@@ -1924,6 +1952,7 @@ class Show {
       roster,
       status: draft ? draft.status : "READY",
       playable: roster === "house" || ready,
+      argus: draft ? publicArgus(draft.argus) : null,
     };
   }
 
@@ -1969,6 +1998,7 @@ class Show {
       personality: draft ? draft.personality : null,
       personalitySummary: draft ? draft.personalitySummary : null,
       visualDirection: draft ? draft.visualDirection : null,
+      argus: draft ? publicArgus(draft.argus) : null,
     };
   }
 

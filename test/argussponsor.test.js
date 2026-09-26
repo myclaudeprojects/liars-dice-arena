@@ -203,7 +203,7 @@ function agent(show, name) {
 
   eq(hidden.siteUrl, "https://liarsdicearc.app/", "house site is prefilled");
   eq(hidden.xUrl, "https://x.com/LiarsDiceArc", "house X is prefilled");
-  eq(hidden.telegramUrl, "https://t.me/tradewarzhq", "house Telegram is prefilled");
+  eq(hidden.telegramUrl, "https://t.me/tradewarzchat", "house Telegram is prefilled");
   eq(hidden.creatorFeeWallet, "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488", "house creator-fee wallet is prefilled");
   const branded = argusPublicConfig({
     ARGUS_MINT_ENABLED: "1",

@@ -26,7 +26,7 @@ const IMAGE = "https://liars-dice-arena.onrender.com/api/show/agents/u_vesper/pf
 const SITE = "https://liars-dice-arena.onrender.com/";
 const HOUSE = "https://liarsdicearc.app/";
 const HOUSE_X = "https://x.com/LiarsDiceArc";
-const HOUSE_TG = "https://t.me/tradewarzhq";
+const HOUSE_TG = "https://t.me/tradewarzchat";
 const HOUSE_WALLET = "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488";
 
 function boot(file) {

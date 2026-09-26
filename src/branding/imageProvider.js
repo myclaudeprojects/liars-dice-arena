@@ -1,22 +1,59 @@
-// Neon-competitive portrait provider.
+// Neon-competitive portraits, drawn in-process.
 //
-// Live portraits are generated images. There is no procedural stand-in.
-// OPENAI_API_KEY is required. When it is missing, createImage() throws and
-// the arena keeps the letter fallback.
+// createImage() builds an SVG from visual DNA and rasterizes it with sharp.
+// No OpenAI client, no image API, and no secret. OPENAI_API_KEY is only
+// used by the optional chat players in src/llm.js.
 
-const MISSING_KEY_MESSAGE = "OPENAI_API_KEY is not set. Neon competitive portraits are not generated without it.";
+const sharp = require("sharp");
+const { buildVisualDNA } = require("./buildVisualDNA");
+const { renderNeonCompetitiveSvg } = require("./localPortrait");
 
-function imageProviderConfigured(env = process.env) {
-  return Boolean(env && String(env.OPENAI_API_KEY || "").trim());
+const LOCAL_MODEL = "neon-competitive-local";
+
+function imageProviderConfigured() {
+  return true;
 }
 
-function squareSize(width, height) {
-  const w = Number(width) || 1024;
-  const h = Number(height) || 1024;
-  const side = Math.max(w, h);
-  if (side >= 1024) return "1024x1024";
-  if (side >= 512) return "512x512";
-  return "256x256";
+function grab(prompt, label) {
+  const match = String(prompt || "").match(new RegExp(`${label}:\\s*([^\\n]+)`, "i"));
+  return match ? match[1].trim() : "";
+}
+
+function dnaFromCall({ visualDNA, agent, archetype, prompt }) {
+  if (visualDNA && visualDNA.primaryColor) return { archetype: archetype || (agent && agent.archetype) || "", dna: visualDNA };
+  const fromAgent = agent && agent.brand && (agent.brand.visualDNA || agent.brand.visualIdentity);
+  if (fromAgent && fromAgent.primaryColor) {
+    return { archetype: archetype || agent.archetype || "", dna: fromAgent };
+  }
+  const named = archetype || (agent && agent.archetype) || grab(prompt, "Archetype");
+  const dna = buildVisualDNA({ archetype: named });
+  const primary = grab(prompt, "Primary color");
+  const secondary = grab(prompt, "Secondary color");
+  const accent = grab(prompt, "Accent color");
+  if (/^#[0-9a-fA-F]{6}$/.test(primary)) dna.primaryColor = primary;
+  if (/^#[0-9a-fA-F]{6}$/.test(secondary)) dna.secondaryColor = secondary;
+  if (/^#[0-9a-fA-F]{6}$/.test(accent)) dna.accentColor = accent;
+  const signature = grab(prompt, "Signature feature");
+  const emblem = grab(prompt, "Emblem concept");
+  const lighting = grab(prompt, "Lighting style");
+  const motif = grab(prompt, "Background motif");
+  const silhouette = grab(prompt, "Silhouette");
+  const attitude = grab(prompt, "Facial attitude");
+  if (signature) dna.signatureFeature = signature;
+  if (emblem) dna.emblem = emblem;
+  if (lighting) dna.lightingStyle = lighting;
+  if (motif) dna.backgroundMotif = motif;
+  if (silhouette) dna.silhouette = silhouette;
+  if (attitude) dna.facialAttitude = attitude;
+  return { archetype: named, dna };
+}
+
+function sideOf(width, height) {
+  const side = Math.max(Number(width) || 1024, Number(height) || 1024);
+  if (side >= 1024) return 1024;
+  if (side >= 512) return 512;
+  if (side >= 256) return 256;
+  return 128;
 }
 
 async function createImage({
@@ -24,65 +61,48 @@ async function createImage({
   width = 1024,
   height = 1024,
   seed,
+  agent,
+  visualDNA,
+  archetype,
+  selections,
 } = {}) {
-  if (!imageProviderConfigured()) {
-    const err = new Error(MISSING_KEY_MESSAGE);
-    err.code = "pfp_provider_unconfigured";
-    throw err;
-  }
-  const apiKey = String(process.env.OPENAI_API_KEY).trim();
-  const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
-  const base = String(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
-  const body = {
-    model,
-    prompt: String(prompt || "").slice(0, 16000),
-    size: squareSize(width, height),
-    n: 1,
-  };
-  // dall-e returns a URL unless response_format is set. gpt-image-1 rejects that field.
-  if (/^dall-e/i.test(model)) body.response_format = "b64_json";
-
-  const response = await fetch(`${base}/images/generations`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
+  const resolved = dnaFromCall({ visualDNA, agent, archetype, prompt });
+  const svg = renderNeonCompetitiveSvg({
+    visualDNA: resolved.dna,
+    seed: seed || (agent && agent.id) || "neon-competitive",
+    agentId: agent && (agent.id || agent.agentId),
+    archetype: resolved.archetype,
+    selections: selections || (agent && agent.creationSelections) || null,
+    prompt,
   });
-  if (!response.ok) {
-    const text = (await response.text()).slice(0, 300);
-    const err = new Error(`Image provider ${response.status}: ${text}`);
-    err.code = "pfp_provider_failed";
-    throw err;
-  }
-  const json = await response.json();
-  const row = json && Array.isArray(json.data) ? json.data[0] : null;
-  let buffer = null;
-  if (row && row.b64_json) buffer = Buffer.from(row.b64_json, "base64");
-  else if (row && row.url) {
-    const fetched = await fetch(row.url);
-    if (!fetched.ok) {
-      const err = new Error("Image provider returned a URL that could not be fetched.");
-      err.code = "pfp_provider_failed";
-      throw err;
-    }
-    buffer = Buffer.from(await fetched.arrayBuffer());
+  const side = sideOf(width, height);
+  let buffer;
+  try {
+    buffer = await sharp(Buffer.from(svg), { density: 144 })
+      .resize(side, side, { fit: "cover", position: "centre" })
+      .webp({ quality: 90 })
+      .toBuffer();
+  } catch (err) {
+    const error = new Error(`Local portrait raster failed: ${(err && err.message) || err}`);
+    error.code = "pfp_provider_failed";
+    throw error;
   }
   if (!buffer || buffer.length < 32) {
-    const err = new Error("Image provider returned an empty portrait.");
-    err.code = "pfp_provider_failed";
-    throw err;
+    const error = new Error("Local portrait raster was empty.");
+    error.code = "pfp_provider_failed";
+    throw error;
   }
   return {
     buffer,
-    model: (json && json.model) || model,
+    model: LOCAL_MODEL,
     seed: seed || null,
+    mime: "image/webp",
+    svg,
   };
 }
 
 module.exports = {
-  MISSING_KEY_MESSAGE,
+  LOCAL_MODEL,
   imageProviderConfigured,
   createImage,
 };

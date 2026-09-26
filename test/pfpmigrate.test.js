@@ -24,10 +24,12 @@ const eq = (a, b, m) => { if (a !== b) throw new Error(`${m}: ${JSON.stringify(a
   delete process.env.OPENAI_API_KEY;
   const res = await show.migrateLegacyPortraits();
   if (savedKey) process.env.OPENAI_API_KEY = savedKey;
-  eq(res.migrated, 0, "migration does not invent portraits");
-  eq(res.skipped, "provider_unconfigured", "migration waits for the image key");
-  eq(show.pfpMigration >= 2, false, "unconfigured migration does not mark itself done");
-  eq(show.legacyPortraitAgents().includes(a.agent.id), true, "legacy agent stays until a real portrait exists");
+  eq(res.migrated, 1, "migration draws a local portrait");
+  eq(res.skipped, undefined, "migration does not wait on an image key");
+  eq(show.pfpMigration >= 2, true, "local migration records completion");
+  eq(show.legacyPortraitAgents().includes(a.agent.id), false, "legacy agent now has a portrait");
+  const migratedFace = show.pfpImageFor(a.agent.id, 96);
+  assert(migratedFace && migratedFace.mime === "image/webp", "migrated portrait is a local webp");
   let retired = false;
   try { renderPfp({}); }
   catch (err) { retired = err.code === "pfp_procedural_retired"; }

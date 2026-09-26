@@ -51,8 +51,8 @@ assert(prompt.includes("fantasy armor"), "prompt lists negatives");
 const book = new BrandBook();
 const view = book.publicOf("dracula");
 eq(view.pfpStyleId, "neon-competitive", "public style id");
-assert(!view.pfpUrl, "house portrait is a letter until an image exists");
-assert(!view.animatedPfp, "no procedural motion without a portrait");
+assert(view.pfpUrl && view.pfpUrl.includes("/api/show/agents/dracula/pfp.svg") && view.pfpUrl.includes("s=6"), "house portrait url is local");
+assert(view.animatedPfp && view.animatedPfp.enabled === false, "poster motion stays off");
 assert(!book.full("dracula").animatedPfp, "animation stays off the stored brand");
 
 console.log("neon style ok");

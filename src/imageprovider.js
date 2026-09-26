@@ -1,6 +1,6 @@
 // imageprovider.js — Live portrait backend.
 //
-// Neon competitive images via OPENAI_API_KEY. No procedural SVG fallback.
+// Neon competitive portraits are drawn in-process. No image API key.
 
 const { createImage, imageProviderConfigured } = require("./branding/imageProvider");
 
@@ -16,8 +16,8 @@ class NeonImageProvider extends ImageProvider {
     this.id = "neon-competitive";
   }
 
-  async generate({ prompt, width = 1024, height = 1024, seed } = {}) {
-    const image = await createImage({ prompt, width, height, seed });
+  async generate({ prompt, width = 1024, height = 1024, seed, agent, visualDNA, archetype, selections } = {}) {
+    const image = await createImage({ prompt, width, height, seed, agent, visualDNA, archetype, selections });
     return {
       provider: this.id,
       mime: "image/webp",

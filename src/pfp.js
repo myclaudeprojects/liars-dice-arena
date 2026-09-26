@@ -1,7 +1,8 @@
 // pfp.js — Portrait URL helpers and the retired recipe builder.
 //
-// Live portraits are neon-competitive images (src/branding). renderPfp() does
-// not draw. A missing file is a letter in the UI, not an SVG bust.
+// Live portraits are neon-competitive images drawn in-process (src/branding).
+// renderPfp() does not draw the retired bust. The letter shows only when
+// there is no agent to portrait.
 
 const { PFP_STYLE_ID } = require("./branding/stylePresets");
 const { buildPfpPrompt, buildNeonPfpVisualInstruction } = require("./branding/buildPfpPrompt");
@@ -907,7 +908,7 @@ function pathData(svg) {
 
 // Bump whenever the portrait RENDER changes for an unchanged brand (new rig, new style rules).
 // It rides along in every portrait URL, so browsers/CDNs that cached the old look fetch again.
-const PFP_STYLE_STAMP = 5;
+const PFP_STYLE_STAMP = 6;
 
 function withBrandVersion(url, agent) {
   if (!url) return url;

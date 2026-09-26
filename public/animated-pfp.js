@@ -1,11 +1,7 @@
 // Idle motion for layered SVG, when a portrait actually has those layers.
-// Neon-competitive rasters stay posters. A missing portrait is a letter.
-//
-// House cast and created agents are lda-pfp-v2 drawings in the neon-competitive
-// style, not webp layer packs and not a Pixi/GSAP stage. Groups in the SVG
-// (bg, grid, torso, head, eyes, pupils, rim, aura, scan) are the rig.
-// This runtime moves those groups. List rows never opt in: only mounts marked
-// .animated-pfp with a hero context play.
+// Neon-competitive local portraits and stored WebP stay posters. A missing
+// agent is a letter. List rows never opt in: only mounts marked .animated-pfp
+// with a hero context play, and only when the SVG has data-layer groups.
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;

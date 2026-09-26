@@ -142,7 +142,7 @@ function req(method, url, body) {
     assert(created.json.identity.visualIdentity && created.json.identity.visualIdentity.primaryColor, "create returns visual DNA");
     const concepts = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/concepts", { count: 4 });
     assert(concepts.status === 200 && concepts.json.concepts.length >= 3 && concepts.json.concepts.length <= 5, "concepts are 3 to 5");
-    assert(concepts.json.concepts.every((c) => c.emblemSvg && c.pfp && c.pfp.prompt && !c.pfpSvg && c.title && c.tagline && c.visualIdentity), "concept cards carry a neon prompt, title, and palette");
+    assert(concepts.json.concepts.every((c) => c.emblemSvg && c.pfp && c.pfp.prompt && c.pfpSvg && c.pfpSvg.includes('data-engine="local"') && c.title && c.tagline && c.visualIdentity), "concept cards carry a local portrait, title, and palette");
     const portraits = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/pfp-concepts", { count: 4, vary: "all" });
     assert(portraits.status === 200 && portraits.json.concepts.length >= 3 && portraits.json.concepts.length <= 5, "pfp concepts are 3 to 5");
     const locked = await req("POST", base + "/api/show/agents/" + created.json.agent.id + "/brand/pfp-select", {
@@ -161,12 +161,15 @@ function req(method, url, body) {
     assert(assets.json.assets.heroPortrait == null && assets.json.deferred.includes("HERO_ART"), "hero cards stay deferred");
     const face = await req("GET", base + "/api/show/agents/" + created.json.agent.id + "/pfp.svg?size=96");
     const faceSmall = await req("GET", base + "/api/show/agents/" + created.json.agent.id + "/pfp.svg?size=48");
-    assert(face.status === 404 && faceSmall.status === 404, "pfp route does not invent an image");
-    assert(face.json && face.json.code === "no_portrait", "missing portrait is explicit");
+    assert(face.status === 200 && face.body.includes("neon-competitive") && face.body.includes('data-engine="local"'), "pfp route draws a local portrait");
+    assert(faceSmall.status === 200 && faceSmall.body.includes("<svg"), "small size is the same local portrait");
+    assert(!face.body.includes("neon-noir"), "served portrait is not neon noir");
     const houseFace = await req("GET", base + "/api/show/agents/dracula/pfp.svg?size=48");
-    assert(houseFace.status === 404 && houseFace.json && houseFace.json.code === "no_portrait", "house cast has no procedural bust");
+    assert(houseFace.status === 200 && houseFace.body.includes("neon-competitive") && houseFace.body.includes("#F43B5F"), "house cast portrait needs no key");
+    const unknownFace = await req("GET", base + "/api/show/agents/nobody/pfp.svg?size=48");
+    assert(unknownFace.status === 404 && unknownFace.json && unknownFace.json.code === "unknown_agent", "unknown agent stays a letter");
     const brandDoc = await req("GET", base + "/api/show/agents/" + created.json.agent.id + "/brand");
-    assert(brandDoc.json.brand.primaryPfpAssetId && !brandDoc.json.brand.assets.canonicalPfp, "brand document hides the portrait until a file exists");
+    assert(brandDoc.json.brand.primaryPfpAssetId && brandDoc.json.brand.assets.canonicalPfp.includes("pfp.svg"), "brand document publishes the portrait");
     const appJs = await req("GET", base + "/static/app.js");
     assert(appJs.status === 200 && appJs.body.includes("Create agent") && appJs.body.includes("/api/show/agents/brand/create"), "agents UI exposes create");
     assert(!/usdc|wallet|\$/i.test(replay.json.share.text), "share text is not a cash pitch");

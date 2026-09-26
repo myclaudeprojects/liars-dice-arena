@@ -1,6 +1,6 @@
-// Batch neon-competitive portraits.
+// Batch neon-competitive portraits. No API key.
 //
-//   OPENAI_API_KEY=... node scripts/generateNeonPfps.js
+//   node scripts/generateNeonPfps.js
 //
 // Writes public/assets/agents/{id}/neon-competitive/v1/b1/ unless PFP_ASSET_DIR
 // or SHOW_DATA_PATH points the store at the persistent disk.
@@ -47,6 +47,9 @@ async function run() {
       width: 1024,
       height: 1024,
       seed,
+      agent,
+      visualDNA: agent.brand.visualDNA,
+      archetype: agent.archetype,
     });
     await savePortrait({
       root,

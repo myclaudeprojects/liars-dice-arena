@@ -1,8 +1,8 @@
 // brandcreate.js — Spectator agent creation.
 //
 // Identity, Visual DNA, and 3–5 concepts are deterministic. Portraits are
-// neon-competitive images from the configured provider. Selecting a concept
-// locks the identity. Pixels are written only when generatePortrait succeeds.
+// neon-competitive images drawn in-process. No image API key. Selecting a
+// concept locks the identity. generatePortrait writes sized WebP files.
 // The house cast is not rewritten here.
 
 const {
@@ -28,6 +28,7 @@ const { PFP_STYLE_ID } = require("./branding/stylePresets");
 const { buildVisualDNA, composeVisualDNA } = require("./branding/buildVisualDNA");
 const { promptForAgent } = require("./branding/buildPfpPrompt");
 const { buildSeed, savePortrait, STYLE_VERSION } = require("./branding/pfpAssets");
+const { renderNeonCompetitiveSvg } = require("./branding/localPortrait");
 const {
   normalizeSelections,
   mapSelections,
@@ -572,7 +573,7 @@ function attachPfp(draft, concept, index, treatment) {
     seed,
     visualDNA,
     safeZone: { circle: 0.86, face: { x: 0.28, y: 0.17, w: 0.44, h: 0.52 } },
-    quality: { ok: false, reasons: ["awaiting_provider"] },
+    quality: { ok: true, reasons: [] },
     recipe: {
       selections,
       conceptVariant: variation,
@@ -581,7 +582,13 @@ function attachPfp(draft, concept, index, treatment) {
       treatment: mode,
     },
   };
-  concept.pfpSvg = null;
+  concept.pfpSvg = renderNeonCompetitiveSvg({
+    visualDNA,
+    seed,
+    agentId: draft.id,
+    archetype,
+    selections,
+  });
   concept.assetType = ASSET_TYPE;
   return concept;
 }
@@ -830,15 +837,6 @@ function portraitAssets(agentId, version) {
 }
 
 function generationFailure(err) {
-  if (err && err.code === "pfp_provider_unconfigured") {
-    const error = creatorError(
-      "pfp_provider_unconfigured",
-      "Portrait generation needs OPENAI_API_KEY on the server. No portrait was created.",
-      503,
-    );
-    error.cause = err;
-    return error;
-  }
   const error = creatorError("generation_failed", "Portrait generation failed. The last portrait was kept.", 502);
   error.cause = err;
   return error;
@@ -882,6 +880,10 @@ async function renderCanonicalPortrait(draft, opts = {}) {
       seed,
       width: 1024,
       height: 1024,
+      agent,
+      visualDNA,
+      archetype,
+      selections,
     });
   } catch (err) {
     throw generationFailure(err);
@@ -1074,8 +1076,9 @@ function lockBrand(draft, concept, at, previous) {
       variation,
       generatedAt: Date.now(),
       provider: "neon-competitive",
-      mime: null,
-      portrait: "awaiting_provider",
+      model: "neon-competitive-local",
+      mime: "image/svg+xml",
+      portrait: "local",
     },
     animatedPfp: {
       version,

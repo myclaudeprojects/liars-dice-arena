@@ -60,9 +60,10 @@ function signatures(concepts) {
   for (const concept of conceptsA.concepts) {
     assert(concept.emblemSvg.includes("<svg"), "svg emblem");
     assert(concept.assetType === "PFP_PORTRAIT", "concept is a pfp");
-    assert(!concept.pfpSvg, "concept does not invent an svg bust");
+    assert(concept.pfpSvg && concept.pfpSvg.includes('data-engine="local"') && concept.pfpSvg.includes("neon-competitive"), "concept carries a local portrait");
+    assert(!concept.pfpSvg.includes("neon-noir"), "concept is not a noir bust");
     assert(concept.pfp && concept.pfp.prompt && concept.pfp.prompt.includes("neon"), "concept stores a neon prompt");
-    assert(concept.pfp.quality && concept.pfp.quality.reasons.includes("awaiting_provider"), "image waits for the provider");
+    assert(concept.pfp.quality && concept.pfp.quality.ok === true, "local portrait is ready");
     assert(!SEED_BRANDS.some((seed) => titlesTooClose(seed.title, concept.title)), "title misses the house");
     assert(!SEED_BRANDS.some((seed) => seed.visualIdentity.emblem === concept.emblem), "emblem misses the house");
     assert(!SEED_BRANDS.some((seed) => paletteNear(seed, { visualIdentity: concept.visualIdentity })), "palette misses the house");
@@ -124,18 +125,19 @@ function signatures(concepts) {
   // Locked assets are version-stamped so a new brand version always changes the URL (cache bust).
   eq(locked.brand.version, 1, "first lock is version 1");
   eq(locked.brand.brandVersion, "v1", "brandVersion tag matches numeric version");
-  eq(locked.brand.assets.pfpPortrait, "/api/show/agents/" + a.agent.id + "/pfp.svg?v=1&s=5", "pfp url");
-  eq(locked.brand.assets.canonicalPfp, "/api/show/agents/" + a.agent.id + "/pfp.svg?v=1&s=5", "canonical url");
-  eq(locked.brand.assets.avatar48, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=48&v=1&s=5", "48 derived");
-  eq(locked.brand.assets.avatar96, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=96&v=1&s=5", "96 derived");
+  eq(locked.brand.assets.pfpPortrait, "/api/show/agents/" + a.agent.id + "/pfp.svg?v=1&s=6", "pfp url");
+  eq(locked.brand.assets.canonicalPfp, "/api/show/agents/" + a.agent.id + "/pfp.svg?v=1&s=6", "canonical url");
+  eq(locked.brand.assets.avatar48, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=48&v=1&s=6", "48 derived");
+  eq(locked.brand.assets.avatar96, "/api/show/agents/" + a.agent.id + "/pfp.svg?size=96&v=1&s=6", "96 derived");
   eq(locked.brand.visualDirty, false, "lock clears visualDirty");
   eq(locked.brand.status, "READY", "lock sets READY");
   eq(typeof locked.brand.creationSelections.archetype, "string", "lock stores creationSelections");
   eq(locked.brand.assets.heroPortrait, null, "hero art stays deferred");
   assert(locked.brand.avatarCrop.method === "uniform-scale", "avatars scale the master");
-  eq(showA.pfpSvgFor(a.agent.id, 48), null, "select does not draw an svg");
-  eq(showA.pfpImageFor(a.agent.id, 512), null, "select does not invent image bytes");
-  assert(!showA.brands.publicOf(a.agent.id).pfpUrl, "public view stays on the letter until a file exists");
+  eq(showA.pfpSvgFor(a.agent.id, 48), null, "retired svg helper stays closed");
+  const lockedFace = showA.pfpImageFor(a.agent.id, 512);
+  assert(lockedFace && lockedFace.mime === "image/svg+xml" && lockedFace.buffer.includes("neon-competitive"), "select serves a local portrait");
+  assert(showA.brands.publicOf(a.agent.id).pfpUrl.includes("s=6"), "public view points at the local portrait");
   const touched = showB.generateConcepts(b.agent.id, { vary: "expression" });
   eq(touched.concepts[0].title, conceptsB.concepts[0].title, "expression keeps the identity");
   assert(touched.concepts[0].pfp.prompt !== conceptsB.concepts[0].pfp.prompt, "expression changes the prompt");

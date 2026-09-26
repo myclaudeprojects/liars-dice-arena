@@ -6,7 +6,7 @@ const { createImage } = require("../src/branding/imageProvider");
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); }
 
-eq(PFP_STYLE_STAMP, 5, "style stamp");
+eq(PFP_STYLE_STAMP, 6, "style stamp");
 eq(PFP_STYLE_VERSION, "v1", "style version");
 
 const visual = {
@@ -44,16 +44,18 @@ eq(live.id, "neon-competitive", "provider id");
 
 const savedKey = process.env.OPENAI_API_KEY;
 delete process.env.OPENAI_API_KEY;
-let missing = false;
-createImage({ prompt: "test", seed: "x" }).catch((err) => {
-  missing = err.code === "pfp_provider_unconfigured" && /OPENAI_API_KEY/.test(err.message);
-}).then(() => {
+createImage({ prompt, seed: "x", width: 256, height: 256, visualDNA: visual, archetype: "executive" }).then((image) => {
   if (savedKey) process.env.OPENAI_API_KEY = savedKey;
+  assert(image && image.buffer && image.buffer.length > 32, "local portrait without a key");
+  eq(image.model, "neon-competitive-local", "local model");
+  assert(image.buffer.slice(0, 4).toString() === "RIFF", "webp bytes");
   let threw = false;
   const bare = new ImageProvider();
   return bare.generate({}).catch(() => { threw = true; }).then(() => {
-    assert(missing, "missing key fails closed");
     assert(threw, "base provider stays abstract");
     console.log("pfp ok");
   });
+}).catch((err) => {
+  console.error(err);
+  process.exit(1);
 });

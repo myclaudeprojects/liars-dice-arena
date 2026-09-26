@@ -43,8 +43,9 @@ const { inferSelectionsFromBrand } = require("./branding/creationSelections");
 // Identifies the running build so clients can reload when a deploy lands.
 const BUILD_ID = String(process.env.RENDER_GIT_COMMIT || process.env.BUILD_ID || Date.now()).slice(0, 12);
 const { ASSET_TYPE, PFP_STYLE_VERSION, assetUrls, withBrandVersion } = require("./pfp");
-const { assetRootFor, readPortraitSync, portraitExists } = require("./branding/pfpAssets");
-const { imageProviderConfigured } = require("./branding/imageProvider");
+const { assetRootFor, readPortraitSync, buildSeed } = require("./branding/pfpAssets");
+const { composeVisualDNA } = require("./branding/buildVisualDNA");
+const { renderNeonCompetitiveSvg } = require("./branding/localPortrait");
 const { animatedPfpMeta } = require("./motionprofiles");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
@@ -490,7 +491,6 @@ class Show {
     this.market = opts.market || new SimMarket({ onChange: () => this.persist() });
     // Brands ride the same show.json writer. Missing versions fall back to seed v1.
     this.brands = opts.brands || new BrandBook({ seeds: false });
-    this.brands.portraitReady = (agentId, version) => portraitExists(this.pfpRoot(), agentId, version);
     // Spectator-created competitors. The house CAST stays 12. Ready guests
     // are seated against that cast; drafts stay off the slate until select.
     this.userAgents = new Map();
@@ -1733,9 +1733,19 @@ class Show {
 
   pfpImageFor(agentId, size, version) {
     const brand = this.brandForPortrait(agentId, version);
-    if (!brand || !brand.visualIdentity) return null;
+    if (!brand || !brand.visualIdentity || !brand.visualIdentity.primaryColor) return null;
     const ver = Number(version) > 0 ? Number(version) : (Number(brand.version) || 1);
-    return readPortraitSync(this.pfpRoot(), agentId, ver, size);
+    const stored = readPortraitSync(this.pfpRoot(), agentId, ver, size);
+    if (stored) return stored;
+    const archetype = (brand.creationSelections && brand.creationSelections.archetype) || brand.archetype;
+    const svg = renderNeonCompetitiveSvg({
+      visualDNA: composeVisualDNA({ archetype, visual: brand.visualIdentity }),
+      seed: buildSeed(`${agentId}_b${ver}`),
+      agentId,
+      archetype,
+      selections: brand.creationSelections || null,
+    });
+    return { buffer: Buffer.from(svg), mime: "image/svg+xml" };
   }
 
   updateSelections(agentId, selections) {
@@ -1781,7 +1791,6 @@ class Show {
   async migrateLegacyPortraits(force = false) {
     const TARGET = 2;
     if (!force && this.pfpMigration >= TARGET) return { migrated: 0, skipped: "done" };
-    if (!imageProviderConfigured()) return { migrated: 0, skipped: "provider_unconfigured" };
     const ids = this.legacyPortraitAgents();
     let migrated = 0; const failed = [];
     for (const id of ids) {
@@ -2001,7 +2010,7 @@ class Show {
     const urls = assetUrls(id);
     const version = Number(brand.version) || 1;
     const stamp = (url) => (url ? withBrandVersion(url, { version }) : url);
-    const ready = portraitExists(this.pfpRoot(), id, version);
+    const ready = Boolean(brand.visualIdentity && brand.visualIdentity.primaryColor);
     const preview = ready
       ? stamp((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master)
       : null;

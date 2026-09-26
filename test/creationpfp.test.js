@@ -89,11 +89,11 @@ const recipePrompt = require("../src/pfp").promptFor(exec);
 assert(!recipePrompt.includes("lda-pfp-v2"), "prompt does not name the retired renderer");
 assert(recipePrompt.includes("Archetype: executive"), "selections are appended to the prompt");
 
-eq(withBrandVersion("/api/show/agents/u_a/pfp.svg", { version: 2 }), "/api/show/agents/u_a/pfp.svg?v=2&s=5", "version query");
-eq(withBrandVersion("/api/show/agents/u_a/pfp.svg?size=96", { version: 3 }), "/api/show/agents/u_a/pfp.svg?size=96&v=3&s=5", "version after size");
+eq(withBrandVersion("/api/show/agents/u_a/pfp.svg", { version: 2 }), "/api/show/agents/u_a/pfp.svg?v=2&s=6", "version query");
+eq(withBrandVersion("/api/show/agents/u_a/pfp.svg?size=96", { version: 3 }), "/api/show/agents/u_a/pfp.svg?size=96&v=3&s=6", "version after size");
 eq(getAgentPfpUrl({
   brand: { version: 4, assets: { canonicalPfp: "/api/show/agents/u_a/pfp.svg?v=4", avatar256: "/api/show/agents/u_a/pfp.svg?size=256&v=4" }, avatarUrl: "/legacy.png" },
-}, 256), "/api/show/agents/u_a/pfp.svg?size=256&v=4&s=5", "sized canonical wins over legacy");
+}, 256), "/api/show/agents/u_a/pfp.svg?size=256&v=4&s=6", "sized canonical wins over legacy");
 
 assert(previewSvg("archetype", "executive") == null, "option previews are not procedural busts");
 assert(previewSvg("archetype", "robot_ai") == null, "robot preview is not a bust");
@@ -173,12 +173,12 @@ function boot(file) {
   });
   const savedKey = process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_API_KEY;
-  let closed = false;
-  try { await unconfigured.generatePortrait(bare.agent.id, { creationSelections: A }); }
-  catch (err) { closed = err.code === "pfp_provider_unconfigured"; }
+  const local = await unconfigured.generatePortrait(bare.agent.id, { creationSelections: A });
   if (savedKey) process.env.OPENAI_API_KEY = savedKey;
-  assert(closed, "missing key fails closed");
-  eq(unconfigured.brands.full(bare.agent.id), null, "missing key does not invent a brand");
+  eq(local.manifest.model, "neon-competitive-local", "generation does not call an image API");
+  assert(local.brand.assets.canonicalPfp.includes("s=6"), "local portrait is stamped");
+  const localFace = unconfigured.pfpImageFor(bare.agent.id, 96, 1);
+  assert(localFace && localFace.mime === "image/webp", "saved portrait is webp without a key");
 
   const first = await show.generatePortrait(id, { creationSelections: A, provider: stub });
   eq(first.brand.version, 1, "first version");
@@ -186,7 +186,7 @@ function boot(file) {
   eq(first.brand.visualDirty, false, "clean");
   eq(first.brand.styleId, "neon-competitive", "style");
   assert(first.brand.assets.canonicalPfp.includes("v=1"), "canonical url is versioned");
-  assert(first.brand.assets.canonicalPfp.includes("s=5"), "style stamp busts old svgs");
+  assert(first.brand.assets.canonicalPfp.includes("s=6"), "style stamp busts old svgs");
   assert(!first.svg, "generation does not return an svg bust");
   const face1 = show.pfpImageFor(id, 96, 1);
   assert(face1 && face1.mime === "image/webp", "served portrait is webp");
@@ -194,7 +194,7 @@ function boot(file) {
   eq(first.brand.animatedPfp.motionProfile, "NEON_COMPETITIVE", "neon motion");
   eq(first.brand.animatedPfp.engine, "neon-competitive", "not the procedural engine");
   eq(first.brand.generation.selections.archetype, "executive", "generation stores selections");
-  assert(show.brands.publicOf(id).pfpUrl.includes("s=5"), "public url appears once the file exists");
+  assert(show.brands.publicOf(id).pfpUrl.includes("s=6"), "public url appears once the file exists");
   const oldUrl = first.brand.assets.canonicalPfp;
   const oldVersion = first.brand.version;
   const again = await show.generatePortrait(id, { creationSelections: B, provider: stub });
@@ -210,7 +210,7 @@ function boot(file) {
   eq(house.brandVersion, "v1", "house brand version untouched");
   assert(!house.pfpRecipe, "house portrait was not regenerated");
   const view = show.brands.publicOf("dracula");
-  assert(!view.pfpUrl, "house cast has no invented portrait");
+  assert(view.pfpUrl && view.pfpUrl.includes("s=6"), "house cast portrait needs no key");
   assert(view.creationSelections && view.creationSelections.archetype, "house gets default selections");
   const reloaded = boot(path.join(dir, "show.json"));
   eq(reloaded.brands.full(id).version, 2, "version reloads");

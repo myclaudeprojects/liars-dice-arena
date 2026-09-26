@@ -1,4 +1,4 @@
-// Neon competitive package: DNA, prompt, fail-closed provider, sized files.
+// Neon competitive package: DNA, prompt, local portraits, sized files.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -50,13 +50,31 @@ eq(buildSeed("executive_viktor", "v1"), "executive_viktor__neon_competitive__v1"
 
 const saved = process.env.OPENAI_API_KEY;
 delete process.env.OPENAI_API_KEY;
-assert(!imageProviderConfigured(), "key is absent");
+assert(imageProviderConfigured(), "portraits do not need a key");
 
 (async () => {
-  let missing = false;
-  try { await createImage({ prompt, width: 1024, height: 1024, seed: buildSeed("executive_viktor") }); }
-  catch (err) { missing = err.code === "pfp_provider_unconfigured"; }
-  assert(missing, "createImage fails closed without a key");
+  const image = await createImage({
+    prompt,
+    width: 256,
+    height: 256,
+    seed: buildSeed("executive_viktor"),
+    agent: neonAgents[0],
+    visualDNA: executive,
+    archetype: "executive",
+  });
+  eq(image.model, "neon-competitive-local", "local model");
+  assert(image.buffer.slice(0, 4).toString() === "RIFF", "webp bytes");
+  const robotImage = await createImage({
+    prompt: "robot",
+    width: 256,
+    height: 256,
+    seed: buildSeed("robot_zeno"),
+    agent: neonAgents[2],
+    visualDNA: robot,
+    archetype: "robot_ai",
+    selections: { bodyType: "full_robot", archetype: "robot_ai" },
+  });
+  assert(!image.buffer.equals(robotImage.buffer), "executive and robot differ");
   if (saved) process.env.OPENAI_API_KEY = saved;
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lda-neon-"));

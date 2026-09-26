@@ -36,7 +36,9 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   eq(ca.concepts.length, 4, "four concepts A");
   eq(cb.concepts.length, 4, "four concepts B");
   for (const c of ca.concepts) eq(c.creationSelections.archetype, "executive", "concept carries the user's selections");
-  assert(!ca.concepts[0].pfpSvg && !cb.concepts[0].pfpSvg, "concepts do not invent svg busts");
+  assert(ca.concepts[0].pfpSvg && ca.concepts[0].pfpSvg.includes('data-engine="local"'), "concepts carry a local portrait");
+  assert(ca.concepts[0].pfpSvg !== cb.concepts[0].pfpSvg, "executive and robot portraits differ");
+  assert(!ca.concepts[0].pfpSvg.includes("neon-noir") && !cb.concepts[0].pfpSvg.includes("neon-noir"), "concepts are not noir busts");
   assert(ca.concepts[0].pfp.prompt !== cb.concepts[0].pfp.prompt, "executive and robot are different prompts");
   assert(cb.concepts[0].pfp.prompt.includes("robot_ai"), "robot selections reach the prompt");
   assert(ca.concepts[0].pfp.prompt.includes("glasses"), "accessory selection reaches the prompt");
@@ -58,7 +60,8 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   eq(locked.brand.status, "READY", "ready after save");
   assert(/[?&]v=1(&|$)/.test(locked.brand.assets.canonicalPfp), "canonical URL is version-stamped");
   eq(locked.brand.animatedPfp.sourceCanonicalPfp, locked.brand.assets.canonicalPfp, "animation derives from the chosen portrait");
-  eq(show.pfpImageFor(a.agent.id, 512), null, "select does not invent a portrait file");
+  const selectedFace = show.pfpImageFor(a.agent.id, 512);
+  assert(selectedFace && selectedFace.mime === "image/svg+xml", "select serves a local portrait");
   eq(show.pfpSvgFor(a.agent.id, 512), null, "select does not draw svg");
   const view1 = show.brands.publicOf(a.agent.id);
   eq(view1.version, 1, "public view version 1");
@@ -82,13 +85,15 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   eq(round2.concepts.length, 4, "regenerate produces four concepts");
   eq(round2.regenerating, true, "regenerate round reported");
   eq(show.userAgents.get(a.agent.id).status, "READY", "agent stays playable during regeneration");
-  eq(show.pfpImageFor(a.agent.id, 512), null, "no portrait file until generation");
+  assert(show.pfpImageFor(a.agent.id, 512), "portrait still renders while regenerating");
   const pick2 = round2.concepts[1];
   const locked2 = show.selectConcept(a.agent.id, pick2.id);
   eq(locked2.brand.version, 2, "second save is version 2");
   eq(locked2.brand.creationSelections.bodyType, "full_robot", "version 2 stores the new selections");
   assert(/[?&]v=2(&|$)/.test(locked2.brand.assets.canonicalPfp), "URL changes with the version (cache bust)");
-  eq(show.pfpImageFor(a.agent.id, 512), null, "a new concept still has no invented image");
+  const faceV1 = show.pfpImageFor(a.agent.id, 512, 1);
+  const faceV2 = show.pfpImageFor(a.agent.id, 512, 2);
+  assert(faceV1 && faceV2 && !faceV1.buffer.equals(faceV2.buffer), "versions render different portraits");
   eq(show.pfpSvgFor(a.agent.id, 512, 1), null, "old version is not a procedural drawing");
   eq(show.brands.publicOf(a.agent.id).version, 2, "public view moves to version 2");
   eq(show.userAgents.get(a.agent.id).visualDirty, false, "draft clean after save");
@@ -104,7 +109,7 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   const reloaded = again.brands.full(a.agent.id);
   eq(reloaded.version, 3, "version persists");
   eq(reloaded.creationSelections.archetype, "robot_ai", "selections persist");
-  eq(again.pfpImageFor(a.agent.id, 512), null, "reload does not invent a portrait");
+  assert(again.pfpImageFor(a.agent.id, 512), "reload still serves the local portrait");
 
   console.log("pfp regeneration ok");
 })().catch((e) => { console.error(e); process.exit(1); });

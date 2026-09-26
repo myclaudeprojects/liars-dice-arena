@@ -45,12 +45,12 @@ eq(profileForBrand(book.full("caesar")), "NEON_COMPETITIVE", "caesar profile");
 eq(profileForBrand(book.full("reaper")), "NEON_COMPETITIVE", "reaper profile");
 eq(profileForBrand(book.full("athena")), "NEON_COMPETITIVE", "athena uses the neon profile");
 eq(profileForBrand(book.full("jester")), "NEON_COMPETITIVE", "jester profile");
-assert(!book.publicOf("athena").pfpUrl, "athena has no portrait until one is generated");
+assert(book.publicOf("athena").pfpUrl.includes("s=6"), "athena portrait is served without a key");
 eq(profileForBrand({ animatedPfp: { motionProfile: "REGAL_STEADY" } }), "REGAL_STEADY", "explicit profile still wins");
 
 for (const id of ["dracula", "caesar", "reaper"]) {
   const view = book.publicOf(id);
-  assert(!view.animatedPfp, id + " public view has no procedural rig");
+  assert(view.animatedPfp && view.animatedPfp.enabled === false && view.animatedPfp.engine === "neon-competitive", id + " public view is a static poster");
   eq(view.pfpStyleId, "neon-competitive", id + " public style");
   assert(!book.full(id).animatedPfp, id + " disk record stays free of the view field");
 }

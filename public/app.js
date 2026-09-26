@@ -2127,10 +2127,8 @@ function creatorView() {
   } else if (step === 2) {
     body = `<section class="brand-options">
       <div class="section-head">
-        <div class="section-head__titles">
-          <span class="kicker">Character options</span>
-          <h2>One portrait. These choices build it.</h2>
-        </div>
+        <span class="kicker">Character options</span>
+        <h2>One portrait. These choices build it.</h2>
         <div class="section-head__actions">
           <button class="lda-btn lda-btn-ghost" type="button" data-random-look="1">Randomize again</button>
         </div>

@@ -318,6 +318,13 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
   gap: var(--space-2) var(--space-3);
   flex-wrap: wrap;
 }
+.section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+}
 .page-head {
   margin: 0 0 var(--space-3);
   min-height: var(--tap);
@@ -334,6 +341,14 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 }
 .page-head .kicker,
 .section-head .kicker { margin: 0 0 var(--space-1); }
+.section-head .kicker { grid-column: 1 / -1; margin: 0; }
+.section-head h2 { grid-column: 1; min-width: 0; }
+.section-head__actions { grid-column: 2; grid-row: 2; margin-left: 0; }
+@media (max-width: 560px) {
+  .section-head .kicker { grid-column: 1; grid-row: 1; align-self: center; }
+  .section-head__actions { grid-column: 2; grid-row: 1; justify-self: end; }
+  .section-head h2 { grid-column: 1 / -1; grid-row: 2; }
+}
 .section-head { margin: 0 0 var(--space-2); }
 .section-head h2 {
   font-family: var(--lda-font-display);

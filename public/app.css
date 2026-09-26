@@ -957,7 +957,8 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
     transform: none !important;
     opacity: 1;
   }
-  .animated-pfp [data-layer] {
+  .animated-pfp [data-layer],
+  .animated-pfp.is-overlay img {
     animation: none !important;
     transform: none !important;
   }
@@ -1082,6 +1083,40 @@ h1.page { font-family: var(--lda-font-display); font-size: clamp(30px, 9vw, 36px
 }
 .animated-pfp[data-state="loser"] {
   filter: saturate(0.85) brightness(0.88);
+}
+/* Still mint frames. Raster portraits borrow the rig's idle float: a slow rise and breath. */
+.animated-pfp.is-playing.is-overlay {
+  overflow: hidden;
+}
+.animated-pfp.is-playing.is-overlay img {
+  transform-origin: 50% 42%;
+  animation: lda-pfp-idle 5.6s ease-in-out infinite;
+  animation-delay: var(--pfp-delay, 0s);
+}
+.animated-pfp.is-paused.is-overlay img {
+  animation-play-state: paused;
+}
+.animated-pfp[data-context="watch"] img {
+  animation: none;
+  transform: none;
+}
+.agent-card__portrait > .animated-pfp {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.pfp-concept__image-wrap.animated-pfp {
+  border-radius: 16px;
+  background: var(--lda-avatar-bg);
+  box-shadow: none;
+}
+@keyframes lda-pfp-idle {
+  0%, 100% { transform: translate3d(0, 1.2%, 0) scale(1.035); }
+  50% { transform: translate3d(0, -2.4%, 0) scale(1.06); }
 }
 .agent-hero .pfp-sizes { justify-content: center; margin-bottom: var(--space-3); }
 .swatches { display: flex; gap: var(--space-1); }

@@ -457,9 +457,11 @@ function matchupSide(person, side, plate, state) {
   const kind = plate || "hero";
   const px = kind === "hero" ? 320 : kind === "rival" ? 160 : 160;
   const record = person && person.record ? `<small class="matchup-agent__record">${esc(person.record)}</small>` : "";
-  const face = kind === "hero"
-    ? facePlate(person, px, { animate: true, context: "hero", state: state || "idle" })
-    : facePlate(person, px);
+  const face = facePlate(person, px, {
+    animate: true,
+    context: kind === "hero" ? "hero" : "matchup",
+    state: state || "idle",
+  });
   return `<div class="matchup-agent matchup-agent--${side} who hero-agent" data-cast="${esc((person && (person.id || person.agentId)) || "")}"${brandStyle(person)}>
     <div class="portrait-plate portrait-plate--${kind}">${face}</div>
     ${titleLine(person)}
@@ -509,12 +511,15 @@ function pfpMini(svg, size) {
   const uri = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(art);
   return `<img class="pfp-mini${size === 96 ? " is-96" : ""}" src="${uri}" alt="" width="${size}" height="${size}">`;
 }
+function motionConceptWrap(inner) {
+  return `<span class="pfp-concept__image-wrap animated-pfp" data-inline="1" data-context="create" data-state="idle" data-style="neon-competitive" data-motion="NEON_COMPETITIVE">${inner}<span class="pfp-concept__ring"></span></span>`;
+}
 function conceptPortrait(c) {
   const visual = c.visualIdentity || {};
   const on = c.id === creator.selectedId;
   const accent = hexColor(visual.accentColor) || "#4AD7FF";
   return `<button class="concept-card pfp-concept lda-card${on ? " is-selected" : ""}" type="button" data-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait option ${esc(String((c.conceptNumber || 0)))}" style="--agent-accent:${esc(accent)}">
-    <span class="pfp-concept__image-wrap">${conceptArt(c)}<span class="pfp-concept__ring"></span></span>
+    ${motionConceptWrap(conceptArt(c))}
     <span class="concept-copy">
       <span class="concept-name"><b>${esc(creator.form.name)}</b><span class="concept-emblem" style="color:${esc(hexColor(visual.accentColor) || "#e4c27a")}">${safeSvg(c.emblemSvg)}</span></span>
       <span class="brand-title">${esc(c.title)}</span>
@@ -762,7 +767,7 @@ function trendingBlock(hot) {
   const person = { id: hot.agentId, name: hot.name, brand: hot.brand, record: known && known.record };
   return `<section class="section"><h2>Trending</h2>
     <button class="rowbtn trending-card" type="button" data-agent="${esc(hot.agentId)}" data-cast="${esc(hot.agentId)}"${brandStyle(person)}>
-      <span class="portrait-plate portrait-plate--roster">${facePlate(person, 96)}</span>
+      <span class="portrait-plate portrait-plate--roster">${facePlate(person, 96, { animate: true, context: "roster", state: "idle" })}</span>
       <span><b>${esc(hot.name)}</b>${titleLine(person)}</span>
       <div class="fine">${esc(hot.text || "")}${person.record ? ` · ${esc(person.record)}` : ""}</div>
     </button>
@@ -2265,10 +2270,14 @@ function creatorView() {
       })
       : "NEON_COMPETITIVE";
     const revealId = (creator.draft && creator.draft.agent && creator.draft.agent.id) || "";
+    const revealSrc = pfpPath(reveal.canonicalPfp || (c && c.pfpUrl) || "");
+    const revealArt = revealSrc
+      ? `<span class="pfp-frame"><img src="${esc(revealSrc)}" alt=""></span>`
+      : ((c && c.pfpUrl) ? conceptArt(c) : pfpFrame(reveal.svg || (c && c.pfpSvg)));
     body = `<section class="agent-reveal" style="--agent-accent:${esc(accent)};--agent-primary:${esc(primary)}">
       <div class="agent-reveal__aura agent-reveal__glow" aria-hidden="true"></div>
       ${emblem ? `<div class="agent-reveal__emblem" aria-hidden="true">${emblem}</div>` : ""}
-      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-style="neon-competitive" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${(c && c.pfpUrl) ? conceptArt(c) : pfpFrame(reveal.svg || (c && c.pfpSvg))}</div>
+      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-style="neon-competitive" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${revealArt}</div>
       <div class="agent-reveal__identity agent-reveal__copy">
         <span class="agent-reveal__title">${esc(reveal.title || (c && c.title) || "")}</span>
         <h1>${esc(reveal.name || f.name)}</h1>
@@ -2524,7 +2533,7 @@ function agentsView() {
     agents.map((a) => {
       const roster = a.roster === "user" ? (a.status === "READY" ? "Your competitor" : "Brand in progress") : "";
       return `<button class="agent-card" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
-        <span class="agent-card__portrait">${facePlate(a, 320)}</span>
+        <span class="agent-card__portrait">${facePlate(a, 320, { animate: true, context: "roster", state: "idle" })}</span>
         <span class="agent-card__identity">
           ${titleLine(a)}
           <b class="agent-card__name">${esc(a.name)}</b>
@@ -2597,7 +2606,7 @@ function regenConceptCard(c, name) {
   const on = portraitEdit && c.id === portraitEdit.selectedId;
   const accent = hexColor(visual.accentColor) || "#4AD7FF";
   return `<button class="concept-card pfp-concept lda-card${on ? " is-selected" : ""}" type="button" data-regen-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait option ${esc(String(c.conceptNumber || 0))}" style="--agent-accent:${esc(accent)}">
-    <span class="pfp-concept__image-wrap">${conceptArt(c)}<span class="pfp-concept__ring"></span></span>
+    ${motionConceptWrap(conceptArt(c))}
     <span class="concept-copy"><span class="concept-name"><b>${esc(name)}</b></span><span class="brand-title">${esc(c.title)}</span></span>
     <span class="pfp-select pfp-concept__label">${on ? "Selected" : "Option " + esc(String(c.conceptNumber || ""))}</span>
   </button>`;

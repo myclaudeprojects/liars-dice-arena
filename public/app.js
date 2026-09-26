@@ -2202,6 +2202,12 @@ function openArgusLaunch(agent) {
   render();
 }
 
+function applyStoredAgentName(agent) {
+  if (!creator || !agent || !agent.name) return;
+  creator.form.name = agent.name;
+  if (creator.draft && creator.draft.agent) creator.draft.agent.name = agent.name;
+}
+
 function creatorPayload() {
   const f = creator.form;
   return {
@@ -2238,7 +2244,7 @@ function creatorView() {
   if (step === 1) {
     const options = creator.archetypes.map((row) => `<option value="${esc(row.id)}"${row.id === f.archetype ? " selected" : ""}>${esc(row.label || archetypeLabel(row.id))}</option>`).join("");
     body = `
-      <label>Name <span class="fine">(optional — leave blank and we name them)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Dracula"></label>
+      <label>Name <span class="fine">(optional — saved on the roster as LDA plus this name)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Dracula"></label>
       <label>Archetype<select name="archetype">${options}</select></label>
       <p class="fine">Persona play. The show seats them. You watch and predict with Arena Credits.</p>
       ${sliderField("aggression", "Aggression")}
@@ -2407,7 +2413,9 @@ async function generateAgent() {
         body: JSON.stringify(creatorPayload()),
       });
       creator.draft = created;
+      applyStoredAgentName(created.agent);
     }
+    applyStoredAgentName(creator.draft && creator.draft.agent);
     const id = creator.draft.agent.id;
     const generated = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/generate", {
       method: "POST",
@@ -2464,7 +2472,9 @@ async function runConcepts(vary) {
         body: JSON.stringify(creatorPayload()),
       });
       creator.draft = created;
+      applyStoredAgentName(created.agent);
     }
+    applyStoredAgentName(creator.draft && creator.draft.agent);
     const id = creator.draft.agent.id;
     const body = { count: 4, vary: vary || "all" };
     if (vary && vary !== "all" && creator.selectedId) body.anchorConceptId = creator.selectedId;

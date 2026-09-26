@@ -160,7 +160,7 @@ function defineBrand(row) {
 const SEED_BRANDS = [
   defineBrand({
     agentId: "dracula",
-    name: "Dracula",
+    name: "LDA Dracula",
     title: "The Gambler",
     tagline: "He wins before the dice are revealed.",
     archetype: "GOTHIC_GAMBLER",
@@ -188,7 +188,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "caesar",
-    name: "Caesar",
+    name: "LDA Caesar",
     title: "The Strategist",
     tagline: "The bid waits until the table is thin.",
     archetype: "IMPERIAL_COMMANDER",
@@ -216,7 +216,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "reaper",
-    name: "The Reaper",
+    name: "LDA The Reaper",
     title: "The Chaos Agent",
     tagline: "There is no pattern until you invent one.",
     archetype: "SPECTRAL_WILDCARD",
@@ -244,7 +244,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "athena",
-    name: "Athena",
+    name: "LDA Athena",
     title: "The Reader",
     tagline: "She calls when the count cannot hold.",
     archetype: "AEGIS_READER",
@@ -272,7 +272,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "shark",
-    name: "The Shark",
+    name: "LDA The Shark",
     title: "The Closer",
     tagline: "A thin bid gets more expensive from here.",
     archetype: "PREDATORY_DUELIST",
@@ -300,7 +300,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "oracle",
-    name: "The Oracle",
+    name: "LDA The Oracle",
     title: "The Clock",
     tagline: "Rarely spectacular, and never out of time.",
     archetype: "SERENE_ORACLE",
@@ -328,7 +328,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "fox",
-    name: "The Fox",
+    name: "LDA The Fox",
     title: "The Edge",
     tagline: "The smallest lie that still raises the price.",
     archetype: "TRICKSTER",
@@ -356,7 +356,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "brutus",
-    name: "Brutus",
+    name: "LDA Brutus",
     title: "The Blade",
     tagline: "A thin bid is an insult he answers.",
     archetype: "ASSASSIN",
@@ -384,7 +384,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "monk",
-    name: "The Monk",
+    name: "LDA The Monk",
     title: "The Anchor",
     tagline: "He matches the count and calls the impossible.",
     archetype: "MONK",
@@ -412,7 +412,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "siren",
-    name: "The Siren",
+    name: "LDA The Siren",
     title: "The Tempo",
     tagline: "She changes the count to see who flinches.",
     archetype: "SORCERER",
@@ -440,7 +440,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "miser",
-    name: "The Miser",
+    name: "LDA The Miser",
     title: "The Grinder",
     tagline: "Nothing is given, and nothing unpriced is taken.",
     archetype: "PATIENT_GRINDER",
@@ -468,7 +468,7 @@ const SEED_BRANDS = [
   }),
   defineBrand({
     agentId: "jester",
-    name: "The Jester",
+    name: "LDA The Jester",
     title: "The Noise",
     tagline: "The bid is a joke until the call lands.",
     archetype: "MADMAN",

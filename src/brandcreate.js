@@ -354,6 +354,20 @@ function cleanName(value, taken) {
   return name;
 }
 
+// Arena display name. "Dracula" and "lda Dracula" both store as "LDA Dracula".
+// The prefix is not added twice, and the result stays within 32 characters.
+function brandDisplayName(value) {
+  const cleaned = String(value || "").replace(/\s+/g, " ").trim();
+  if (/^lda$/i.test(cleaned)) return "LDA";
+  const rest = /^lda /i.test(cleaned) ? cleaned.slice(4).trim() : cleaned;
+  const body = rest.slice(0, 28).trim();
+  return body ? "LDA " + body : "LDA";
+}
+
+function storedAgentName(value, taken) {
+  return brandDisplayName(cleanName(value, taken));
+}
+
 function cleanNameStrict(value) {
   const name = String(value || "").replace(/\s+/g, " ").trim();
   if (!/^[A-Za-z][A-Za-z0-9 '\-]{1,31}$/.test(name)) {
@@ -710,7 +724,7 @@ function allocateId(name, taken) {
 
 function createDraft(input, ctx) {
   const body = input && typeof input === "object" ? input : {};
-  const name = cleanName(body.name, ctx && ctx.names);
+  const name = storedAgentName(body.name, ctx && ctx.names);
   const shortDescription = cleanDescription(body.shortDescription || body.description, body.archetype);
   const archetype = String(body.archetype || "").trim().toUpperCase();
   if (!ARCHETYPE_IDS.includes(archetype)) {
@@ -1152,6 +1166,8 @@ module.exports = {
   humanize,
   emblemSvg,
   createDraft,
+  brandDisplayName,
+  storedAgentName,
   normalizeDisplayName,
   buildConcepts,
   retouchConcepts,

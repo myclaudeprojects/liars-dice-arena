@@ -184,6 +184,8 @@ function mockRes() {
   eq(suggested.launchDevBuy, "0", "no dev buy");
   eq(launch.suggestLaunch({ name: "Dracula", publicBase: "https://liars-dice-arena.onrender.com" }).launchName, "LDA Dracula", "chosen name is prefixed");
   eq(launch.suggestLaunch({ name: "LDA Dracula" }).launchName, "LDA Dracula", "LDA prefix is not doubled");
+  eq(launch.suggestLaunch({ name: "LDA Dracula", takenTickers: [] }).launchTicker, "DRACULA", "ticker comes from the name after LDA");
+  eq(launch.suggestLaunch({ name: "LDA Vesper", takenTickers: ["VESPER"] }).launchTicker, "VESPER2", "a stored LDA name still avoids a taken ticker");
   eq(launch.suggestLaunch({ name: "lda Dracula" }).launchName, "LDA Dracula", "prefix check ignores case");
   eq(launch.suggestLaunch({ name: "Supercalifragilisticexpialidocious" }).launchName, "LDA Supercalifragilisticexpialid", "prefix still fits the name limit");
   const longBlurb = "word ".repeat(80).trim();

@@ -147,6 +147,12 @@
     return base + "/";
   }
 
+  function tickerBody(name) {
+    const cleaned = cleanText(name, 32);
+    const rest = /^lda /i.test(cleaned) ? cleaned.slice(4).trim() : cleaned;
+    return rest || cleaned;
+  }
+
   function brandTokenName(name) {
     const cleaned = cleanText(name, 32);
     const rest = /^lda /i.test(cleaned) ? cleaned.slice(4) : cleaned;
@@ -209,7 +215,7 @@
     if (body.imageUrl) candidates.push(String(body.imageUrl));
     return {
       launchName: brandTokenName(body.name),
-      launchTicker: deriveTicker(body.name, body.takenTickers),
+      launchTicker: deriveTicker(tickerBody(body.name), body.takenTickers),
       launchImage: fitImageUri(candidates, fallback),
       launchWebsite: site,
       launchDescription: brandDescription(body.description, site),

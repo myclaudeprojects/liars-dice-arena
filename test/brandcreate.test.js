@@ -46,6 +46,8 @@ function signatures(concepts) {
   const showB = boot(fileB);
   const a = showA.createAgent(INPUT);
   const b = showB.createAgent(INPUT);
+  eq(a.agent.name, "LDA Vesper", "typed name is stored with the LDA prefix");
+  eq(b.agent.name, "LDA Vesper", "the same typed name stores the same roster name");
   eq(a.identity.title, b.identity.title, "identity is deterministic");
   eq(a.identity.visualIdentity.emblem, b.identity.visualIdentity.emblem, "visual DNA is deterministic");
   assert(wordCount(a.identity.tagline) >= 4 && wordCount(a.identity.tagline) <= 14, "tagline length");
@@ -82,7 +84,8 @@ function signatures(concepts) {
   const fileC = path.join(dir, "c.json");
   const showC = boot(fileC);
   const short = showC.createAgent({ ...INPUT, name: "Test" });
-  eq(short.agent.id, "u_test", "short name uses the full slug");
+  eq(short.agent.name, "LDA Test", "short name keeps the prefix");
+  eq(short.agent.id, "u_ldatest", "short name slugs the stored name");
   showC.userAgents.get(short.agent.id).status = "READY";
   let caseHit = false;
   try { showC.createAgent({ ...INPUT, name: "test" }); }
@@ -93,22 +96,32 @@ function signatures(concepts) {
   catch (e) { spaced = e.code === "name_collision"; }
   assert(spaced, "whitespace and case still collide");
   const longer = showC.createAgent({ ...INPUT, name: "test agent x" });
-  eq(longer.agent.id, "u_testagentx", "full display name slugs in full");
-  assert(longer.agent.id !== "u_test", "test agent x is distinct from u_test");
+  eq(longer.agent.name, "LDA test agent x", "the typed words stay after the prefix");
+  eq(longer.agent.id, "u_ldatestagentx", "full display name slugs in full");
+  assert(longer.agent.id !== "u_ldatest", "test agent x is distinct from u_ldatest");
   showC.userAgents.get(longer.agent.id).status = "READY";
   let fullCase = false;
   try { showC.createAgent({ ...INPUT, name: "Test Agent X" }); }
   catch (e) { fullCase = e.code === "name_collision"; }
   assert(fullCase, "the same full name collides");
   const suffixed = showC.createAgent({ ...INPUT, name: "Test-Agent-X" });
-  eq(suffixed.agent.id, "u_testagentx_2", "a taken slug gets a short suffix");
-  assert(suffixed.agent.id !== "u_test" && suffixed.agent.id !== "u_testagentx", "suffix id is distinct");
-  for (const house of ["Caesar", "The Shark", "the shark"]) {
+  eq(suffixed.agent.name, "LDA Test-Agent-X", "hyphenated name keeps the prefix");
+  eq(suffixed.agent.id, "u_ldatestagentx_2", "a taken slug gets a short suffix");
+  assert(suffixed.agent.id !== "u_ldatest" && suffixed.agent.id !== "u_ldatestagentx", "suffix id is distinct");
+  for (const house of ["Caesar", "LDA Caesar", "The Shark", "the shark", "lda the shark"]) {
     let blocked = false;
     try { showC.createAgent({ ...INPUT, name: house }); }
     catch (e) { blocked = e.code === "name_collision"; }
     assert(blocked, house + " stays reserved");
   }
+  const already = showC.createAgent({ ...INPUT, name: "LDA Already" });
+  eq(already.agent.name, "LDA Already", "a typed LDA prefix is not doubled");
+  const long = showC.createAgent({ ...INPUT, name: "Supercalifragilisticexpialidocious" });
+  eq(long.agent.name, "LDA Supercalifragilisticexpialid", "a long roster name still fits 32 characters");
+  eq(long.agent.name.length <= 32, true, "stored name length");
+  const resumed = showC.createAgent({ ...INPUT, name: "Already" });
+  eq(resumed.agent.id, already.agent.id, "Dracula and LDA Dracula resume the same unfinished agent");
+  eq(resumed.resumed, true, "the second create resumes");
 
   const picked = again.concepts[1];
   const locked = showA.selectConcept(a.agent.id, picked.id);
@@ -169,6 +182,9 @@ function signatures(concepts) {
   assert(reloaded.agentList().some((row) => row.id === a.agent.id), "list reloads");
 
   const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
+  assert(app.includes("saved on the roster as LDA plus this name"), "the name field says the roster name is prefixed");
+  assert(app.includes("applyStoredAgentName"), "reveal uses the stored agent name");
+  assert(CAST.every((c) => c.id && c.name.startsWith("LDA ") && !c.name.startsWith("LDA LDA")), "house display names are prefixed and ids stay");
   assert(app.includes("Create agent"), "agents tab labels the action");
   assert(app.includes("data-create-agent"), "empty and list states can open the wizard");
   assert(app.includes('class="lda-btn lda-btn-primary" type="button" data-create-agent="1"'), "create agent is an inline lda-btn on the title row");

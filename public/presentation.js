@@ -87,6 +87,23 @@
     return `${n} ${word}`.trim().toUpperCase();
   }
 
+  // While the cups are open, the number on the seat is the dice being
+  // counted against the bid. The lost die is applied on the next roll.
+  // Using the already-reduced seat total here makes a legal bid look
+  // bigger than the dice still on the table.
+  function displayedDice(match, seat) {
+    if (!seat) return 0;
+    const reveal = match && Array.isArray(match.reveal) ? match.reveal : null;
+    if (reveal && reveal.length) {
+      const hand = reveal.find((h) => h && h.id === seat.id);
+      if (hand && Array.isArray(hand.dice)) return hand.dice.length;
+      return 0;
+    }
+    if (seat.alive === false) return 0;
+    const n = Number(seat.dice);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
   function seatName(match, id) {
     const seat = (match && match.seats || []).find((s) => s.id === id);
     return seat ? seat.name : "";
@@ -476,6 +493,7 @@
     transition,
     countFace,
     bidWords,
+    displayedDice,
     presentationOf,
     reactionsOf,
     roundCall,

@@ -6,8 +6,8 @@
 // A regulated partner would settle real money. This process does not.
 
 const crypto = require("crypto");
-const { Match, makeRng } = require("./engine");
-const { MockAgent, safeFallback, bidFacts, decisionRng } = require("./agents");
+const { Match, makeRng, bidAllowed } = require("./engine");
+const { MockAgent, safeFallback, bidFacts, decisionRng, gatePersonalClaim } = require("./agents");
 const { CAST, character, pairSchedule } = require("./characters");
 const { SimMarket, pricesFromRecords, DEFAULT_STAKE } = require("./simmarket");
 const { EVENT_MAP } = require("./marketservice");
@@ -327,12 +327,14 @@ async function playExhibit({ agents, seed, matchId = null, onEvent = async () =>
     let trial = played;
     // Illegal moves are swapped for a legal fallback before the engine sees them.
     // The sleep is presentation. It does not choose the action.
+    // A higher count is not enough: the quantity has to fit the dice still
+    // in live cups, on a real face.
     const action = trial.action;
-    const illegalBid = action.type === "bid" && view.currentBid && !(
-      action.count > view.currentBid.count || (action.count === view.currentBid.count && action.face > view.currentBid.face)
-    );
-    const illegalOpen = action.type === "challenge" && !view.currentBid;
-    if (illegalBid || illegalOpen || (action.type !== "bid" && action.type !== "challenge")) {
+    const heldDice = view.you && Array.isArray(view.you.dice) ? view.you.dice.length : 0;
+    trial = { ...trial, thought: gatePersonalClaim(trial.thought, heldDice) };
+    const bidOk = action && action.type === "bid" && bidAllowed(view.currentBid, action.count, action.face, view.totalDice);
+    const callOk = action && action.type === "challenge" && view.currentBid;
+    if (!bidOk && !callOk) {
       trial = safeFallback(view, "illegal");
     }
     const pace = classifyPace(view, trial.action);
@@ -1196,7 +1198,12 @@ class Show {
           }
           // LMSR prices move only on trades. Dice do not reprice the book.
           this._markFromDice();
-          this._syncDice(ev.counts);
+          // The bid on screen was made against the cups being opened.
+          // countsAfter has already taken the lost die off. Publishing that
+          // under the same bid makes a legal quantity look bigger than the
+          // dice still shown. The next roll applies the loss, after the bid
+          // has left the table.
+          this._syncDice(ev.beforeCounts);
         }
         this.emit({ type: ev.type, matchId: m.matchId, ...ev, narrative: m.narrative, price: this._livePrice(m) });
         this.emitState();

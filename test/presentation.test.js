@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const {
   presentationOf, reactionsOf, roundCall, transition, commandFor, commandKey,
-  direct, AnimationDirector, bidWords, pressureLabel, nextHint, broadcastStage, countFace,
+  direct, AnimationDirector, bidWords, displayedDice, pressureLabel, nextHint, broadcastStage, countFace,
   storySource, storyKicker, storyLines, tendencyLines,
 } = require("../public/presentation");
 const { countShown } = require("../public/motion");
@@ -252,5 +252,23 @@ assert(!tendencyLines({ line: "Caesar remembers the last bid" }).some((line) => 
 assert(app.includes("arena-shell") && app.includes("dice-tray") && app.includes("thought-orbit") && app.includes("liar-overlay"), "broadcast arena markup");
 assert(app.includes("scrollHold") && !app.includes("scrollIntoView"), "live updates do not pull the viewport");
 assert(css.includes("cupLift") && css.includes("thinkOrbit") && css.includes("translateX(-50%)"), "cups, orbit, and floating nav");
+
+const earlyLoss = {
+  phase: "live",
+  bid: { count: 3, face: 6, name: "Dracula" },
+  seats: [
+    { id: "dracula", dice: 2, alive: true },
+    { id: "caesar", dice: 0, alive: false },
+  ],
+  reveal: [
+    { id: "dracula", dice: [6, 2] },
+    { id: "caesar", dice: [1] },
+  ],
+};
+eq(displayedDice(earlyLoss, earlyLoss.seats[0]), 2, "bidder's cup is the reveal, not the reduced seat");
+eq(displayedDice(earlyLoss, earlyLoss.seats[1]), 1, "the loser still has the die being counted");
+assert(earlyLoss.bid.count <= displayedDice(earlyLoss, earlyLoss.seats[0]) + displayedDice(earlyLoss, earlyLoss.seats[1]), "bid fits the open cups");
+eq(displayedDice({ seats: earlyLoss.seats, reveal: null }, earlyLoss.seats[1]), 0, "after the cups close, an eliminated seat shows zero");
+eq(displayedDice({ seats: earlyLoss.seats, reveal: [] }, earlyLoss.seats[0]), 2, "an empty reveal uses the seat count");
 
 console.log("presentation ok");

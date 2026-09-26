@@ -107,6 +107,8 @@ function validateAndReplay(log, { wildOnes = true, claimedWinnerId = null, expec
   let winnerId = null;
   let terminal = false;
   let prevKind = null;
+  let startingDice = null;
+  let expectedRoll = null;
 
   for (let i = 0; i < log.length; i++) {
     const ev = log[i];
@@ -132,6 +134,7 @@ function validateAndReplay(log, { wildOnes = true, claimedWinnerId = null, expec
       const seats = ev.seats || [];
       if (seats.length < 2) return fail("EVENT_SEQUENCE_INVALID", "need seats");
       players = seats.map((s) => ({ id: s.id, name: s.name || s.id, alive: true, diceCount: 0, dice: [] }));
+      startingDice = Number.isInteger(ev.diceCount) ? ev.diceCount : null;
     } else if (kind === "DICE_ROLLED") {
       currentBid = null;
       callerId = null;
@@ -149,6 +152,28 @@ function validateAndReplay(log, { wildOnes = true, claimedWinnerId = null, expec
         }
         p.dice = faces.slice();
         p.diceCount = faces.length;
+      }
+      if (expectedRoll) {
+        for (const [id, n] of expectedRoll) {
+          const hand = (ev.hands || []).find((h) => h.id === id);
+          const got = hand && Array.isArray(hand.dice) ? hand.dice.length : null;
+          if (got !== n) return fail("GAME_RULE_VIOLATION", "roll does not match dice remaining after the last loss");
+        }
+        expectedRoll = null;
+      } else if (startingDice != null) {
+        for (const hand of ev.hands || []) {
+          const faces = Array.isArray(hand.dice) ? hand.dice : [];
+          if (faces.length !== startingDice) {
+            return fail("GAME_RULE_VIOLATION", "opening roll does not match the match dice count");
+          }
+        }
+      }
+    } else if (kind === "ROUND_STARTED") {
+      const rows = ev.counts || [];
+      if (rows.length !== players.length) return fail("GAME_RULE_VIOLATION", "hand is missing a seat");
+      for (const row of rows) {
+        const p = players.find((x) => x.id === row.id);
+        if (!p || p.diceCount !== row.dice) return fail("GAME_RULE_VIOLATION", "hand count does not match the roll");
       }
     } else if (kind === "BID_PLACED") {
       const bid = { count: ev.count, face: ev.face, byId: ev.byId || ev.actorId };
@@ -198,6 +223,7 @@ function validateAndReplay(log, { wildOnes = true, claimedWinnerId = null, expec
         loser.diceCount = Math.max(0, loser.diceCount - 1);
         if (loser.diceCount <= 0) loser.alive = false;
       }
+      expectedRoll = new Map(players.map((p) => [p.id, p.diceCount]));
       currentBid = null;
     } else if (kind === "PLAYER_ELIMINATED") {
       const p = players.find((x) => x.id === (ev.id || ev.actorId));

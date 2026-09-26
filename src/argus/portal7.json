@@ -1,0 +1,14 @@
+{
+  "chainId": 5042,
+  "chainIdHex": "0x13b2",
+  "portalNumber": 7,
+  "portal": "0xB021Be536808f551b31789422Fd28a6c9c6e97Da",
+  "portal6DoNotUse": "0xA5628A11c412596E1f63b75a2C0284F843C549d6",
+  "quoteAsset": "0x3600000000000000000000000000000000000000",
+  "quoteDecimals": 6,
+  "hookFlags": "0x2044",
+  "bundleUrl": "https://arguspad.io/argus-v4.json",
+  "bundleSha256": "94f7e126fd2f0a9fe34f1c4b82d7f8082eef9757a5822895f3c0a6d1c9d3da1f",
+  "abiFile": "portal7.abi.json",
+  "abiOrigin": "Sourcify full_match for ArgusV4Portal7 on Arc chain 5042. The published argus-v4.json names Portal #6 at addresses.portal; new launches use the portal7 section. This ABI is the verified runtime of that Portal #7 contract."
+}

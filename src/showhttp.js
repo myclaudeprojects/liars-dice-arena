@@ -2,6 +2,8 @@
 // Test credits only. No wallet routes.
 
 const { ERROR_TEXT, DEFAULT_STAKE, THEORY_TAGS } = require("./simmarket");
+const { argusEnabled, argusPublicConfig } = require("./argus/config");
+const { verifyLaunchTx } = require("./argus/verify");
 
 function send(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -90,6 +92,22 @@ async function handleShow(req, res, url, query, show) {
         "cache-control": "no-cache",
       });
       res.end(svg);
+      return true;
+    }
+    if (req.method === "GET" && path === "/argus/config") {
+      send(res, 200, { ok: true, ...argusPublicConfig() });
+      return true;
+    }
+    const argusPost = path.match(/^\/agents\/([^/]+)\/argus$/);
+    if (req.method === "POST" && argusPost) {
+      if (!argusEnabled()) {
+        send(res, 403, { ok: false, error: "Argus launch is not enabled on this server.", code: "argus_disabled" });
+        return true;
+      }
+      const body = await readBody(req);
+      const launch = await verifyLaunchTx(body.txHash);
+      const saved = show.attachArgusMint(decodeURIComponent(argusPost[1]), launch);
+      send(res, 200, { ok: true, ...saved });
       return true;
     }
     if (req.method === "GET" && path === "/agents/brand/options") {

@@ -193,6 +193,11 @@ function publicState() {
 const PUBLIC = path.join(__dirname, "public");
 const PAGES = { "/": "app.html", "/legacy": "landing.html", "/arena": "index.html", "/leaderboard": "leaderboard.html", "/how-it-works": "how.html", "/agents": "agents.html" };
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".txt": "text/plain" };
+function sendAbs(res, full) {
+  if (!fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }
+  res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" });
+  fs.createReadStream(full).pipe(res);
+}
 function sendFile(res, file) {
   const full = path.join(PUBLIC, file);
   if (!full.startsWith(PUBLIC) || !fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }
@@ -285,6 +290,12 @@ const server = http.createServer(async (req, res) => {
       "cache-control": "public, max-age=86400",
     });
     return res.end(svg);
+  }
+  if (url === "/static/vendor/ethers.umd.min.js") {
+    return sendAbs(res, path.join(__dirname, "node_modules", "ethers", "dist", "ethers.umd.min.js"));
+  }
+  if (url === "/static/argus-launch.js") {
+    return sendAbs(res, path.join(__dirname, "src", "argus", "launch.js"));
   }
   if (url.startsWith("/static/")) return sendFile(res, url.slice("/static/".length));
   if (url.startsWith("/api/agents")) return agentsApi(req, res, url);

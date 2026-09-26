@@ -1678,6 +1678,286 @@ function safeSvg(svg) {
   return text;
 }
 
+let argusOffer = { enabled: false };
+
+function syncLaunchFromDom() {
+  if (!creator || !creator.launch) return;
+  const root = matchEl && matchEl.querySelector(".creator");
+  if (!root) return;
+  root.querySelectorAll("[data-launch]").forEach((el) => {
+    creator.launch[el.name] = el.value;
+  });
+}
+
+function takenArgusTickers() {
+  return (agents || []).map((row) => row.argus && row.argus.symbol).filter(Boolean);
+}
+
+function argusAgentId() {
+  return (creator.reveal && creator.reveal.agentId) || (creator.draft && creator.draft.agent && creator.draft.agent.id) || "";
+}
+
+async function loadArgusConfig() {
+  if (!creator) return;
+  try {
+    const cfg = await api("/api/show/argus/config");
+    if (!creator) return;
+    creator.argusConfig = cfg && cfg.enabled ? cfg : { enabled: false, publicBase: (cfg && cfg.publicBase) || "" };
+    argusOffer = cfg || argusOffer;
+  } catch {
+    if (creator) creator.argusConfig = { enabled: false };
+  }
+  if (!creator || creator.launch) return;
+  const tools = window.ArgusLaunch;
+  const cfg = creator.argusConfig || {};
+  const canonical = creator.reveal && creator.reveal.canonicalPfp;
+  try {
+    if (tools && tools.suggestLaunch) {
+      creator.launch = tools.suggestLaunch({
+        name: creator.form.name,
+        description: creator.form.shortDescription,
+        agentId: argusAgentId(),
+        publicBase: cfg.publicBase,
+        takenTickers: takenArgusTickers(),
+        canonicalPfp: canonical,
+      });
+    } else {
+      creator.launch = { launchName: creator.form.name || "" };
+    }
+  } catch {
+    if (creator && !creator.launch) creator.launch = { launchName: creator.form.name || "" };
+  }
+}
+
+function argusField(name, label, value, extra) {
+  const type = (extra && extra.type) || "text";
+  const attrs = extra && extra.attrs ? extra.attrs : "";
+  return `<label>${esc(label)}<input data-launch="1" type="${esc(type)}" name="${esc(name)}" value="${esc(value || "")}" ${attrs}></label>`;
+}
+
+function argusPanel() {
+  if (!creator) return "";
+  const cfg = creator.argusConfig || { enabled: false };
+  const minted = creator.launch && creator.launch.minted;
+  if (minted && minted.argusUrl) {
+    return `<section class="argus-launch">
+      <h2>Launched on Argus</h2>
+      <p class="fine">${esc(minted.symbol || "Token")} · ${esc(minted.tokenAddress || "")}</p>
+      <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(minted.argusUrl)}" target="_blank" rel="noopener">Buy on Argus</a>
+      <p class="fine">Opens argus.world. This app does not swap.</p>
+    </section>`;
+  }
+  if (!cfg.enabled) {
+    return `<section class="argus-launch">
+      <h2>Launch on Argus</h2>
+      <p class="fine">Coming soon. This agent is saved and can play without a token.</p>
+    </section>`;
+  }
+  const f = creator.launch || {};
+  const wallet = f.wallet ? `Connected ${f.wallet.slice(0, 6)}…${f.wallet.slice(-4)}` : "Wallet not connected";
+  const pending = f.pendingTx ? `<p class="fine">Submitted ${esc(f.pendingTx)}. If the wallet already shows that transaction, check again before creating another token.</p>
+      <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-check="1"${creator.busy ? " disabled" : ""}>Check again</button>` : "";
+  return `<section class="argus-launch">
+    <h2>Launch on Argus</h2>
+    <p class="fine">You sign the create transaction on Arc (chain 5042). Portal #7 records the connected wallet as the creator. Defaults: 5% buy tax, 5% sell tax, 100% to the creator, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply. If the launch fails, this agent still plays.</p>
+    <p class="fine">${esc(wallet)}</p>
+    ${f.status ? `<p class="fine" role="status">${esc(f.status)}</p>` : ""}
+    ${argusField("launchName", "Token name", f.launchName, { attrs: 'maxlength="32" autocomplete="off"' })}
+    ${argusField("launchTicker", "Ticker", f.launchTicker, { attrs: 'maxlength="10" autocapitalize="characters" autocomplete="off"' })}
+    ${argusField("launchImage", "Image URL", f.launchImage, { type: "url" })}
+    ${argusField("launchWebsite", "Website", f.launchWebsite, { type: "url" })}
+    <label>Description<textarea data-launch="1" name="launchDescription" maxlength="280">${esc(f.launchDescription || "")}</textarea></label>
+    <div class="argus-split">
+      ${argusField("launchX", "X", f.launchX)}
+      ${argusField("launchTelegram", "Telegram", f.launchTelegram)}
+    </div>
+    <details class="advanced-config">
+      <summary>Tax, allocation, and value</summary>
+      <div class="advanced-config__body">
+        <div class="argus-split">
+          ${argusField("launchBuy", "Buy tax %", f.launchBuy, { type: "number", attrs: 'min="1" max="10" step="1"' })}
+          ${argusField("launchSell", "Sell tax %", f.launchSell, { type: "number", attrs: 'min="1" max="10" step="1"' })}
+        </div>
+        <div class="argus-split">
+          ${argusField("launchCreator", "Creator %", f.launchCreator, { type: "number", attrs: 'min="0" max="100" step="1"' })}
+          ${argusField("launchBurn", "Burn %", f.launchBurn, { type: "number", attrs: 'min="0" max="100" step="1"' })}
+          ${argusField("launchDividends", "Dividends %", f.launchDividends, { type: "number", attrs: 'min="0" max="100" step="1"' })}
+          ${argusField("launchLiquidity", "Liquidity %", f.launchLiquidity, { type: "number", attrs: 'min="0" max="100" step="1"' })}
+        </div>
+        ${argusField("launchDevBuy", "Dev buy (USDC)", f.launchDevBuy, { type: "number", attrs: 'min="0" max="1000000" step="any"' })}
+        <div class="argus-split">
+          ${argusField("launchStartFdv", "Opening FDV (USDC)", f.launchStartFdv, { type: "number", attrs: 'min="1" step="1"' })}
+          ${argusField("launchBondFdv", "Bond FDV (USDC)", f.launchBondFdv, { type: "number", attrs: 'min="1" step="1"' })}
+        </div>
+        ${argusField("launchSupply", "Supply (tokens)", f.launchSupply, { type: "number", attrs: 'min="1" step="1"' })}
+        <p class="fine">Taxes and the allocation are permanent. The four allocation fields must total 100%. A dev buy above zero spends USDC from the connected wallet.</p>
+      </div>
+    </details>
+    ${pending}
+    <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-connect="1"${creator.busy ? " disabled" : ""}>Connect wallet</button>
+    <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-launch="1"${creator.busy ? " disabled" : ""}>${creator.busy ? "Launching…" : "Sign create on Arc"}</button>
+  </section>`;
+}
+
+function argusDetail(agent) {
+  if (!agent || agent.roster !== "user") return "";
+  if (agent.argus && agent.argus.argusUrl) {
+    return `<section class="argus-launch">
+      <h2>Argus token</h2>
+      <p class="fine">${esc(agent.argus.symbol || "Token")} · ${esc(agent.argus.tokenAddress || "")}</p>
+      <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(agent.argus.argusUrl)}" target="_blank" rel="noopener">Buy on Argus</a>
+      <p class="fine">Opens argus.world. This app does not swap.</p>
+    </section>`;
+  }
+  if (!argusOffer.enabled || !agent.playable) return "";
+  return `<section class="argus-launch">
+    <h2>Launch on Argus</h2>
+    <p class="fine">This agent has no token yet. Launching is a wallet signature on Arc and does not change how they play.</p>
+    <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-for="1">Launch on Argus</button>
+  </section>`;
+}
+
+async function connectArgus() {
+  if (!creator || creator.busy) return;
+  syncLaunchFromDom();
+  creator.busy = true;
+  creator.error = "";
+  painted = "";
+  render();
+  try {
+    if (!window.ArgusMint) throw new Error("Launch tools did not load. The agent is still saved.");
+    const wallet = await window.ArgusMint.connect();
+    if (creator && creator.launch) creator.launch.wallet = wallet;
+  } catch (ex) {
+    if (creator) creator.error = ex.publicMessage || ex.message || "Could not connect the wallet. The agent is still saved.";
+  } finally {
+    if (creator) {
+      creator.busy = false;
+      painted = "";
+      render();
+    }
+  }
+}
+
+async function saveArgusTx(id, txHash) {
+  const saved = await api("/api/show/agents/" + encodeURIComponent(id) + "/argus", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ txHash }),
+  });
+  if (creator && creator.launch) {
+    creator.launch.minted = saved.argus;
+    creator.launch.pendingTx = "";
+    creator.launch.status = "";
+  }
+  await refreshLists();
+  return saved;
+}
+
+async function launchArgus() {
+  if (!creator || creator.busy) return;
+  syncLaunchFromDom();
+  const cfg = creator.argusConfig || {};
+  const id = argusAgentId();
+  if (!cfg.enabled || !id) {
+    creator.error = "Launch is not available for this agent. They can still play.";
+    painted = "";
+    render();
+    return;
+  }
+  creator.busy = true;
+  creator.error = "";
+  painted = "";
+  render();
+  try {
+    if (!window.ArgusMint) throw new Error("Launch tools did not load. The agent is still saved.");
+    const result = await window.ArgusMint.launch({
+      abi: cfg.abi,
+      portal: cfg.portal,
+      params: creator.launch,
+      receiptDelayMs: 750,
+      onStatus: (text) => {
+        if (!creator || !creator.launch) return;
+        creator.launch.status = text;
+        creator.statusLabel = text;
+        painted = "";
+        render();
+      },
+    });
+    if (creator && creator.launch) creator.launch.pendingTx = result.txHash;
+    try {
+      await saveArgusTx(id, result.txHash);
+    } catch (ex) {
+      if (creator) creator.error = (ex.message || "The launch was sent, but the agent record did not update.") + " Use Check again.";
+    }
+  } catch (ex) {
+    if (creator) {
+      if (creator.launch && ex.txHash) creator.launch.pendingTx = ex.txHash;
+      if (creator.launch) creator.launch.status = "";
+      creator.error = ex.publicMessage || ex.message || "Launch did not finish. The agent is still saved.";
+    }
+  } finally {
+    if (creator) {
+      creator.busy = false;
+      creator.statusLabel = "";
+      painted = "";
+      render();
+    }
+  }
+}
+
+async function checkArgus() {
+  if (!creator || creator.busy || !creator.launch || !creator.launch.pendingTx) return;
+  const id = argusAgentId();
+  creator.busy = true;
+  creator.error = "";
+  painted = "";
+  render();
+  try {
+    await saveArgusTx(id, creator.launch.pendingTx);
+  } catch (ex) {
+    if (creator) creator.error = ex.message || "Still waiting on Arc. The agent is still saved.";
+  } finally {
+    if (creator) {
+      creator.busy = false;
+      painted = "";
+      render();
+    }
+  }
+}
+
+function openArgusLaunch(agent) {
+  if (!agent || !agent.id) return;
+  creator = blankCreator();
+  creator.form.name = agent.name || "";
+  creator.form.shortDescription = agent.shortDescription || agent.line || "";
+  creator.draft = { agent: { id: agent.id, name: agent.name, status: agent.status } };
+  creator.reveal = {
+    name: agent.name,
+    title: agent.brand && agent.brand.title,
+    tagline: agent.brand && agent.brand.tagline,
+    canonicalPfp: agent.brand && (agent.brand.canonicalPfp || (agent.brand.assets && agent.brand.assets.canonicalPfp)),
+    agentId: agent.id,
+  };
+  creator.step = 3;
+  creator.argusConfig = argusOffer && argusOffer.enabled ? argusOffer : { enabled: false, publicBase: (argusOffer && argusOffer.publicBase) || "" };
+  if (window.ArgusLaunch && window.ArgusLaunch.suggestLaunch) {
+    creator.launch = window.ArgusLaunch.suggestLaunch({
+      name: creator.form.name,
+      description: creator.form.shortDescription,
+      agentId: agent.id,
+      publicBase: creator.argusConfig.publicBase,
+      takenTickers: takenArgusTickers().filter((symbol) => symbol !== (agent.argus && agent.argus.symbol)),
+      canonicalPfp: creator.reveal.canonicalPfp,
+    });
+  }
+  focusAgent = null;
+  tab = "agents";
+  painted = "";
+  paintTabs();
+  render();
+}
+
 function creatorPayload() {
   const f = creator.form;
   return {
@@ -1773,6 +2053,7 @@ function creatorView() {
         <p>${esc(reveal.tagline || (c && c.tagline) || "")}</p>
       </div>
       <span class="pfp-sizes" aria-label="Small-size check">${pfpMini(reveal.svg || (c && c.pfpSvg), 48)}${pfpMini(reveal.svg || (c && c.pfpSvg), 96)}</span>
+      ${argusPanel()}
       <button class="cta lda-btn lda-btn-primary lda-btn-block agent-reveal__enter" type="button" data-enter-arena="1"${creator.busy ? " disabled" : ""}>Enter the Arena</button>
       ${pfpDebugPanel({
         id: revealId,
@@ -1901,6 +2182,7 @@ async function generateAgent() {
     };
     creator.step = 3;
     await refreshLists();
+    await loadArgusConfig();
   } catch (ex) {
     if (creator) {
       creator.error = creator.draft
@@ -1997,9 +2279,11 @@ async function confirmConcept() {
       emblem: chosen.emblemSvg,
       accent: visual.accentColor,
       primary: visual.primaryColor,
+      agentId: id,
     };
     creator.step = 3;
     await refreshLists();
+    await loadArgusConfig();
   } catch (ex) {
     if (creator) creator.error = ex.message || "Could not lock that brand.";
   } finally {
@@ -2188,6 +2472,7 @@ function agentDetail(a) {
     ${portraitEditor(a)}
     ${pfpDebugPanel(a)}
     ${a.roster === "user" && a.status && a.status !== "READY" ? `<button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-resume-agent="1">Continue branding</button>` : ""}
+    ${argusDetail(a)}
     ${a.roster === "user" && a.playable ? `<p class="fine">User roster. The show seats this agent against the house cast when a chair is free${a.seated ? ", and they are on the slate now" : ""}.</p>` : ""}
     <p class="fine">${esc(a.archetype)}</p>
     <div class="statgrid">
@@ -2568,6 +2853,7 @@ function paintMatchIntro(match) {
 
 function render() {
   syncCreatorFromDom();
+  syncLaunchFromDom();
   frameBeats = activeMotion(live());
   const watching = live();
   if (watching) noteFeed(watching);
@@ -2681,6 +2967,7 @@ view.addEventListener("click", async (e) => {
   if (createBtn) { openCreator(); return; }
   const resumeBtn = e.target.closest("[data-resume-agent]");
   if (resumeBtn && focusAgent) { resumeCreator(focusAgent); return; }
+  if (e.target.closest("[data-argus-for]") && focusAgent) { openArgusLaunch(focusAgent); return; }
   const detailOpt = e.target.closest("[data-opt-group]");
   if (detailOpt && focusAgent && !creator && focusAgent.roster === "user") {
     if (!portraitEdit || portraitEdit.id !== focusAgent.id) {
@@ -2727,6 +3014,9 @@ view.addEventListener("click", async (e) => {
     }
     if (e.target.closest("[data-creator-next]")) { chooseLook(); return; }
     if (e.target.closest("[data-creator-generate]")) { generateAgent(); return; }
+    if (e.target.closest("[data-argus-connect]")) { connectArgus(); return; }
+    if (e.target.closest("[data-argus-launch]")) { launchArgus(); return; }
+    if (e.target.closest("[data-argus-check]")) { checkArgus(); return; }
     if (e.target.closest("[data-enter-arena]")) {
       stopCreatorBeat();
       creator = null;
@@ -2809,6 +3099,13 @@ view.addEventListener("click", async (e) => {
     try {
       const j = await api("/api/show/agents/" + encodeURIComponent(agentBtn.dataset.agent));
       focusAgent = j.agent;
+      api("/api/show/argus/config").then((cfg) => {
+        argusOffer = cfg || argusOffer;
+        if (focusAgent && focusAgent.id === j.agent.id) {
+          painted = "";
+          render();
+        }
+      }).catch(() => {});
       tab = "agents";
       paintTabs();
       pinScroll = false;

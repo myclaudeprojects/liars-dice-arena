@@ -171,6 +171,8 @@ function signatures(concepts) {
   const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
   assert(app.includes("Create agent"), "agents tab labels the action");
   assert(app.includes("data-create-agent"), "empty and list states can open the wizard");
+  assert(app.includes('class="lda-btn lda-btn-primary" type="button" data-create-agent="1"'), "create agent is an inline lda-btn on the title row");
+  assert(app.includes("page-head"), "page titles and creator actions share a header row");
   assert(app.includes("/api/show/agents/brand/create"), "wizard calls create");
   assert(app.includes("/brand/generate"), "wizard generates one portrait");
   assert(app.includes("agent-visual-options"), "wizard shows character options");

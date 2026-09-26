@@ -170,7 +170,12 @@ function buildRecipe(input) {
   let pack = SKIN[tone];
   let attitude = ATTITUDES.includes(visual.facialAttitude) ? visual.facialAttitude : "STOIC";
   if (mapped) {
-    accent = validHex(mapped.accent) || accent;
+    const paletteAccent = validHex(mapped.accent);
+    const visualAccent = validHex(visual.accentColor);
+    // Inferred house selections carry a default palette. That must not repaint
+    // a locked brand accent as the cyan fallback. A chosen creation palette
+    // still wins unless the caller keeps the visual accent.
+    accent = (src.keepVisualAccent && visualAccent) ? visualAccent : (paletteAccent || accent);
     attitude = ATTITUDES.includes(mapped.attitude) ? mapped.attitude : attitude;
     if (mapped.species === "robot" || mapped.species === "skeletal") pack = SKIN.metal;
     else if (mapped.species === "animal" || mapped.species === "primal") pack = SKIN.ember;
@@ -313,6 +318,7 @@ function recipeFromBrand(brand) {
     variation: variant != null ? variant : (stored ? 0 : 1 + hashString(row.agentId || row.name) % 19),
     treatment: "standard",
     headwear: stored ? "" : (HOUSE_HEADWEAR[row.agentId] || ""),
+    keepVisualAccent: !stored,
     selections: hasSelections ? selections : undefined,
   });
 }
@@ -835,7 +841,8 @@ function selectionCostume(row, x, colors, face) {
 
 function renderPfp(recipe, opts) {
   const row = recipe && recipe.colors ? recipe : buildRecipe(recipe);
-  // Live rig is v3 ("Neon Noir"). The original v2 cartoon rig stays available with PFP_RIG=v2.
+  // Live rig is v3 ("Neon Noir"): one dark bust, neon as the light.
+  // The original v2 cartoon rig stays available with PFP_RIG=v2.
   if (process.env.PFP_RIG !== "v2") {
     return require("./pfpv3").renderPfpV3(row, { size: normalizeSize(opts && opts.size), nonce: (opts && opts.nonce) || "pfp" });
   }
@@ -1047,7 +1054,7 @@ function pathData(svg) {
 
 // Bump whenever the portrait RENDER changes for an unchanged brand (new rig, new style rules).
 // It rides along in every portrait URL, so browsers/CDNs that cached the old look fetch again.
-const PFP_STYLE_STAMP = 3;
+const PFP_STYLE_STAMP = 4;
 
 function withBrandVersion(url, agent) {
   if (!url) return url;
@@ -1057,7 +1064,10 @@ function withBrandVersion(url, agent) {
   const n = Number.isFinite(version) && version > 0 ? version : 1;
   let text = String(url);
   if (!/[?&]v=\d+/.test(text)) text = `${text}${text.includes("?") ? "&" : "?"}v=${n}`;
-  if (!/[?&]s=\d+/.test(text)) text = `${text}&s=${PFP_STYLE_STAMP}`;
+  // Rewrite a stored older stamp too. Brand version stays put; s= is what
+  // busts a cached portrait after the rig changes.
+  if (/[?&]s=\d+/.test(text)) text = text.replace(/([?&])s=\d+/, `$1s=${PFP_STYLE_STAMP}`);
+  else text = `${text}&s=${PFP_STYLE_STAMP}`;
   return text;
 }
 

@@ -1699,6 +1699,10 @@ function createAgentButton() {
   return `<button class="lda-btn lda-btn-primary" type="button" data-create-agent="1">Create agent</button>`;
 }
 
+function createAgentListNote() {
+  return `<p class="fine">Connect wallet is not on this page. It appears on Reveal, after Generate agent, with the Argus token launch.</p>`;
+}
+
 function sliderField(key, label) {
   const value = Math.round(Number(creator.form[key] || 0) * 100);
   return `<label>${esc(label)} <output>${value}</output><input type="range" name="${esc(key)}" min="0" max="100" value="${value}"></label>`;
@@ -1801,19 +1805,25 @@ function argusPanel() {
   if (!cfg.enabled) {
     return `<section class="argus-launch">
       <h2>Launch on Argus</h2>
-      <p class="fine">Coming soon. This agent is saved and can play without a token.</p>
+      <p class="fine">This agent is already saved. Creating the agent and minting a token are separate steps. Launch is not open yet. They can play without a token.</p>
     </section>`;
   }
   const f = creator.launch || {};
   const wallet = f.wallet ? `Connected ${f.wallet.slice(0, 6)}…${f.wallet.slice(-4)}` : "Wallet not connected";
   const sponsorNote = cfg.sponsored && cfg.mintWallet
-    ? `No wallet? Launch with server mint submits this same Portal #7 transaction. The on-chain creator will be ${cfg.mintWallet}, the server mint wallet. The creator share (100% with the defaults) accrues to that address, not to your spectator profile. This app does not hold your funds.`
+    ? `Launch with server mint is the no-wallet path. It submits this same Portal #7 transaction. The mint wallet becomes the on-chain creator: ${cfg.mintWallet}, the server mint wallet. The creator share (100% with the defaults) accrues to that address, not to your spectator profile. This app does not hold your funds.`
     : (cfg.sponsoredMessage || "");
   const pending = f.pendingTx ? `<p class="fine">Submitted ${esc(f.pendingTx)}. If the wallet already shows that transaction, check again before creating another token.</p>
       <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-check="1"${creator.busy ? " disabled" : ""}>Check again</button>` : "";
+  const mintHint = cfg.sponsored
+    ? `Connect wallet does not create the token. <b>Sign create on Arc</b> does. <b>Launch with server mint</b> is the no-wallet path, and that mint wallet becomes the on-chain creator.`
+    : `Connect wallet does not create the token. <b>Sign create on Arc</b> does.`;
   return `<section class="argus-launch">
     <h2>Launch on Argus</h2>
-    <p class="fine">Portal #7 on Arc (chain 5042). A connected wallet is preferred: you sign the create, and that wallet is the on-chain creator. Defaults: 5% buy tax, 5% sell tax, 100% to the creator, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply. If the launch fails, this agent still plays.</p>
+    <p class="fine">This agent is already saved. Creating the agent and minting a token are separate steps. Use Enter the Arena to skip. If the launch fails, this agent still plays.</p>
+    <p class="fine">Connect wallet only links MetaMask or Rabby, an injected wallet on Arc (chain 5042). Connecting does not mint the token.</p>
+    <p class="fine">The fields below are already filled in. Review or edit the name, ticker, description, image, and the rest, then tap <b>Sign create on Arc</b>. That signature creates the Portal #7 token. It turns this agent metadata into an on-chain Argus token. The wallet that signs is the on-chain creator.</p>
+    <p class="fine">Defaults: 5% buy tax, 5% sell tax, 100% to the creator, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply.</p>
     ${sponsorNote ? `<p class="fine">${esc(sponsorNote)}</p>` : ""}
     <p class="fine">${esc(wallet)}</p>
     ${f.status ? `<p class="fine" role="status">${esc(f.status)}</p>` : ""}
@@ -1849,6 +1859,7 @@ function argusPanel() {
       </div>
     </details>
     ${pending}
+    <p class="fine">${mintHint}</p>
     ${argusLaunchButtons(cfg, f)}
   </section>`;
 }
@@ -1971,8 +1982,8 @@ function argusDetail(agent) {
   }
   if (!argusOffer.enabled || !agent.playable) return "";
   const offer = argusOffer.sponsored
-    ? "This agent has no token yet. A connected wallet is preferred. Server mint is there if you have no wallet, and that mint wallet is the on-chain creator. Launching does not change how they play."
-    : "This agent has no token yet. Launching is a wallet signature on Arc and does not change how they play.";
+    ? "This agent is already saved. Minting a token is a separate step, and they still play if you skip it. Connect wallet only links MetaMask or Rabby; it does not mint. On the launch form, review the prefilled fields, then Sign create on Arc to create the Portal #7 token. Launch with server mint is the no-wallet path, and that mint wallet is the on-chain creator."
+    : "This agent is already saved. Minting a token is a separate step. They still play if you skip it or the launch fails. Connect wallet only links MetaMask or Rabby; it does not mint. On the launch form, review the prefilled fields, then Sign create on Arc to create the Portal #7 token.";
   return `<section class="argus-launch">
     <h2>Launch on Argus</h2>
     <p class="fine">${esc(offer)}</p>
@@ -2239,9 +2250,10 @@ function creatorView() {
             ${sliderField("riskTolerance", "Risk")}
             ${sliderField("adaptability", "Adaptability")}
           ` : ""}
-          <p class="fine">No endpoint, API key, wallet, or funding on this flow. Custom brains and real-money seats are not part of the spectator arena.</p>
+          <p class="fine">Naming and personality only. No endpoint, API key, or funding on this step. Connect wallet is not part of naming. It appears later on Reveal, for the Argus token. Custom brains and real-money seats are not part of the spectator arena.</p>
         </div>
-      </details>`;
+      </details>
+      <p class="fine">Connect wallet is not on this step. It appears on Reveal, after Generate agent, with the Argus token launch.</p>`;
   } else if (step === 2) {
     body = `<section class="brand-options">
       <div class="section-head">
@@ -2254,6 +2266,7 @@ function creatorView() {
       <p class="fine">Previews are examples. Generate agent locks one neon-competitive identity.</p>
       ${visualOptionGrids(creator.selections)}
       <label>Refine<textarea name="refine" maxlength="160" placeholder="Optional note. The options above decide the portrait.">${esc(f.refine)}</textarea></label>
+      <p class="fine">Connect wallet is not on this step. It appears on Reveal, after Generate agent, with the Argus token launch.</p>
     </section>`;
   } else {
     const reveal = creator.reveal || {};
@@ -2526,10 +2539,10 @@ function agentsView() {
     const body = listsError
       ? "The connection blinked. This tab will try again."
       : "Records show up when the show answers.";
-    return `${pageHead("Agents", { actions: createAgentButton() })}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
+    return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
   }
-  if (!agents.length) return `${pageHead("Agents", { actions: createAgentButton() })}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
-  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}<div class="agent-roster">` +
+  if (!agents.length) return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
+  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}${createAgentListNote()}<div class="agent-roster">` +
     agents.map((a) => {
       const roster = a.roster === "user" ? (a.status === "READY" ? "Your competitor" : "Brand in progress") : "";
       return `<button class="agent-card" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>

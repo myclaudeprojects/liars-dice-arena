@@ -174,14 +174,26 @@ function mockRes() {
     takenTickers: ["VESPER"],
     canonicalPfp: huge,
   });
+  eq(suggested.launchName, "LDA Vesper", "token name is branded");
   eq(suggested.launchTicker, "VESPER2", "suggested ticker avoids a collision");
   eq(suggested.launchImage, IMAGE, "suggested image is the short portrait");
   eq(suggested.launchWebsite, SITE, "website is the site root");
+  eq(suggested.launchDescription, "A quiet closer who spends one lie and waits.\n\nPlay at " + SITE, "description keeps the blurb and the site line");
   eq(suggested.launchBuy, "5", "buy default");
   eq(suggested.launchCreator, "100", "creator default");
   eq(suggested.launchDevBuy, "0", "no dev buy");
+  eq(launch.suggestLaunch({ name: "Dracula", publicBase: "https://liars-dice-arena.onrender.com" }).launchName, "LDA Dracula", "chosen name is prefixed");
+  eq(launch.suggestLaunch({ name: "LDA Dracula" }).launchName, "LDA Dracula", "LDA prefix is not doubled");
+  eq(launch.suggestLaunch({ name: "lda Dracula" }).launchName, "LDA Dracula", "prefix check ignores case");
+  eq(launch.suggestLaunch({ name: "Supercalifragilisticexpialidocious" }).launchName, "LDA Supercalifragilisticexpialid", "prefix still fits the name limit");
+  const longBlurb = "word ".repeat(80).trim();
+  const longSuggested = launch.suggestLaunch({ name: "Dracula", description: longBlurb, publicBase: "https://liars-dice-arena.onrender.com" });
+  assert(longSuggested.launchDescription.length <= 280, "branded description stays within 280");
+  assert(longSuggested.launchDescription.endsWith("\n\nPlay at " + SITE), "a long blurb keeps the site line");
+  eq(launch.suggestLaunch({ name: "Dracula", description: "", publicBase: "https://liars-dice-arena.onrender.com" }).launchDescription, "Play at " + SITE, "missing blurb is only the site line");
   const prepared = launch.prepareLaunch(suggested);
-  eq(prepared.name, "Vesper", "prepared name");
+  eq(prepared.name, "LDA Vesper", "prepared name");
+  eq(prepared.description, suggested.launchDescription, "prepared description keeps the site line");
   eq(prepared.symbol, "VESPER2", "prepared ticker");
   eq(prepared.buyTaxBps, 500, "prepared buy");
   eq(prepared.sellTaxBps, 500, "prepared sell");
@@ -206,7 +218,7 @@ function mockRes() {
 
   const data = launch.encodeLaunch(null, { ...prepared, hookSalt: mined.hookSalt });
   const decodedCall = iface().decodeFunctionData("launch", data);
-  eq(decodedCall[0].name, "Vesper", "calldata name");
+  eq(decodedCall[0].name, "LDA Vesper", "calldata name");
   eq(decodedCall[0].symbol, "VESPER2", "calldata ticker");
   eq(decodedCall[0].buyTaxBps, 500n, "calldata buy");
   eq(decodedCall[0].sellTaxBps, 500n, "calldata sell");

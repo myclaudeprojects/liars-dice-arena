@@ -2270,10 +2270,14 @@ function creatorView() {
       })
       : "NEON_COMPETITIVE";
     const revealId = (creator.draft && creator.draft.agent && creator.draft.agent.id) || "";
+    const revealSrc = pfpPath(reveal.canonicalPfp || (c && c.pfpUrl) || "");
+    const revealArt = revealSrc
+      ? `<span class="pfp-frame"><img src="${esc(revealSrc)}" alt=""></span>`
+      : ((c && c.pfpUrl) ? conceptArt(c) : pfpFrame(reveal.svg || (c && c.pfpSvg)));
     body = `<section class="agent-reveal" style="--agent-accent:${esc(accent)};--agent-primary:${esc(primary)}">
       <div class="agent-reveal__aura agent-reveal__glow" aria-hidden="true"></div>
       ${emblem ? `<div class="agent-reveal__emblem" aria-hidden="true">${emblem}</div>` : ""}
-      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-style="neon-competitive" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${(c && c.pfpUrl) ? conceptArt(c) : pfpFrame(reveal.svg || (c && c.pfpSvg))}</div>
+      <div class="agent-reveal__pfp animated-pfp" data-inline="1" data-context="reveal" data-state="reveal" data-style="neon-competitive" data-motion="${esc(revealMotion)}" data-agent="${esc(revealId)}">${revealArt}</div>
       <div class="agent-reveal__identity agent-reveal__copy">
         <span class="agent-reveal__title">${esc(reveal.title || (c && c.title) || "")}</span>
         <h1>${esc(reveal.name || f.name)}</h1>

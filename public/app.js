@@ -1820,7 +1820,7 @@ function argusPanel() {
     : `Connect wallet does not create the token. <b>Sign create on Arc</b> does.`;
   return `<section class="argus-launch">
     <h2>Launch on Argus</h2>
-    <p class="fine">This agent is already saved. Creating the agent and minting a token are separate steps. Use Enter the Arena to skip. If the launch fails, this agent still plays.</p>
+    <p class="fine">This agent is already saved. Creating the agent and minting a token are separate steps. ${creator.agentPlayable === false ? "Use Enter the Arena to skip the token. Finish branding from their page when you want them in the show. If the launch fails, the saved agent is unchanged." : "Use Enter the Arena to skip. If the launch fails, this agent still plays."}</p>
     <p class="fine">Connect wallet only links MetaMask or Rabby, an injected wallet on Arc (chain 5042). Connecting does not mint the token.</p>
     <p class="fine">The fields below are already filled in. Review or edit the name, ticker, description, image, and the rest, then tap <b>Sign create on Arc</b>. That signature creates the Portal #7 token. It turns this agent metadata into an on-chain Argus token. The wallet that signs is the on-chain creator.</p>
     <p class="fine">Defaults: 5% buy tax, 5% sell tax, 100% to the creator, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply.</p>
@@ -1980,10 +1980,17 @@ function argusDetail(agent) {
       <p class="fine">Opens argus.world. This app does not swap.</p>
     </section>`;
   }
-  if (!argusOffer.enabled || !agent.playable) return "";
-  const offer = argusOffer.sponsored
-    ? "This agent is already saved. Minting a token is a separate step, and they still play if you skip it. Connect wallet only links MetaMask or Rabby; it does not mint. On the launch form, review the prefilled fields, then Sign create on Arc to create the Portal #7 token. Launch with server mint is the no-wallet path, and that mint wallet is the on-chain creator."
-    : "This agent is already saved. Minting a token is a separate step. They still play if you skip it or the launch fails. Connect wallet only links MetaMask or Rabby; it does not mint. On the launch form, review the prefilled fields, then Sign create on Arc to create the Portal #7 token.";
+  if (!argusOffer.enabled) return "";
+  const stillPlays = agent.playable
+    ? "Skip the launch, or if it fails, this agent still plays."
+    : "Continue branding finishes their look. They can join the show after that, with or without a token.";
+  const offer = [
+    "This agent is already saved. Creating the agent and minting a token are separate steps.",
+    "Connect wallet only links MetaMask or Rabby, an injected wallet on Arc. Connecting does not mint.",
+    "On the launch form, review or edit the prefilled name, ticker, description, and image, then tap Sign create on Arc. That signature creates the Portal #7 token.",
+    stillPlays,
+    argusOffer.sponsored ? "Launch with server mint is the no-wallet path, and that mint wallet is the on-chain creator." : "",
+  ].filter(Boolean).join(" ");
   return `<section class="argus-launch">
     <h2>Launch on Argus</h2>
     <p class="fine">${esc(offer)}</p>
@@ -2176,6 +2183,7 @@ function openArgusLaunch(agent) {
     agentId: agent.id,
   };
   creator.step = 3;
+  creator.agentPlayable = agent.playable !== false;
   creator.argusConfig = argusOffer && argusOffer.enabled ? argusOffer : { enabled: false, publicBase: (argusOffer && argusOffer.publicBase) || "" };
   if (window.ArgusLaunch && window.ArgusLaunch.suggestLaunch) {
     creator.launch = window.ArgusLaunch.suggestLaunch({
@@ -3341,13 +3349,10 @@ view.addEventListener("click", async (e) => {
     try {
       const j = await api("/api/show/agents/" + encodeURIComponent(agentBtn.dataset.agent));
       focusAgent = j.agent;
-      api("/api/show/argus/config").then((cfg) => {
-        argusOffer = cfg || argusOffer;
-        if (focusAgent && focusAgent.id === j.agent.id) {
-          painted = "";
-          render();
-        }
-      }).catch(() => {});
+      try {
+        const cfg = await api("/api/show/argus/config");
+        if (cfg) argusOffer = cfg;
+      } catch { /* the detail still opens; launch stays hidden until config loads */ }
       tab = "agents";
       paintTabs();
       pinScroll = false;

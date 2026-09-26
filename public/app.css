@@ -95,12 +95,8 @@ html.coming-soon-dismissed .top {
   .coming-soon { grid-template-columns: minmax(0, 1fr) auto; }
   .coming-soon__mark { display: none; }
 }
-@media (max-width: 520px) {
-  :root { --coming-soon-h: 76px; }
-}
-@media (max-width: 400px) {
-  .coming-soon__copy span { display: none; }
-  .coming-soon__copy strong { font-size: 15px; line-height: 1.2; }
+@media (max-width: 380px) {
+  :root { --coming-soon-h: 84px; }
 }
 .top {
   position: static;

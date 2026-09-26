@@ -1840,14 +1840,119 @@ function argusPanel() {
   </section>`;
 }
 
+// Keep in step with src/argus/stats.js. A full quote is reused for a minute.
+// A missing figure is asked again sooner, still not on every paint.
+const ARGUS_STATS_FRESH_MS = 60000;
+const ARGUS_STATS_RETRY_MS = 15000;
+const ARGUS_STATS_WATCH_MS = 15000;
+const argusStatCache = new Map();
+let argusStatsTimer = 0;
+
+function shortAddress(addr) {
+  const text = String(addr || "");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(text)) return text;
+  return text.slice(0, 6) + "…" + text.slice(-4);
+}
+
+function argusTokenUrl(argus) {
+  const stored = argus && argus.argusUrl;
+  if (typeof stored === "string" && /^https:\/\/argus\.world\/token\/0x[0-9a-fA-F]{40}\/?$/.test(stored)) return stored.replace(/\/$/, "");
+  const token = argus && argus.tokenAddress;
+  if (/^0x[0-9a-fA-F]{40}$/.test(String(token || ""))) return "https://argus.world/token/" + token;
+  return "";
+}
+
+function argusMetric(value, label) {
+  return ui()
+    ? ui().statPill(value, label)
+    : `<div><b>${esc(value)}</b><span>${esc(label)}</span></div>`;
+}
+
+function argusStatsTtl(row) {
+  return row && row.marketCap && row.holders ? ARGUS_STATS_FRESH_MS : ARGUS_STATS_RETRY_MS;
+}
+
+function argusStatsStale(row) {
+  if (!row) return true;
+  if (row.loading) return false;
+  return Date.now() - row.at >= argusStatsTtl(row);
+}
+
+function armArgusStatsWatch() {
+  if (argusStatsTimer) return;
+  argusStatsTimer = setInterval(() => {
+    const minted = focusAgent && focusAgent.argus && focusAgent.argus.tokenAddress;
+    if (tab !== "agents" || !minted || creator) {
+      clearInterval(argusStatsTimer);
+      argusStatsTimer = 0;
+      return;
+    }
+    render();
+  }, ARGUS_STATS_WATCH_MS);
+}
+
+function metricText(row, key) {
+  if (row && row[key]) return row[key];
+  if (!row || row.loading) return "—";
+  return "Unavailable";
+}
+
+function argusStatsView(agent) {
+  const token = agent && agent.argus && agent.argus.tokenAddress;
+  const id = agent && agent.id;
+  if (!token || !id) return { marketCap: "—", holders: "—" };
+  const key = String(token).toLowerCase();
+  const row = argusStatCache.get(key);
+  if (argusStatsStale(row)) {
+    argusStatCache.set(key, {
+      loading: true,
+      at: row ? row.at : 0,
+      marketCap: row ? row.marketCap : null,
+      holders: row ? row.holders : null,
+    });
+    api("/api/show/agents/" + encodeURIComponent(id) + "/argus/stats").then((body) => {
+      argusStatCache.set(key, {
+        loading: false,
+        at: Date.now(),
+        marketCap: (body && body.marketCap && body.marketCap.label) || null,
+        holders: (body && body.holders && body.holders.label) || null,
+      });
+      if (focusAgent && focusAgent.id === id && tab === "agents" && !creator) render();
+    }).catch(() => {
+      const prev = argusStatCache.get(key);
+      argusStatCache.set(key, {
+        loading: false,
+        at: Date.now(),
+        marketCap: (prev && prev.marketCap) || null,
+        holders: (prev && prev.holders) || null,
+      });
+      if (focusAgent && focusAgent.id === id && tab === "agents" && !creator) render();
+    });
+  }
+  armArgusStatsWatch();
+  const shown = argusStatCache.get(key);
+  return {
+    marketCap: metricText(shown, "marketCap"),
+    holders: metricText(shown, "holders"),
+  };
+}
+
 function argusDetail(agent) {
   if (!agent || agent.roster !== "user") return "";
-  if (agent.argus && agent.argus.argusUrl) {
-    return `<section class="argus-launch">
+  const url = argusTokenUrl(agent.argus);
+  if (agent.argus && url) {
+    const stats = argusStatsView(agent);
+    const symbol = agent.argus.symbol || "Token";
+    const addr = shortAddress(agent.argus.tokenAddress || "");
+    return `<section class="argus-launch" data-argus-stats="1">
       <h2>Argus token</h2>
-      <p class="fine">${esc(agent.argus.symbol || "Token")} · ${esc(agent.argus.tokenAddress || "")}</p>
+      <p class="fine">${esc(symbol)}${addr ? ` · ${esc(addr)}` : ""}</p>
       ${agent.argus.creatorWallet ? `<p class="fine">On-chain creator ${esc(agent.argus.creatorWallet)}</p>` : ""}
-      <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(agent.argus.argusUrl)}" target="_blank" rel="noopener">Buy on Argus</a>
+      <div class="statgrid">
+        ${argusMetric(stats.marketCap, "Market cap")}
+        ${argusMetric(stats.holders, "Holders")}
+      </div>
+      <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(url)}" target="_blank" rel="noopener">Buy on Argus</a>
       <p class="fine">Opens argus.world. This app does not swap.</p>
     </section>`;
   }

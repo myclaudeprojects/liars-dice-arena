@@ -23,6 +23,8 @@ Creators with no browser wallet can use server mint. That path signs the same Po
 
 Render env vars: `ARGUS_MINT_ENABLED`, `ARGUS_MINT_KEY`, `PUBLIC_BASE_URL`, `ARC_RPC_URL`, `ARC_RPC_URLS`. Sponsored sends are limited per spectator session and per IP.
 
+A minted token is shown on that agent's page: Buy on Argus, the ticker, a shortened token address, market cap, and holder count. Market cap is the Portal #7 pool price times total supply, read with the same Arc RPC list (`ARC_RPC_URL`, `ARC_RPC_URLS`, then the public defaults). The first endpoint that answers is enough. Holder count is Arcscan's non-zero holder total (`https://api.arc-scan.org/v1/tokens/{address}`). A full quote is reused for 60 seconds. A missing figure is reused for 15 seconds. The profile still shows the Argus link when a number is unavailable.
+
 The rest of this file describes that older table.
 
 Why this is new tech rather than another dApp:

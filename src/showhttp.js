@@ -214,6 +214,17 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ok: true, ...show.creatorOptions() });
       return true;
     }
+    // Admin removal: DELETE /api/show/agents/:id with header x-admin-token = ADMIN_TOKEN (env).
+    const del = path.match(/^\/agents\/([^/]+)$/);
+    if (req.method === "DELETE" && del) {
+      const want = process.env.ADMIN_TOKEN;
+      const got = req.headers["x-admin-token"];
+      if (!want) { send(res, 403, { ok: false, error: "Admin actions are disabled: set ADMIN_TOKEN on the server.", code: "admin_disabled" }); return true; }
+      if (!got || got !== want) { send(res, 401, { ok: false, error: "Bad admin token.", code: "unauthorized" }); return true; }
+      try { send(res, 200, { ok: true, ...show.removeAgent(decodeURIComponent(del[1])) }); }
+      catch (e) { send(res, e.status || 400, { ok: false, error: e.publicMessage || e.message, code: e.code || "remove_failed" }); }
+      return true;
+    }
     if (req.method === "POST" && path === "/agents/brand/create") {
       const body = await readBody(req);
       send(res, 200, { ok: true, ...show.createAgent(body) });

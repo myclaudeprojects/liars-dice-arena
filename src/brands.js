@@ -796,6 +796,14 @@ class BrandBook {
     }
   }
 
+  // Drop every version of an agent's brand (admin removal of a user agent).
+  removeAgent(agentId) {
+    let n = 0;
+    for (const key of [...this._versions.keys()]) { const row = this._versions.get(key); if (row && row.agentId === agentId) { this._versions.delete(key); n++; } }
+    this._active.delete(agentId);
+    return n;
+  }
+
   exportState() {
     const versions = [...this._versions.values()].map((row) => clone(row));
     versions.sort((a, b) => (a.agentId === b.agentId

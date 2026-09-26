@@ -1724,6 +1724,21 @@ class Show {
     };
   }
 
+  // Admin: remove a user-created agent (draft or finished). Refuses house cast and anything
+  // seated in a live match. Its portrait returns to the pool; records and brands go with it.
+  removeAgent(agentId) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft) throw creatorError("unknown_agent", "No such user agent.", 404);
+    if (this.busyIds().has(agentId)) throw creatorError("agent_busy", "That agent is seated in a live match. Try again after it settles.", 409);
+    const brands = this.brands.removeAgent(agentId);
+    this.userAgents.delete(agentId);
+    try { if (this.records && this.records.remove) this.records.remove(agentId); } catch { /* records are optional */ }
+    this.persist();
+    this.emitState();
+    console.log("AGENT_REMOVED", { agentId, name: draft.name, brandVersions: brands });
+    return { removed: agentId, name: draft.name, brandVersions: brands };
+  }
+
   // Every library portrait is single-use: the ids currently held by any agent (house cast,
   // locked brands in any version, and drafts' provisional picks), except `exceptId`'s own.
   takenPortraits(exceptId) {

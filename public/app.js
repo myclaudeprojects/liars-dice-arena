@@ -2162,7 +2162,7 @@ function creatorView() {
       })}
     </section>`;
   }
-  const nextLabel = step === 1 ? "Random look" : step === 2 ? "Generate agent" : "Enter the Arena";
+  const nextLabel = step === 1 ? "Create agent" : step === 2 ? "Generate agent" : "Enter the Arena";
   const nextAttr = step === 1 ? "data-creator-next" : step === 2 ? "data-creator-generate" : "data-enter-arena";
   const working = creator.statusLabel || "Working.";
   return `<div class="creator">

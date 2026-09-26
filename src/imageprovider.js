@@ -1,10 +1,8 @@
-// imageprovider.js — Portrait backends.
+// imageprovider.js — Live portrait backend.
 //
-// The live backend is procedural SVG. There is no diffusion vendor in this
-// process. A future provider can implement generate() without changing the
-// brand flow, as long as it returns a square image payload.
+// Neon competitive images via OPENAI_API_KEY. No procedural SVG fallback.
 
-const { renderPfp, MASTER_SIZE } = require("./pfp");
+const { createImage, imageProviderConfigured } = require("./branding/imageProvider");
 
 class ImageProvider {
   async generate() {
@@ -12,38 +10,34 @@ class ImageProvider {
   }
 }
 
-class ProceduralSvgProvider extends ImageProvider {
-  constructor(render = renderPfp) {
+class NeonImageProvider extends ImageProvider {
+  constructor() {
     super();
-    this.render = render;
-    this.id = "procedural-svg";
+    this.id = "neon-competitive";
   }
 
-  renderSync({ recipe, size = MASTER_SIZE, nonce = "pfp" } = {}) {
-    const px = size === "1024x1024" ? MASTER_SIZE : size;
-    return this.render(recipe, { size: px, nonce });
-  }
-
-  async generate({ prompt, recipe, size = "1024x1024", nonce = "pfp" } = {}) {
-    const svg = this.renderSync({ recipe, size: MASTER_SIZE, nonce });
+  async generate({ prompt, width = 1024, height = 1024, seed } = {}) {
+    const image = await createImage({ prompt, width, height, seed });
     return {
       provider: this.id,
-      mime: "image/svg+xml",
-      width: MASTER_SIZE,
-      height: MASTER_SIZE,
-      svg,
+      mime: "image/webp",
+      width: 1024,
+      height: 1024,
+      buffer: image.buffer,
+      model: image.model,
+      seed: image.seed || seed || null,
       prompt: prompt || "",
-      requestedSize: size,
     };
   }
 }
 
 function createImageProvider() {
-  return new ProceduralSvgProvider();
+  return new NeonImageProvider();
 }
 
 module.exports = {
   ImageProvider,
-  ProceduralSvgProvider,
+  NeonImageProvider,
   createImageProvider,
+  imageProviderConfigured,
 };

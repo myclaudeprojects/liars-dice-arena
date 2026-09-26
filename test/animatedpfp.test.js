@@ -43,28 +43,24 @@ assert(neon.blinkMaxMs > neon.blinkMinMs, "neon blink window");
 eq(profileForBrand(book.full("dracula")), "NEON_COMPETITIVE", "dracula profile");
 eq(profileForBrand(book.full("caesar")), "NEON_COMPETITIVE", "caesar profile");
 eq(profileForBrand(book.full("reaper")), "NEON_COMPETITIVE", "reaper profile");
-eq(book.publicOf("athena").animatedPfp.motionProfile, "NEON_COMPETITIVE", "athena uses the neon rig");
-eq(book.publicOf("jester").animatedPfp.motionProfile, "NEON_COMPETITIVE", "jester profile");
+eq(profileForBrand(book.full("athena")), "NEON_COMPETITIVE", "athena uses the neon profile");
+eq(profileForBrand(book.full("jester")), "NEON_COMPETITIVE", "jester profile");
+assert(!book.publicOf("athena").pfpUrl, "athena has no portrait until one is generated");
 eq(profileForBrand({ animatedPfp: { motionProfile: "REGAL_STEADY" } }), "REGAL_STEADY", "explicit profile still wins");
 
 for (const id of ["dracula", "caesar", "reaper"]) {
   const view = book.publicOf(id);
-  const motion = view.animatedPfp;
-  assert(motion && motion.enabled && motion.version === 1, id + " animatedPfp");
-  eq(motion.engine, "procedural-svg", id + " engine");
-  eq(motion.qualityTier, "LAYERED_2_5D", id + " tier");
-  eq(motion.manifestUrl, null, id + " has no webp manifest");
-  assert(motion.previewUrl.includes(id), id + " poster");
-  eq(motion.manifest.poster, motion.previewUrl, id + " poster fallback");
-  eq(motion.manifest.source, "procedural-svg", id + " synthetic manifest");
-  assert(motion.manifest.layers.eyesOpen === "procedural" && motion.manifest.layers.pupils === "procedural", id + " layers");
-  assert(motion.manifest.layers.bgGrid === "procedural" && motion.manifest.layers.rimGlow === "procedural" && motion.manifest.layers.scanFx === "procedural", id + " neon layers");
-  eq(motion.styleId, "neon-competitive", id + " style id");
+  assert(!view.animatedPfp, id + " public view has no procedural rig");
   eq(view.pfpStyleId, "neon-competitive", id + " public style");
   assert(!book.full(id).animatedPfp, id + " disk record stays free of the view field");
 }
 
 const meta = animatedPfpMeta({ motionLanguage: "FAST_CONFIDENT", archetype: "GAMBLER" }, "/api/show/agents/u_vesper/pfp.svg");
+eq(meta.engine, "neon-competitive", "raster engine");
+eq(meta.qualityTier, "POSTER", "poster tier");
+eq(meta.enabled, false, "raster portrait does not run the layer rig");
+eq(meta.manifest.source, "neon-competitive", "manifest source");
+eq(meta.manifestUrl, null, "no separate manifest url");
 eq(meta.motionProfile, "NEON_COMPETITIVE", "created agent uses the neon rig");
 eq(profileForBrand({ archetype: "TRICKSTER", visualIdentity: { motionLanguage: "CHAOTIC_UNEVEN" } }), "NEON_COMPETITIVE", "trickster concept");
 eq(profileForBrand({ archetype: "MACHINE", visualIdentity: { motionLanguage: "MECHANICAL_PRECISE" } }), "NEON_COMPETITIVE", "machine concept");
@@ -135,20 +131,10 @@ assert(!svg.querySelector('[data-layer="head"]').getAttribute("transform"), "pau
 eq(svg.querySelector('[data-layer="eyesClosed"]').getAttribute("opacity"), "0", "rest pose keeps eyes open");
 
 for (const brand of SEED_BRANDS) {
-  const recipe = recipeFromBrand(brand);
-  const drawn = renderPfp(recipe, { size: 1024, nonce: brand.agentId });
-  const small = renderPfp(recipe, { size: 48, nonce: brand.agentId });
-  const quality = qualityCheck(recipe, drawn);
-  assert(quality.ok, brand.agentId + " still passes portrait quality " + quality.reasons.join(","));
-  eq(pathData(drawn), pathData(small), brand.agentId + " sizes still share paths");
-  assert(drawn.includes('data-layered="1"'), brand.agentId + " layered hook");
-  assert(drawn.includes('data-engine="procedural-svg"'), brand.agentId + " engine");
-  for (const layer of ["bg", "bgGrid", "torso", "head", "eyesOpen", "eyesClosed", "pupils", "rimGlow", "aura", "scanFx"]) {
-    assert(drawn.includes(`data-layer="${layer}"`), brand.agentId + " layer " + layer);
-  }
-  assert(drawn.includes('data-pfp-style="neon-competitive"'), brand.agentId + " neon style");
-  assert(/data-layer="eyesClosed"[^>]*opacity="0"/.test(drawn), brand.agentId + " closed eyes stay hidden on the poster");
-  assert(!/<animate[\s>]|script|foreignObject/i.test(drawn), brand.agentId + " poster does not run its own timeline");
+  let retired = false;
+  try { renderPfp(recipeFromBrand(brand), { size: 1024, nonce: brand.agentId }); }
+  catch (err) { retired = err.code === "pfp_procedural_retired"; }
+  assert(retired, brand.agentId + " does not draw a procedural bust");
 }
 
 const publicDir = path.join(__dirname, "..", "public");

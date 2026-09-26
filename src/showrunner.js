@@ -42,7 +42,9 @@ const {
 const { inferSelectionsFromBrand } = require("./branding/creationSelections");
 // Identifies the running build so clients can reload when a deploy lands.
 const BUILD_ID = String(process.env.RENDER_GIT_COMMIT || process.env.BUILD_ID || Date.now()).slice(0, 12);
-const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls, withBrandVersion } = require("./pfp");
+const { ASSET_TYPE, PFP_STYLE_VERSION, assetUrls, withBrandVersion } = require("./pfp");
+const { assetRootFor, readPortraitSync, portraitExists } = require("./branding/pfpAssets");
+const { imageProviderConfigured } = require("./branding/imageProvider");
 const { animatedPfpMeta } = require("./motionprofiles");
 
 // Rates are quoted only after this many recorded samples. Same gate knownFor uses for calls.
@@ -488,6 +490,7 @@ class Show {
     this.market = opts.market || new SimMarket({ onChange: () => this.persist() });
     // Brands ride the same show.json writer. Missing versions fall back to seed v1.
     this.brands = opts.brands || new BrandBook({ seeds: false });
+    this.brands.portraitReady = (agentId, version) => portraitExists(this.pfpRoot(), agentId, version);
     // Spectator-created competitors. The house CAST stays 12. Ready guests
     // are seated against that cast; drafts stay off the slate until select.
     this.userAgents = new Map();
@@ -1711,14 +1714,28 @@ class Show {
     return emblem ? emblemSvg(emblem) : null;
   }
 
-  pfpSvgFor(agentId, size, version) {
+  pfpRoot() {
+    return assetRootFor(this.store && this.store.file);
+  }
+
+  brandForPortrait(agentId, version) {
     const numeric = Number(version);
-    const brand = Number.isFinite(numeric) && numeric > 0
-      ? (this.brands.full(agentId, `v${numeric}`) || this.brands.full(agentId))
-      : this.brands.full(agentId);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return this.brands.full(agentId, `v${numeric}`) || this.brands.full(agentId);
+    }
+    return this.brands.full(agentId);
+  }
+
+  // Procedural SVG is retired. This stays so older callers get no drawing.
+  pfpSvgFor() {
+    return null;
+  }
+
+  pfpImageFor(agentId, size, version) {
+    const brand = this.brandForPortrait(agentId, version);
     if (!brand || !brand.visualIdentity) return null;
-    const recipe = brand.pfpRecipe && brand.pfpRecipe.colors ? brand.pfpRecipe : recipeFromBrand(brand);
-    return renderPfp(recipe, { size, nonce: agentId });
+    const ver = Number(version) > 0 ? Number(version) : (Number(brand.version) || 1);
+    return readPortraitSync(this.pfpRoot(), agentId, ver, size);
   }
 
   updateSelections(agentId, selections) {
@@ -1764,6 +1781,7 @@ class Show {
   async migrateLegacyPortraits(force = false) {
     const TARGET = 2;
     if (!force && this.pfpMigration >= TARGET) return { migrated: 0, skipped: "done" };
+    if (!imageProviderConfigured()) return { migrated: 0, skipped: "provider_unconfigured" };
     const ids = this.legacyPortraitAgents();
     let migrated = 0; const failed = [];
     for (const id of ids) {
@@ -1800,6 +1818,8 @@ class Show {
         selections,
         brands: this.brands.everyVersion(),
         currentVersion: Number(previous && previous.version || 0),
+        previous,
+        assetRoot: this.pfpRoot(),
         provider: input.provider,
       });
     } catch (err) {
@@ -1855,6 +1875,7 @@ class Show {
       agent: this.agentSummary(draft),
       brand: saved,
       svg: portrait.svg,
+      manifest: portrait.manifest,
       seated: this.busyIds().has(draft.id),
       creationSelections: draft.creationSelections,
     };
@@ -1980,7 +2001,10 @@ class Show {
     const urls = assetUrls(id);
     const version = Number(brand.version) || 1;
     const stamp = (url) => (url ? withBrandVersion(url, { version }) : url);
-    const preview = stamp((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master);
+    const ready = portraitExists(this.pfpRoot(), id, version);
+    const preview = ready
+      ? stamp((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master)
+      : null;
     const view = {
       ...brand,
       pfpAssetType: ASSET_TYPE,
@@ -1996,13 +2020,13 @@ class Show {
         ...brand.assets,
         canonicalPfp: preview,
         pfpPortrait: preview,
-        avatar: stamp((brand.assets && brand.assets.avatar) || urls.avatar),
-        avatar48: stamp((brand.assets && brand.assets.avatar48) || urls.sizes["48"]),
-        avatar96: stamp((brand.assets && brand.assets.avatar96) || urls.sizes["96"]),
-        avatar160: stamp((brand.assets && brand.assets.avatar160) || urls.sizes["160"]),
-        avatar256: stamp((brand.assets && brand.assets.avatar256) || urls.sizes["256"]),
-        avatar320: stamp((brand.assets && brand.assets.avatar320) || urls.sizes["320"]),
-        avatar512: stamp((brand.assets && brand.assets.avatar512) || urls.sizes["512"]),
+        avatar: ready ? stamp((brand.assets && brand.assets.avatar) || urls.avatar) : null,
+        avatar48: ready ? stamp((brand.assets && brand.assets.avatar48) || urls.sizes["48"]) : null,
+        avatar96: ready ? stamp((brand.assets && brand.assets.avatar96) || urls.sizes["96"]) : null,
+        avatar160: ready ? stamp((brand.assets && brand.assets.avatar160) || urls.sizes["160"]) : null,
+        avatar256: ready ? stamp((brand.assets && brand.assets.avatar256) || urls.sizes["256"]) : null,
+        avatar320: ready ? stamp((brand.assets && brand.assets.avatar320) || urls.sizes["320"]) : null,
+        avatar512: ready ? stamp((brand.assets && brand.assets.avatar512) || urls.sizes["512"]) : null,
       },
     };
     const motion = animatedPfpMeta(brand, preview);

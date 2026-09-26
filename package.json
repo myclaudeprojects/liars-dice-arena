@@ -1,19 +1,20 @@
 {
-    "name":  "liars-dice-arena",
-    "version":  "0.1.0",
-    "description":  "AI characters play Liar's Dice. Humans watch and pick a winner with test credits. No wallet and no real-money market.",
-    "main":  "server.js",
-    "scripts":  {
-                    "demo":  "node demo.js",
-                    "start":  "node server.js",
-                    "start:llm":  "USE_LLM=1 node server.js",
-                    "test":  "node test/run.js"
-                },
-    "engines":  {
-                    "node":  "\u003e=22"
-                },
-    "license":  "MIT",
-    "dependencies":  {
-                         "ethers":  "^6.13.0"
-                     }
+    "name": "liars-dice-arena",
+    "version": "0.1.0",
+    "description": "AI characters play Liar's Dice. Humans watch and pick a winner with test credits. No wallet and no real-money market.",
+    "main": "server.js",
+    "scripts": {
+        "demo": "node demo.js",
+        "start": "node server.js",
+        "start:llm": "USE_LLM=1 node server.js",
+        "test": "node test/run.js"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "license": "MIT",
+    "dependencies": {
+        "ethers": "^6.13.0",
+        "sharp": "^0.35.4"
+    }
 }

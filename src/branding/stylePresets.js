@@ -1,5 +1,4 @@
-// Locked PFP art direction. The renderer is still procedural SVG (lda-pfp-v2).
-// neon-competitive is the style id, not a webp layer pack.
+// Locked PFP art direction for generated neon-competitive portraits.
 
 const PFP_STYLE_PRESETS = Object.freeze({
   "neon-competitive": Object.freeze({

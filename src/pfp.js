@@ -1,16 +1,13 @@
-// pfp.js — Procedural square PFP portraits.
+// pfp.js — Portrait URL helpers and the retired recipe builder.
 //
-// There is no image-generation provider in this process. These portraits are
-// deterministic SVG illustrations: one bust, one face, brand palette, dark
-// premium background, controlled neon accent. The locked art direction is
-// neon-competitive. The drawing engine stays lda-pfp-v2. Avatar sizes reuse
-// the same paths. Only the root width and height change.
+// Live portraits are neon-competitive images (src/branding). renderPfp() does
+// not draw. A missing file is a letter in the UI, not an SVG bust.
 
 const { PFP_STYLE_ID } = require("./branding/stylePresets");
 const { buildPfpPrompt, buildNeonPfpVisualInstruction } = require("./branding/buildPfpPrompt");
 const { mapSelections, conceptVariantFor, inferSelectionsFromBrand } = require("./branding/creationSelections");
 
-const PFP_STYLE_VERSION = "lda-pfp-v2";
+const PFP_STYLE_VERSION = "v1";
 const PFP_PROMPT_VERSION = "agent-pfp-v2";
 const ASSET_TYPE = "PFP_PORTRAIT";
 const MASTER_SIZE = 1024;
@@ -384,7 +381,7 @@ function promptFor(recipe) {
       creationSelections: row.selections,
     })
     : "";
-  return [body, instruction, "RENDERER: procedural SVG, lda-pfp-v2. No external image model."].filter(Boolean).join("\n\n");
+  return [body, instruction].filter(Boolean).join("\n\n");
 }
 
 function jawWidth(body, archetype) {
@@ -839,154 +836,10 @@ function selectionCostume(row, x, colors, face) {
   };
 }
 
-function renderPfp(recipe, opts) {
-  const row = recipe && recipe.colors ? recipe : buildRecipe(recipe);
-  // Live rig is v3 ("Neon Noir"): one dark bust, neon as the light.
-  // The original v2 cartoon rig stays available with PFP_RIG=v2.
-  if (process.env.PFP_RIG !== "v2") {
-    return require("./pfpv3").renderPfpV3(row, { size: normalizeSize(opts && opts.size), nonce: (opts && opts.nonce) || "pfp" });
-  }
-  const size = normalizeSize(opts && opts.size);
-  const nonce = String((opts && opts.nonce) || "pfp").replace(/[^a-zA-Z0-9_-]/g, "") || "pfp";
-  const c = row.colors;
-  const x = 512 + row.turn * 18;
-  const lean = row.turn * 36;
-  const face = expressionOf(row.attitude, row.intensity || 1);
-  const id = (name) => `${nonce}_${name}`;
-  const neonLight = /NEON|RIM|GLOW|EDGE/.test(String(row.lighting || ""));
-  const rim = neonLight || row.premium ? 22 : 16;
-  const keyX = row.turn >= 0 ? x - 70 : x + 70;
-  const beard = !row.faceKind && !row.cleaner && (row.attitude === "REGAL" || row.attitude === "STOIC") && (row.headwear === "crown" || row.headwear === "laurel");
-  const pauldrons = row.silhouette === "HEAVY_ARMORED" || row.silhouette === "MECHANICAL";
-  const outline = row.faceKind ? selectionOutline(row, x) : facePath(x);
-  const defs = [
-    el("radialGradient", { id: id("bg"), cx: "50%", cy: "40%", r: "68%" }, [
-      el("stop", { offset: "0%", "stop-color": c.glow }),
-      el("stop", { offset: "58%", "stop-color": c.mid }),
-      el("stop", { offset: "100%", "stop-color": c.edge }),
-    ].join("")),
-    el("radialGradient", { id: id("vig"), cx: "50%", cy: "46%", r: "62%" }, [
-      el("stop", { offset: "58%", "stop-color": "#000000", "stop-opacity": "0" }),
-      el("stop", { offset: "100%", "stop-color": "#000000", "stop-opacity": row.darker ? "0.78" : "0.66" }),
-    ].join("")),
-    el("linearGradient", { id: id("scan"), x1: "0", y1: "0", x2: "0", y2: "1" }, [
-      el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": "0" }),
-      el("stop", { offset: "47%", "stop-color": c.trim, "stop-opacity": "0" }),
-      el("stop", { offset: "50%", "stop-color": c.trim, "stop-opacity": "0.9" }),
-      el("stop", { offset: "53%", "stop-color": c.trim, "stop-opacity": "0" }),
-      el("stop", { offset: "100%", "stop-color": c.trim, "stop-opacity": "0" }),
-    ].join("")),
-    el("linearGradient", { id: id("skin"), x1: keyX, y1: "280", x2: row.turn >= 0 ? x + 180 : x - 180, y2: "700", gradientUnits: "userSpaceOnUse" }, [
-      el("stop", { offset: "0%", "stop-color": shade(c.skin, 0.14) }),
-      el("stop", { offset: "48%", "stop-color": c.skin }),
-      el("stop", { offset: "100%", "stop-color": c.skinShadow }),
-    ].join("")),
-    el("clipPath", { id: id("face") }, el("path", { d: outline })),
-    el("filter", { id: id("rim"), x: "-20%", y: "-20%", width: "140%", height: "140%" }, el("feGaussianBlur", { stdDeviation: "6" })),
-  ].join("");
-  const eyesY = 430;
-  const mouthY = 575;
-  const leftEye = eyeParts(x - 118, eyesY, face.squint + (face.wink || 0), face.wide, c, face.glow || 0);
-  const rightEye = eyeParts(x + 118, eyesY, face.squint, face.wide, c, face.glow || 0);
-  const features = [
-    el("ellipse", { cx: x, cy: 650, rx: 120, ry: 52, fill: c.skinDeep, opacity: "0.28" }),
-    el("path", { fill: c.skinShadow, opacity: "0.55", d: `M ${x - 16} 500 L ${x + 18} 500 L ${x + 8} 560 L ${x - 8} 560 Z` }),
-    layer("eyesOpen", leftEye.open + rightEye.open),
-    layer("pupils", leftEye.pupils + rightEye.pupils),
-    layer("eyesClosed", leftEye.closed + rightEye.closed, { opacity: "0" }),
-    browMarkup(x - 118, 340, face.brow[0] * (row.intensity || 1), face.brow[0] < 0),
-    browMarkup(x + 118, 340, face.brow[1] * (row.intensity || 1), face.brow[1] < 0),
-    mouthMarkup(x + (face.mouth === "smirk" ? 8 : 0), mouthY, face.mouth, c.lip, row.intensity),
-    beard ? el("path", { fill: c.hair, d: `M ${x - 70} 650 Q ${x} 760 ${x + 78} 646 Q ${x + 40} 700 ${x} 710 Q ${x - 36} 700 ${x - 70} 650 Z` }) : "",
-  ].join("");
-  const ears = [
-    el("ellipse", { cx: x - 214, cy: 500, rx: 30, ry: 46, fill: c.skinShadow }),
-    el("ellipse", { cx: x + 214, cy: 500, rx: 30, ry: 46, fill: c.skin }),
-  ].join("");
-  const beast = row.headwear === "ears" ? [
-    el("path", { fill: c.hair, d: `M ${x - 168} 250 L ${x - 230} ${CHARACTER_TOP} L ${x - 70} 220 Z` }),
-    el("path", { fill: c.hair, d: `M ${x + 168} 250 L ${x + 240} ${CHARACTER_TOP - 6} L ${x + 78} 220 Z` }),
-    el("path", { fill: c.skin, d: `M ${x - 150} 228 L ${x - 198} ${CHARACTER_TOP + 36} L ${x - 96} 214 Z` }),
-    el("path", { fill: c.skin, d: `M ${x + 150} 228 L ${x + 206} ${CHARACTER_TOP + 30} L ${x + 100} 214 Z` }),
-  ].join("") : "";
-  const wear = [];
-  if (row.headwear === "hood" || row.headwear === "cowl") {
-    wear.push(el("path", { fill: luma(c.cloth) < 0.12 ? mix(c.trim, "#120814", 0.72) : c.clothDeep, stroke: c.trim, "stroke-width": 18, d: hoodPath(x) }));
-  }
-  if (row.headwear === "halo") {
-    wear.push(el("ellipse", { cx: x, cy: 430, rx: 310, ry: 250, fill: "none", stroke: c.trim, "stroke-width": 28, opacity: "0.9" }));
-    wear.push(el("ellipse", { cx: x, cy: CHARACTER_TOP + 40, rx: 150, ry: 28, fill: "none", stroke: c.trim, "stroke-width": 16, opacity: "0.85" }));
-  }
-  const front = [];
-  if (row.hair && row.hair !== "none") front.push(hairPath(row.hair, x, lean, c.hair));
-  if (row.headwear === "crown") front.push(el("path", { fill: c.trim, d: crownPath(x) }), el("path", { fill: shade(c.trim, -0.35), d: `M ${x - 132} 286 H ${x + 132} V 312 H ${x - 132} Z` }));
-  if (row.headwear === "laurel") front.push(leaves(x, 180, mix(c.trim, "#7FA06A", 0.35)));
-  if (row.headwear === "helm") front.push(el("path", { fill: mix(c.trim, c.clothDeep, 0.45), d: helmPath(x) }));
-  if (row.headwear === "crest") front.push(el("path", { fill: c.trim, d: `M ${x - 16} 168 L ${x} 96 L ${x + 22} 190 L ${x - 8} 186 Z` }));
-  if (row.headwear === "halfmask") {
-    front.push(el("path", { fill: c.clothDeep, opacity: "0.92", d: `M ${x + 8} 500 C ${x + 40} 560 ${x + 150} 540 ${x + 176} 610 L ${x + 140} 650 C ${x + 40} 630 ${x - 10} 560 ${x + 8} 500 Z` }));
-  }
-  if (row.headwear === "cowl") {
-    front.push(el("path", { fill: c.cloth, d: `M ${x - 120} 700 Q ${x} 640 ${x + 120} 700 Q ${x} 780 ${x - 120} 700 Z` }));
-  }
-  const costume = row.faceKind ? selectionCostume(row, x, c, face) : null;
-  const collar = costume ? costume.collar : (row.minimal ? "" : el("path", {
-    fill: c.trim,
-    opacity: "0.92",
-    d: `M ${x - 150} 760 L ${x} 860 L ${x + 156} 748 L ${x + 86} 900 L ${x} 868 L ${x - 86} 908 Z`,
-  }));
-  const gem = row.premium && !row.minimal
-    ? el("path", { fill: c.trim, d: `M ${x} 868 L ${x + 14} 886 L ${x} 904 L ${x - 14} 886 Z` })
-    : "";
-  const plates = pauldrons ? [
-    el("ellipse", { cx: x - 230, cy: 860, rx: 90, ry: 48, fill: shade(c.cloth, 0.12) }),
-    el("ellipse", { cx: x + 230, cy: 860, rx: 90, ry: 48, fill: shade(c.cloth, -0.08) }),
-  ].join("") : "";
-  const motif = motifParts(row.motif, c, row.cleaner);
-  const rimGlow = [
-    el("path", { d: outline, fill: "none", stroke: c.trim, "stroke-width": rim + 30, opacity: "0.95", filter: `url(#${id("rim")})` }),
-    el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 22, opacity: "0.7", filter: `url(#${id("rim")})` }),
-  ].join("");
-  const torso = [
-    plates,
-    el("path", { fill: c.cloth, d: shoulderPath(x, row.silhouette) }),
-    el("path", { fill: shade(c.cloth, 0.08), d: `M ${x - 78} 760 L ${x + 78} 760 L ${x + 96} 900 L ${x - 96} 900 Z` }),
-    el("path", { fill: c.skinShadow, d: `M ${x - 58} 690 L ${x + 58} 690 L ${x + 46} 860 L ${x - 46} 860 Z` }),
-    el("path", { d: shoulderPath(x, row.silhouette), fill: "none", stroke: c.trim, "stroke-width": 16, opacity: "0.82" }),
-  ].join("");
-  const head = [
-    costume ? costume.ears : ears,
-    costume ? layer("earsFront", costume.beast) : beast,
-    el("g", { "clip-path": `url(#${id("face")})` }, [
-      el("path", { fill: `url(#${id("skin")})`, d: outline }),
-      el("ellipse", { cx: keyX, cy: 400, rx: 140, ry: 180, fill: "#FFFFFF", opacity: row.darker ? "0.06" : "0.14" }),
-      costume ? costume.features : features,
-    ].join("")),
-    el("path", { d: outline, fill: "none", stroke: c.trim, "stroke-width": rim + 16, opacity: "0.45", filter: `url(#${id("rim")})` }),
-    el("path", { d: outline, fill: "none", stroke: c.trim, "stroke-width": rim, opacity: row.darker ? "0.55" : "0.9" }),
-    layer("hairFront", (costume ? costume.front : front).join("")),
-  ].join("");
-  const body = [
-    layer("bg", el("rect", { width: 1024, height: 1024, fill: `url(#${id("bg")})` })),
-    layer("bgGrid", neonGrid(c), { opacity: row.cleaner ? "0.1" : "0.22" }),
-    layer("bgFx", motif.fx + (costume ? costume.background : "")),
-    layer("particles", motif.particles, { opacity: "0.52" }),
-    layer("aura", [
-      el("ellipse", { cx: 512, cy: 410, rx: 290, ry: 240, fill: c.trim, opacity: "0.46" }),
-      el("ellipse", { cx: 512, cy: 760, rx: 340, ry: 160, fill: c.primary, opacity: "0.28" }),
-    ].join(""), { opacity: row.cleaner ? "0.34" : "0.7" }),
-    el("rect", { width: 1024, height: 1024, fill: `url(#${id("vig")})` }),
-    layer("hairBack", wear.join("")),
-    layer("torso", torso),
-    layer("head", head),
-    layer("rimGlow", rimGlow, { opacity: "0.78" }),
-    layer("scanFx", el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("scan")})` }), { opacity: row.cleaner ? "0.05" : "0.12" }),
-    layer("collarFx", collar + gem),
-    layer("accessory", costume ? costume.accessory : ""),
-  ].join("");
-  const scale = compositionScale();
-  const speciesAttr = row.faceKind ? ` data-species="${row.species || "human"}" data-face="${row.faceKind}" data-age="${row.age || "adult"}" data-archetype="${row.archetypeId || ""}"` : "";
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" data-asset="${ASSET_TYPE}" data-style="${PFP_STYLE_VERSION}" data-pfp-style="${row.styleId || PFP_STYLE_ID}" data-engine="procedural-svg" data-layered="1" data-signature="${row.signature || "COLLAR"}" data-character-scale="${scale.characterHeight}" data-face-scale="${scale.faceHeight}"${speciesAttr} aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
+function renderPfp() {
+  const err = new Error("Procedural SVG portraits are retired. Neon competitive portraits are generated images; a missing portrait stays a letter.");
+  err.code = "pfp_procedural_retired";
+  throw err;
 }
 
 function normalizeSize(value) {
@@ -1054,7 +907,7 @@ function pathData(svg) {
 
 // Bump whenever the portrait RENDER changes for an unchanged brand (new rig, new style rules).
 // It rides along in every portrait URL, so browsers/CDNs that cached the old look fetch again.
-const PFP_STYLE_STAMP = 4;
+const PFP_STYLE_STAMP = 5;
 
 function withBrandVersion(url, agent) {
   if (!url) return url;

@@ -4,8 +4,8 @@
 // and never replaces an earlier version, so a settled match can still render
 // the brand that was active when it was played.
 //
-// Emblems are monochrome SVG marks. PFP portraits are procedural squares
-// (src/pfp.js), derived into avatar sizes. Hero cards stay pending.
+// Emblems are monochrome SVG marks. PFP portraits are neon-competitive
+// images when a file exists. Otherwise the UI shows a letter. Hero cards stay pending.
 // Similarity embeddings are not computed; palette and title checks are local.
 
 const { CAST } = require("./characters");
@@ -634,10 +634,13 @@ class BrandBook {
       pfpAssetType: null,
       primaryPfpAssetId: brand.primaryPfpAssetId || null,
       pfpStyleVersion: brand.pfpStyleVersion || null,
+      pfpStyleId: PFP_STYLE_ID,
       avatarUrl: null,
       avatarSizes: null,
     };
-    if (visual.primaryColor) {
+    const version = Number(brand.version) || 1;
+    const ready = typeof this.portraitReady === "function" && this.portraitReady(brand.agentId, version);
+    if (visual.primaryColor && ready) {
       const urls = assetUrls(brand.agentId);
       const versioned = (url) => withBrandVersion(url, brand.version ? brand : { version: view.version });
       view.pfpUrl = versioned((brand.assets && (brand.assets.canonicalPfp || brand.assets.pfpPortrait)) || urls.master);

@@ -1,4 +1,5 @@
-// Layered idle motion for procedural SVG portraits.
+// Idle motion for layered SVG, when a portrait actually has those layers.
+// Neon-competitive rasters stay posters. A missing portrait is a letter.
 //
 // House cast and created agents are lda-pfp-v2 drawings in the neon-competitive
 // style, not webp layer packs and not a Pixi/GSAP stage. Groups in the SVG
@@ -121,29 +122,25 @@
   function animatedPfpMeta(brand, previewUrl) {
     if (!brand || !previewUrl) return null;
     const motionProfile = profileForBrand(brand);
-    const layers = {};
-    for (const key of ["bg", "bgGrid", "bgFx", "torso", "head", "hairFront", "eyesOpen", "eyesClosed", "pupils", "collarFx", "rimGlow", "aura", "particles", "scanFx"]) {
-      layers[key] = "procedural";
-    }
     const row = brand && typeof brand === "object" ? brand : {};
     const canonical = (row.assets && row.assets.canonicalPfp) || previewUrl;
     return {
       version: Number(row.version) || 1,
-      engine: "procedural-svg",
+      engine: "neon-competitive",
       styleId: "neon-competitive",
       manifestUrl: null,
       sourceCanonicalPfp: canonical,
       previewUrl,
-      enabled: true,
+      enabled: false,
       motionProfile,
-      qualityTier: "LAYERED_2_5D",
+      qualityTier: "POSTER",
       manifest: {
         version: 1,
         width: 1024,
         height: 1024,
         poster: canonical,
-        source: "procedural-svg",
-        layers,
+        source: "neon-competitive",
+        layers: {},
         anchors: {
           head: { x: 512, y: 430 },
           leftEye: { x: 394, y: 430 },

@@ -28,6 +28,10 @@ services:
         value: /var/data/agents.json
       # Set these in the Render dashboard (never commit them):
       # USE_LLM, ANTHROPIC_API_KEY, OPENAI_API_KEY
+      # OPENAI_API_KEY is required before live neon-competitive portraits generate.
+      # Without it, agents show a letter. Optional: OPENAI_IMAGE_MODEL (default gpt-image-1).
+      # Portraits are written under /var/data/assets/agents (next to SHOW_DATA_PATH).
+      # Set PFP_ASSET_DIR only if that directory should move.
       # CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET, CIRCLE_BLOCKCHAIN
     disk:
       name: arena-data

@@ -325,61 +325,10 @@ function head(row, x, g, c, f, id) {
 }
 
 // ---------------------------------------------------------------- render
-function renderPfpV3(row, opts) {
-  const size = (opts && opts.size) || 1024;
-  const nonce = String((opts && opts.nonce) || "pfp").replace(/[^a-zA-Z0-9_-]/g, "") || "pfp";
-  const id = (n) => `${nonce}_${n}`;
-  const c = row.colors;
-  const turn = Number(row.turn) || 0, t = turn * 14;
-  const x = CX;
-  const g = faceGeom(row);
-  const f = faceOf(row);
-  const wide = /HEAVY|MECHANICAL|BULK/.test(String(row.silhouette || "")) || String(row.faceKind) === "male_muscular" || String(row.faceKind) === "heavy_set";
-  const litSide = turn >= 0 ? -1 : 1;
-  const rimX = x + litSide * (g.w + 20) + t;
-
-  const defs = el("defs", null, [
-    el("linearGradient", { id: id("sky"), x1: 0, y1: 0, x2: 0, y2: 1 }, el("stop", { offset: "0%", "stop-color": mix(c.edge, c.trim, 0.22) }) + el("stop", { offset: "60%", "stop-color": c.edge }) + el("stop", { offset: "100%", "stop-color": shade(c.edge, -0.5) })),
-    el("linearGradient", { id: id("fog"), x1: 0, y1: 0, x2: 0, y2: 1 }, el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": 0 }) + el("stop", { offset: "100%", "stop-color": c.trim, "stop-opacity": 0.28 })),
-    el("linearGradient", { id: id("spot"), x1: 0, y1: 0, x2: 0, y2: 1 }, el("stop", { offset: "0%", "stop-color": "#ffffff", "stop-opacity": 0.28 }) + el("stop", { offset: "100%", "stop-color": "#ffffff", "stop-opacity": 0 })),
-    el("radialGradient", { id: id("felt"), cx: "50%", cy: "45%", r: "70%" }, el("stop", { offset: "0%", "stop-color": mix(c.mid, c.trim, 0.25) }) + el("stop", { offset: "100%", "stop-color": c.edge })),
-    el("linearGradient", { id: id("customGrad"), x1: 0, y1: 0, x2: 1, y2: 1 }, el("stop", { offset: "0%", "stop-color": mix(c.edge, c.trim, 0.5) }) + el("stop", { offset: "100%", "stop-color": c.edge })),
-    el("radialGradient", { id: id("iris"), cx: "50%", cy: "50%", r: "50%" }, el("stop", { offset: "0%", "stop-color": mix(c.iris, c.trim, 0.55) }) + el("stop", { offset: "70%", "stop-color": c.iris }) + el("stop", { offset: "100%", "stop-color": "#05060a" })),
-    el("linearGradient", { id: id("metal"), x1: 0, y1: 0, x2: 1, y2: 1 }, el("stop", { offset: "0%", "stop-color": "#e6ecf1" }) + el("stop", { offset: "55%", "stop-color": "#9aa7b3" }) + el("stop", { offset: "100%", "stop-color": "#4f5a66" })),
-    el("radialGradient", { id: id("vig"), cx: "50%", cy: "48%", r: "64%" }, el("stop", { offset: "55%", "stop-color": "#000000", "stop-opacity": 0 }) + el("stop", { offset: "100%", "stop-color": "#000000", "stop-opacity": row.darker ? 0.55 : 0.38 })),
-    el("filter", { id: id("bloom"), x: "-40%", y: "-40%", width: "180%", height: "180%" }, el("feGaussianBlur", { stdDeviation: 14, result: "b" }) + el("feMerge", null, el("feMergeNode", { in: "b" }) + el("feMergeNode", { in: "SourceGraphic" }))),
-    el("filter", { id: id("soft"), x: "-30%", y: "-30%", width: "160%", height: "160%" }, el("feGaussianBlur", { stdDeviation: 26 })),
-    el("filter", { id: id("grain") }, el("feTurbulence", { type: "fractalNoise", baseFrequency: "0.9", numOctaves: 2, seed: hashStr(nonce) % 100 }) + el("feColorMatrix", { type: "saturate", values: 0 }) + el("feComponentTransfer", null, el("feFuncA", { type: "table", tableValues: "0 0.07" }))),
-    el("clipPath", { id: id("headClip") }, el("path", { d: (String(row.species) === "robot" || String(row.species) === "skeletal") ? P(facePts(x, g, turn)) : smoothFace(x, g, turn) })),
-    el("linearGradient", { id: id("keyL"), x1: 0, y1: 0, x2: 1, y2: 0 }, el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": 0.95 }) + el("stop", { offset: "14%", "stop-color": c.trim, "stop-opacity": 0 })),
-    el("linearGradient", { id: id("keyR"), x1: 1, y1: 0, x2: 0, y2: 0 }, el("stop", { offset: "0%", "stop-color": c.trim, "stop-opacity": 0.95 }) + el("stop", { offset: "14%", "stop-color": c.trim, "stop-opacity": 0 })),
-  ].join(""));
-
-  const hair = hairShapes(row, x, g, c);
-  const hd = head(row, x, g, c, f, id);
-
-  const bg = layer("bg", el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("sky")})` }) + scene(row, c, id, 0));
-  const grid = layer("bgGrid", el("g", { opacity: 0.22 }, el("path", { d: "M0 700 L1024 700 M0 780 L1024 780 M0 880 L1024 880 M512 640 L120 1024 M512 640 L904 1024 M512 640 L300 1024 M512 640 L724 1024", stroke: c.trim, "stroke-width": 1.5, fill: "none" })));
-  const bgFx = layer("bgFx", el("ellipse", { cx: rimX + litSide * 140, cy: 420, rx: 300, ry: 460, fill: c.trim, opacity: 0.34, filter: `url(#${id("soft")})` }) + el("ellipse", { cx: 512, cy: 520, rx: 420, ry: 380, fill: mix(c.mid, "#ffffff", 0.08), opacity: 0.35, filter: `url(#${id("soft")})` }));
-  const aura = layer("aura", el("g", { opacity: 0.55 }, el("circle", { cx: 512, cy: 512, r: 400, fill: "none", stroke: c.trim, "stroke-width": 2, "stroke-dasharray": "120 480", opacity: 0.5 }) + el("circle", { cx: 512, cy: 512, r: 430, fill: "none", stroke: c.trim, "stroke-width": 1, "stroke-dasharray": "20 60", opacity: 0.35 })));
-  const rim = layer("rimGlow", el("path", { d: hd.edge, fill: "none", stroke: c.trim, "stroke-width": 7, "stroke-linecap": "round", filter: `url(#${id("bloom")})` }) + el("path", { d: hd.edge, fill: "none", stroke: shade(c.trim, 0.45), "stroke-width": 2.5, "stroke-linecap": "round" }), { opacity: "0.85" });
-  const torso = layer("torso", attire(row, x, c, wide));
-  const collarFx = layer("collarFx", el("g", { filter: `url(#${id("bloom")})` }, el("path", { d: litSide < 0 ? `M ${x - 360 + t} 1000 L ${x - 340 + t} 820 Q ${x - 300 + t} 740 ${x - 170 + t} 700` : `M ${x + 360 + t} 1000 L ${x + 340 + t} 820 Q ${x + 300 + t} 740 ${x + 170 + t} 700`, stroke: c.trim, "stroke-width": 12, opacity: 0.8, fill: "none", "stroke-linecap": "round" })));
-  const hairBack = layer("hairBack", hair.back);
-  const headLayer = layer("head", hd.inner + layer("accessory", accessory(row, x, g, c, id)));
-  const hairFront = layer("hairFront", hair.front + headwear(row, x, g, c));
-  const rand = rng(hashStr(nonce + "p"));
-  const particles = layer("particles", Array.from({ length: 18 }, () => el("circle", { cx: rand() * 1024, cy: rand() * 1024, r: 1.5 + rand() * 3, fill: c.trim, opacity: 0.2 + rand() * 0.5 })).join(""));
-  const scan = layer("scanFx", el("rect", { x: 0, y: 480, width: 1024, height: 3, fill: c.trim, opacity: 0.35 }), { opacity: "0.12" });
-  const post = el("rect", { x: 0, y: 0, width: 1024, height: 1024, fill: `url(#${id("vig")})` }) + el("rect", { x: 0, y: 0, width: 1024, height: 1024, filter: `url(#${id("grain")})`, opacity: 0.45 });
-
-  // rimGlow is the lit contour only. It does not trace or cover the face.
-  const body = defs + bg + grid + bgFx + aura + hairBack + torso + collarFx + headLayer + rim + hairFront + particles + scan + post;
-  const sc = row.scale || {};
-  const synthetic = String(row.species) === "robot" || String(row.species) === "skeletal";
-  const attrs = { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 1024 1024", width: size, height: size, "data-asset": "PFP_PORTRAIT", "data-style": "lda-pfp-v2", "data-rig": "v3", "data-portrait": "neon-noir", "data-composite": "pure", "data-legacy-overlay": "0", "data-face-fill": synthetic ? "synthetic" : "noir", "data-pfp-style": row.styleId || "neon-competitive", "data-engine": "procedural-svg", "data-layered": "1", "data-signature": row.signature || "", "data-character-scale": sc.characterHeight, "data-face-scale": sc.faceHeight, "data-species": row.species, "data-face": row.faceKind, "data-age": row.age, "data-archetype": row.archetypeId, "aria-hidden": "true" };
-  const open = "<svg" + Object.entries(attrs).filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => ` ${k}="${esc(v)}"`).join("") + ">";
-  return open + body + "</svg>";
+function renderPfpV3() {
+  const err = new Error("Neon Noir procedural busts are retired. The live portrait path is neon-competitive image generation.");
+  err.code = "pfp_procedural_retired";
+  throw err;
 }
 
 module.exports = { renderPfpV3, FACE_TOP, FACE_BOTTOM };

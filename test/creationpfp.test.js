@@ -3,7 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { Show } = require("../src/showrunner");
-const { buildRecipe, renderPfp, pathData, qualityCheck, withBrandVersion, getAgentPfpUrl } = require("../src/pfp");
+const { buildRecipe, renderPfp, withBrandVersion, getAgentPfpUrl } = require("../src/pfp");
 const { normalizeSelections, speciesOf, previewSelections } = require("../src/branding/creationSelections");
 const { previewSvg } = require("../src/branding/creationPreviews");
 const { buildNeonPfpVisualInstruction } = require("../src/branding/buildPfpPrompt");
@@ -59,57 +59,45 @@ const D = {
   accessories: "none",
 };
 
-function draw(selections) {
-  const recipe = buildRecipe({ name: "Proof", archetype: "GAMBLER", visual: VISUAL, selections });
-  const svg = renderPfp(recipe, { size: 96, nonce: "proof" });
-  const quality = qualityCheck(recipe, svg);
-  assert(quality.ok, "quality " + quality.reasons.join(","));
-  return { recipe, svg };
+function recipeFor(selections) {
+  return buildRecipe({ name: "Proof", archetype: "GAMBLER", visual: VISUAL, selections });
 }
 
-const exec = draw(A);
-const robot = draw(B);
-const athlete = draw(C);
-const animal = draw(D);
-eq(exec.recipe.species, "human", "executive is human");
-eq(robot.recipe.species, "robot", "robot is synthetic");
-eq(athlete.recipe.faceKind, "female_athletic", "athlete form");
-eq(animal.recipe.species, "animal", "animal is non-human");
-assert(exec.svg.includes('data-species="human"'), "executive species mark");
-assert(robot.svg.includes('data-species="robot"'), "robot species mark");
-assert(animal.svg.includes('data-species="animal"'), "animal species mark");
-assert(robot.svg.includes('width="96"'), "robot renders at 96");
-assert(pathData(exec.svg) !== pathData(robot.svg), "executive and robot are different drawings");
-assert(pathData(exec.svg) !== pathData(athlete.svg), "executive and athlete are different drawings");
-assert(pathData(exec.svg) !== pathData(animal.svg), "executive and animal are different drawings");
-assert(pathData(athlete.svg) !== pathData(animal.svg), "athlete and animal are different drawings");
-const elder = draw({ ...A, bodyType: "elder", expression: "serious", accessories: "none" });
-assert(elder.svg.includes('data-age="elder"'), "elder reads as older");
-assert(pathData(elder.svg) !== pathData(exec.svg), "elder face differs from lean male");
-const tech = draw({ ...A, archetype: "tech", bodyType: "androgynous", attire: "cyber_gear" });
-eq(tech.recipe.species, "human", "tech stays human");
+const exec = recipeFor(A);
+const robot = recipeFor(B);
+const athlete = recipeFor(C);
+const animal = recipeFor(D);
+eq(exec.species, "human", "executive is human");
+eq(robot.species, "robot", "robot is synthetic");
+eq(athlete.faceKind, "female_athletic", "athlete form");
+eq(animal.species, "animal", "animal is non-human");
 eq(speciesOf(B), "robot", "robot_ai + full_robot species");
-assert(tech.recipe.augment === true, "tech is augmented");
-assert(!robot.recipe.augment, "robot is not a human implant");
+const tech = recipeFor({ ...A, archetype: "tech", bodyType: "androgynous", attire: "cyber_gear" });
+eq(tech.species, "human", "tech stays human");
+assert(tech.augment === true, "tech is augmented");
+assert(!robot.augment, "robot is not a human implant");
+let retired = false;
+try { renderPfp(exec); }
+catch (err) { retired = err.code === "pfp_procedural_retired"; }
+assert(retired, "selections do not draw a procedural bust");
 
 const prompt = buildNeonPfpVisualInstruction({ creationSelections: A });
 assert(prompt.includes("Archetype: executive"), "instruction names archetype");
 assert(prompt.includes("robot_ai + full_robot"), "instruction keeps the robot rule");
 assert(prompt.includes("No external image model") === false, "instruction itself is the art direction");
-const recipePrompt = require("../src/pfp").promptFor(exec.recipe);
-assert(recipePrompt.includes("lda-pfp-v2"), "existing renderer stays in the prompt");
-assert(recipePrompt.includes("Archetype: executive"), "selections are appended to the existing prompt");
+const recipePrompt = require("../src/pfp").promptFor(exec);
+assert(!recipePrompt.includes("lda-pfp-v2"), "prompt does not name the retired renderer");
+assert(recipePrompt.includes("Archetype: executive"), "selections are appended to the prompt");
 
-eq(withBrandVersion("/api/show/agents/u_a/pfp.svg", { version: 2 }), "/api/show/agents/u_a/pfp.svg?v=2&s=4", "version query");
-eq(withBrandVersion("/api/show/agents/u_a/pfp.svg?size=96", { version: 3 }), "/api/show/agents/u_a/pfp.svg?size=96&v=3&s=4", "version after size");
+eq(withBrandVersion("/api/show/agents/u_a/pfp.svg", { version: 2 }), "/api/show/agents/u_a/pfp.svg?v=2&s=5", "version query");
+eq(withBrandVersion("/api/show/agents/u_a/pfp.svg?size=96", { version: 3 }), "/api/show/agents/u_a/pfp.svg?size=96&v=3&s=5", "version after size");
 eq(getAgentPfpUrl({
   brand: { version: 4, assets: { canonicalPfp: "/api/show/agents/u_a/pfp.svg?v=4", avatar256: "/api/show/agents/u_a/pfp.svg?size=256&v=4" }, avatarUrl: "/legacy.png" },
-}, 256), "/api/show/agents/u_a/pfp.svg?size=256&v=4&s=4", "sized canonical wins over legacy");
+}, 256), "/api/show/agents/u_a/pfp.svg?size=256&v=4&s=5", "sized canonical wins over legacy");
 
-const executivePreview = previewSvg("archetype", "executive");
-const robotPreview = previewSvg("archetype", "robot_ai");
-assert(executivePreview && robotPreview && pathData(executivePreview) !== pathData(robotPreview), "archetype previews differ");
-assert(previewSvg("archetype", "executive") === executivePreview, "preview is cached");
+assert(previewSvg("archetype", "executive") == null, "option previews are not procedural busts");
+assert(previewSvg("archetype", "robot_ai") == null, "robot preview is not a bust");
+assert(previewSvg("nope", "nope") == null, "unknown preview is empty");
 assert(previewSelections("nope", "nope") == null, "unknown preview is empty");
 eq(normalizeSelections({ archetype: "nope" }).archetype, "executive", "unknown option falls back");
 
@@ -166,31 +154,63 @@ function boot(file) {
   eq(failed.userAgents.get(failedDraft.agent.id).pfpStatus, "GENERATION_FAILED", "failure status");
   eq(failed.brands.full(failedDraft.agent.id), null, "failure does not invent a brand");
 
-  const first = await show.generatePortrait(id, { creationSelections: A });
+  const sharp = require("sharp");
+  async function solid(r, g, b) {
+    return sharp({ create: { width: 16, height: 16, channels: 3, background: { r, g, b } } }).png().toBuffer();
+  }
+  const stub = {
+    async generate({ prompt }) {
+      const robotish = /Archetype: robot_ai/.test(String(prompt || ""));
+      return { buffer: await solid(robotish ? 20 : 180, robotish ? 180 : 30, robotish ? 220 : 40), model: "test-stub", provider: "test-stub" };
+    },
+  };
+  const unconfigured = boot(path.join(dir, "nokey.json"));
+  const bare = unconfigured.createAgent({
+    name: "Vesper",
+    shortDescription: "A quiet closer who spends one lie and waits.",
+    archetype: "ASSASSIN",
+    creationSelections: A,
+  });
+  const savedKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  let closed = false;
+  try { await unconfigured.generatePortrait(bare.agent.id, { creationSelections: A }); }
+  catch (err) { closed = err.code === "pfp_provider_unconfigured"; }
+  if (savedKey) process.env.OPENAI_API_KEY = savedKey;
+  assert(closed, "missing key fails closed");
+  eq(unconfigured.brands.full(bare.agent.id), null, "missing key does not invent a brand");
+
+  const first = await show.generatePortrait(id, { creationSelections: A, provider: stub });
   eq(first.brand.version, 1, "first version");
   eq(first.brand.status, "READY", "ready");
   eq(first.brand.visualDirty, false, "clean");
   eq(first.brand.styleId, "neon-competitive", "style");
   assert(first.brand.assets.canonicalPfp.includes("v=1"), "canonical url is versioned");
-  assert(first.svg.includes('data-species="human"'), "saved drawing is the executive");
-  eq(first.brand.animatedPfp.sourceCanonicalPfp, first.brand.assets.canonicalPfp, "animation uses the canonical portrait");
+  assert(first.brand.assets.canonicalPfp.includes("s=5"), "style stamp busts old svgs");
+  assert(!first.svg, "generation does not return an svg bust");
+  const face1 = show.pfpImageFor(id, 96, 1);
+  assert(face1 && face1.mime === "image/webp", "served portrait is webp");
+  eq(first.brand.animatedPfp.sourceCanonicalPfp, first.brand.assets.canonicalPfp, "poster uses the canonical portrait");
   eq(first.brand.animatedPfp.motionProfile, "NEON_COMPETITIVE", "neon motion");
+  eq(first.brand.animatedPfp.engine, "neon-competitive", "not the procedural engine");
   eq(first.brand.generation.selections.archetype, "executive", "generation stores selections");
+  assert(show.brands.publicOf(id).pfpUrl.includes("s=5"), "public url appears once the file exists");
   const oldUrl = first.brand.assets.canonicalPfp;
   const oldVersion = first.brand.version;
-  const again = await show.generatePortrait(id, { creationSelections: B });
+  const again = await show.generatePortrait(id, { creationSelections: B, provider: stub });
   eq(again.brand.version, oldVersion + 1, "regenerate bumps version");
   assert(again.brand.assets.canonicalPfp !== oldUrl, "canonical url changes");
-  assert(again.svg.includes('data-species="robot"'), "regenerate is the robot");
+  assert(again.manifest.prompt.includes("robot_ai"), "regenerate prompt is the robot");
   const previous = show.brands.full(id, "v1");
   assert(previous && previous.assets.canonicalPfp === oldUrl, "old version stays");
-  assert(pathData(show.pfpSvgFor(id, 96, 1)) !== pathData(show.pfpSvgFor(id, 96, 2)), "versioned portraits differ");
+  const face2 = show.pfpImageFor(id, 96, 2);
+  assert(face2 && !face1.buffer.equals(face2.buffer), "versioned portraits differ");
   eq(show.agentList().filter((row) => row.roster === "house").length, 12, "house cast stays 12");
   const house = show.brands.full("dracula");
   eq(house.brandVersion, "v1", "house brand version untouched");
   assert(!house.pfpRecipe, "house portrait was not regenerated");
   const view = show.brands.publicOf("dracula");
-  assert(view.pfpUrl.includes("v=1"), "house render helper is versioned");
+  assert(!view.pfpUrl, "house cast has no invented portrait");
   assert(view.creationSelections && view.creationSelections.archetype, "house gets default selections");
   const reloaded = boot(path.join(dir, "show.json"));
   eq(reloaded.brands.full(id).version, 2, "version reloads");
@@ -208,9 +228,9 @@ function boot(file) {
   draft.identity.visualIdentity.primaryColor = retired.visualIdentity.primaryColor;
   draft.identity.visualIdentity.secondaryColor = retired.visualIdentity.secondaryColor;
   draft.identity.visualIdentity.accentColor = "#5182F6";
-  const red = await show.generatePortrait(second.agent.id, { creationSelections: A });
+  const red = await show.generatePortrait(second.agent.id, { creationSelections: A, provider: stub });
   eq(red.brand.version, 1, "second red executive still locks");
-  assert(red.svg.includes('data-species="human"'), "second portrait is human");
+  assert(red.manifest.prompt.includes("executive"), "second portrait prompt is the executive");
   const { paletteNear } = require("../src/brands");
   assert(!paletteNear(red.brand, retired), "accent moves off the retired red palette");
   console.log("creation pfp ok");

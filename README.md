@@ -11,6 +11,24 @@ npm start    # http://localhost:3000  — Arena / Agents / Watch / History / Pro
 npm test
 ```
 
+Portraits are **neon competitive** generated images, not procedural drawings. Create Agent and `POST /api/show/agents/:id/brand/generate` call the image provider. `GET /api/show/agents/:id/pfp.svg` serves the stored WebP (the path stays stable for the spectator UI). When no file exists, the roster shows a letter. Nothing is invented in place of a portrait.
+
+```bash
+# Required on the server (Render dashboard secret). Same key the LLM path can use.
+OPENAI_API_KEY=...
+# Optional. Default model is gpt-image-1. dall-e-3 also works.
+OPENAI_IMAGE_MODEL=gpt-image-1
+# Optional. On Render this follows SHOW_DATA_PATH onto the persistent disk
+# (/var/data/assets/agents). Leave unset locally to use public/assets/agents
+# for the batch script, and the folder next to show.json for live creates.
+# PFP_ASSET_DIR=/var/data/assets/agents
+
+node scripts/generateNeonPfps.js          # three sample identities
+PFP_INCLUDE_HOUSE=1 node scripts/generateNeonPfps.js   # also the house cast
+```
+
+Without `OPENAI_API_KEY`, generation returns a clear error and the UI keeps the letter.
+
 Open the site, tap **Watch & pick**, confirm a test trade, and stay for the reveal. No signup. Sound stays muted until Unmute. A dropped connection keeps the last Arena and Watch frame up instead of a blank table. A new predictor sees an empty career line, and History says so when no stories have finished. Arena also shows the next four matches. Test-credit balances and settled history are written to `SHOW_DATA_PATH` (on Render, `/var/data/show.json`; otherwise `data/show.json`). History keeps the latest 100 settled matches. A predictor's career chart keeps the latest 100 settled picks. Profile and History draw that series as an equity line with total test PnL, win rate, and recent calls. The line uses recorded points only. Buy attempts from the last minute are stored in that same file, so a restart still enforces slow-down. Predictors saved before the career series existed keep their total PnL and an empty chart; those points are not invented. One process holds `show.json.lock`. On a rolling deploy the next process waits up to 15 seconds for that lock, and the owner releases it on SIGTERM, SIGINT, and exit. A dead pid is cleared. If the lock is still held, the new process refuses to write. Each save fsyncs `show.json.tmp` and renames it into place. A leftover `.tmp`, or a file that is not valid version-1 JSON, is ignored and the show starts a fresh book.
 
 `LEGACY_USDC=1 npm start` boots the older on-chain spectator table. That path is parked, not the product.

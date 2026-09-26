@@ -11,7 +11,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { Show } = require("../src/showrunner");
-const { pathData, recipeFromBrand, renderPfp } = require("../src/pfp");
+const { recipeFromBrand, renderPfp } = require("../src/pfp");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); }
@@ -36,14 +36,15 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   eq(ca.concepts.length, 4, "four concepts A");
   eq(cb.concepts.length, 4, "four concepts B");
   for (const c of ca.concepts) eq(c.creationSelections.archetype, "executive", "concept carries the user's selections");
-  assert(pathData(ca.concepts[0].pfpSvg) !== pathData(cb.concepts[0].pfpSvg), "executive and robot are different characters");
-  assert(/robot|skeletal|MECHANICAL/.test(JSON.stringify(cb.concepts[0].pfp.recipe.species + cb.concepts[0].pfp.recipe.silhouette)), "robot selections drive a mechanical rig");
-  eq(ca.concepts[0].pfp.recipe.accessory, "glasses", "accessory selection reaches the recipe");
-  eq(ca.concepts[0].pfp.recipe.background, "city_night", "background selection reaches the recipe");
+  assert(!ca.concepts[0].pfpSvg && !cb.concepts[0].pfpSvg, "concepts do not invent svg busts");
+  assert(ca.concepts[0].pfp.prompt !== cb.concepts[0].pfp.prompt, "executive and robot are different prompts");
+  assert(cb.concepts[0].pfp.prompt.includes("robot_ai"), "robot selections reach the prompt");
+  assert(ca.concepts[0].pfp.prompt.includes("glasses"), "accessory selection reaches the prompt");
+  assert(ca.concepts[0].pfp.prompt.includes("city_night"), "background selection reaches the prompt");
 
   // ---- four concepts of the same selections are visibly different, and concept 0 is the pure rendition
-  const faces = new Set(ca.concepts.map((c) => pathData(c.pfpSvg)));
-  eq(faces.size, 4, "four concepts are four different portraits");
+  const faces = new Set(ca.concepts.map((c) => c.pfp.prompt));
+  eq(faces.size, 4, "four concepts are four different prompts");
   eq(ca.concepts[0].pfpVariation, 0, "first concept is the pure selection");
   for (const c of ca.concepts) eq(c.pfp.recipe.selections.colorPalette, "red", "variants keep the chosen palette");
 
@@ -57,8 +58,8 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   eq(locked.brand.status, "READY", "ready after save");
   assert(/[?&]v=1(&|$)/.test(locked.brand.assets.canonicalPfp), "canonical URL is version-stamped");
   eq(locked.brand.animatedPfp.sourceCanonicalPfp, locked.brand.assets.canonicalPfp, "animation derives from the chosen portrait");
-  const servedV1 = show.pfpSvgFor(a.agent.id, 512);
-  eq(pathData(servedV1), pathData(chosen.pfpSvg), "served portrait IS the chosen concept");
+  eq(show.pfpImageFor(a.agent.id, 512), null, "select does not invent a portrait file");
+  eq(show.pfpSvgFor(a.agent.id, 512), null, "select does not draw svg");
   const view1 = show.brands.publicOf(a.agent.id);
   eq(view1.version, 1, "public view version 1");
   eq(view1.creationSelections.accessories, "glasses", "public view exposes stored selections");
@@ -68,7 +69,10 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   const rebuilt = recipeFromBrand({ ...full, pfpRecipe: undefined });
   eq(rebuilt.accessory, "glasses", "recipeFromBrand reads creationSelections");
   eq(rebuilt.conceptVariant, chosen.pfpVariation, "recipeFromBrand reads the stored variant");
-  eq(pathData(renderPfp(rebuilt, { size: 512, nonce: "x" })), pathData(servedV1), "recipeFromBrand reproduces the served portrait");
+  let retired = false;
+  try { renderPfp(rebuilt); }
+  catch (err) { retired = err.code === "pfp_procedural_retired"; }
+  assert(retired, "recipeFromBrand does not draw the old bust");
 
   // ---- regenerate on a locked agent: new selections → 4 concepts → select → version 2
   const dirty = show.updateSelections(a.agent.id, ROBOT);
@@ -78,16 +82,14 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   eq(round2.concepts.length, 4, "regenerate produces four concepts");
   eq(round2.regenerating, true, "regenerate round reported");
   eq(show.userAgents.get(a.agent.id).status, "READY", "agent stays playable during regeneration");
-  assert(pathData(show.pfpSvgFor(a.agent.id, 512)) === pathData(servedV1), "old portrait stays live until a concept is chosen");
+  eq(show.pfpImageFor(a.agent.id, 512), null, "no portrait file until generation");
   const pick2 = round2.concepts[1];
   const locked2 = show.selectConcept(a.agent.id, pick2.id);
   eq(locked2.brand.version, 2, "second save is version 2");
   eq(locked2.brand.creationSelections.bodyType, "full_robot", "version 2 stores the new selections");
   assert(/[?&]v=2(&|$)/.test(locked2.brand.assets.canonicalPfp), "URL changes with the version (cache bust)");
-  const servedV2 = show.pfpSvgFor(a.agent.id, 512);
-  assert(pathData(servedV2) !== pathData(servedV1), "served portrait visibly changed after regeneration");
-  eq(pathData(servedV2), pathData(pick2.pfpSvg), "served portrait IS the newly chosen concept");
-  eq(pathData(show.pfpSvgFor(a.agent.id, 512, 1)), pathData(servedV1), "old version still renders by ?v=1 (non-destructive)");
+  eq(show.pfpImageFor(a.agent.id, 512), null, "a new concept still has no invented image");
+  eq(show.pfpSvgFor(a.agent.id, 512, 1), null, "old version is not a procedural drawing");
   eq(show.brands.publicOf(a.agent.id).version, 2, "public view moves to version 2");
   eq(show.userAgents.get(a.agent.id).visualDirty, false, "draft clean after save");
 
@@ -102,7 +104,7 @@ const base = (name, archetype) => ({ name, shortDescription: `${name} plays to w
   const reloaded = again.brands.full(a.agent.id);
   eq(reloaded.version, 3, "version persists");
   eq(reloaded.creationSelections.archetype, "robot_ai", "selections persist");
-  eq(pathData(again.pfpSvgFor(a.agent.id, 512)), pathData(show.pfpSvgFor(a.agent.id, 512)), "portrait identical after reload");
+  eq(again.pfpImageFor(a.agent.id, 512), null, "reload does not invent a portrait");
 
   console.log("pfp regeneration ok");
 })().catch((e) => { console.error(e); process.exit(1); });

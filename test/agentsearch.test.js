@@ -91,6 +91,7 @@ assert(app.includes("function agentIdFromLocation()"), "a profile can be opened 
 assert(app.includes('params.set("agent", id)'), "opening a profile writes ?agent=");
 assert(app.includes('history: "keep"'), "a bookmark does not push another history entry");
 assert(!app.includes("Regenerate PFP") && !app.includes("data-regenerate-pfp"), "spectator regenerate controls stay gone");
+assert(!app.includes("Different faces") && !app.includes("data-more-faces") && !app.includes("Generate 4 more"), "create and profile do not offer another portrait batch");
 
 const directoryRule = css.slice(css.indexOf(".agent-directory__row"), css.indexOf(".agent-directory__open"));
 assert(directoryRule.includes("var(--lda-surface)"), "directory rows use the arena surface");

@@ -118,6 +118,7 @@ assert(!app.includes("agent-visual-options"), "the profile has no portrait optio
 assert(app.includes("data-creator-confirm"), "create confirms in one step");
 assert(app.includes("data-portrait"), "create selects a portrait");
 assert(!app.includes("Regenerate PFP") && !app.includes("data-regenerate-pfp"), "spectators cannot regenerate a locked portrait");
+assert(!app.includes("Different faces") && !app.includes("data-more-faces"), "create does not reroll faces after the first set");
 assert(app.includes("/brand/generate"), "generate route");
 assert(app.includes("data-pfp-debug"), "dev inspector");
 assert(!/openai|replicate|stability|fal\.ai/i.test(fs.readFileSync(path.join(__dirname, "..", "src", "branding", "creationSelections.js"), "utf8")), "no new provider in selections");

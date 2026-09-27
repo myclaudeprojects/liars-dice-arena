@@ -200,6 +200,7 @@ function signatures(concepts) {
   assert(app.includes("/brand/generate"), "wizard generates one portrait");
   assert(!app.includes("Regenerate PFP"), "a locked portrait has no regenerate control");
   assert(!app.includes("data-regenerate-pfp"), "the profile does not offer a new portrait");
+  assert(!app.includes("Different faces") && !app.includes("data-more-faces"), "create does not offer another batch of faces");
   assert(app.includes("pfp-frame"), "wizard shows square portraits");
   assert(app.includes("agent-reveal"), "lock ends on a reveal");
   assert(app.includes("Choose a face"), "create asks for a portrait");

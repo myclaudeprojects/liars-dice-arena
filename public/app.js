@@ -2434,7 +2434,6 @@ function creatorView() {
         <div class="section-head">
           <span class="kicker">Portrait</span>
           <h2>Choose a face</h2>
-          ${creator.resuming ? "" : `<div class="section-head__actions"><button class="lda-btn lda-btn-ghost" type="button" data-more-faces="1"${creator.busy ? " disabled" : ""}>Different faces</button></div>`}
         </div>
         ${portraitChoices()}
         ${derivedPlayLine()}
@@ -2534,7 +2533,6 @@ async function openCreator() {
 function resumeCreator(agent) {
   creator = blankCreator();
   creator.oneShot = true;
-  creator.resuming = true;
   creator.form.name = agent.name || "";
   creator.form.shortDescription = agent.shortDescription || agent.note || "";
   creator.draft = { agent: { id: agent.id, name: agent.name, status: agent.status } };
@@ -3709,15 +3707,6 @@ view.addEventListener("click", async (e) => {
       const id = portraitBtn.dataset.portrait;
       creator.selectedPortrait = (creator.portraits || []).find((row) => row.id === id) || creator.selectedPortrait;
       creator.error = "";
-      painted = "";
-      render();
-      return;
-    }
-    if (e.target.closest("[data-more-faces]") && !creator.busy && !creator.resuming) {
-      syncCreatorFromDom();
-      creator.error = "";
-      try { await loadPortraitOffer("more-" + Date.now()); }
-      catch (ex) { creator.error = ex.message || "Could not load more portraits."; }
       painted = "";
       render();
       return;

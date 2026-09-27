@@ -52,6 +52,17 @@ function safeErrorText(e) {
   return text;
 }
 
+function portraitLocked(show, agentId) {
+  const draft = show && show.userAgents && show.userAgents.get(agentId);
+  return !!(draft && draft.status === "READY");
+}
+
+function refusePortraitChange(res, show, agentId) {
+  if (!portraitLocked(show, agentId)) return false;
+  send(res, 409, { ok: false, error: "This portrait is locked.", code: "brand_locked" });
+  return true;
+}
+
 function fail(res, e) {
   const code = e.code || e.message || "error";
   let status = code === "no_market" || code === "unknown_predictor" || code === "unknown_agent" || code === "unknown_concept" ? 404 : 400;
@@ -307,32 +318,42 @@ async function handleShow(req, res, url, query, show) {
     }
     const concepts = path.match(/^\/agents\/([^/]+)\/brand\/concepts$/);
     if (req.method === "POST" && concepts) {
+      const agentId = decodeURIComponent(concepts[1]);
+      if (refusePortraitChange(res, show, agentId)) return true;
       const body = await readBody(req);
-      send(res, 200, { ok: true, ...show.generateConcepts(decodeURIComponent(concepts[1]), body) });
+      send(res, 200, { ok: true, ...show.generateConcepts(agentId, body) });
       return true;
     }
     const select = path.match(/^\/agents\/([^/]+)\/brand\/(?:pfp-)?select$/);
     if (req.method === "POST" && select) {
+      const agentId = decodeURIComponent(select[1]);
+      if (refusePortraitChange(res, show, agentId)) return true;
       const body = await readBody(req);
-      send(res, 200, { ok: true, ...show.selectConcept(decodeURIComponent(select[1]), body.conceptId) });
+      send(res, 200, { ok: true, ...show.selectConcept(agentId, body.conceptId) });
       return true;
     }
     const selections = path.match(/^\/agents\/([^/]+)\/brand\/selections$/);
     if (req.method === "POST" && selections) {
+      const agentId = decodeURIComponent(selections[1]);
+      if (refusePortraitChange(res, show, agentId)) return true;
       const body = await readBody(req);
-      send(res, 200, { ok: true, ...show.updateSelections(decodeURIComponent(selections[1]), body.creationSelections || body) });
+      send(res, 200, { ok: true, ...show.updateSelections(agentId, body.creationSelections || body) });
       return true;
     }
     const generate = path.match(/^\/agents\/([^/]+)\/brand\/(?:generate|regenerate)$/);
     if (req.method === "POST" && generate) {
+      const agentId = decodeURIComponent(generate[1]);
+      if (refusePortraitChange(res, show, agentId)) return true;
       const body = await readBody(req);
-      send(res, 200, { ok: true, ...await show.generatePortrait(decodeURIComponent(generate[1]), body) });
+      send(res, 200, { ok: true, ...await show.generatePortrait(agentId, body) });
       return true;
     }
     const pfpConcepts = path.match(/^\/agents\/([^/]+)\/brand\/pfp-concepts$/);
     if (req.method === "POST" && pfpConcepts) {
+      const agentId = decodeURIComponent(pfpConcepts[1]);
+      if (refusePortraitChange(res, show, agentId)) return true;
       const body = await readBody(req);
-      send(res, 200, { ok: true, ...show.generateConcepts(decodeURIComponent(pfpConcepts[1]), body) });
+      send(res, 200, { ok: true, ...show.generateConcepts(agentId, body) });
       return true;
     }
     const derive = path.match(/^\/agents\/([^/]+)\/brand\/(?:assets|derive-assets)$/);
@@ -340,8 +361,9 @@ async function handleShow(req, res, url, query, show) {
       send(res, 200, { ok: true, ...show.deriveAssets(decodeURIComponent(derive[1])) });
       return true;
     }
-    if (req.method === "POST" && /^\/agents\/([^/]+)\/brand\/rebrand$/.test(path)) {
-      send(res, 501, { ok: false, error: "not_implemented", status: "DRAFT" });
+    const rebrand = path.match(/^\/agents\/([^/]+)\/brand\/rebrand$/);
+    if (req.method === "POST" && rebrand) {
+      send(res, 409, { ok: false, error: "This portrait is locked.", code: "brand_locked" });
       return true;
     }
     const argusStatsGet = path.match(/^\/agents\/([^/]+)\/argus\/stats$/);

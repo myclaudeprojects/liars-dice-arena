@@ -150,6 +150,15 @@ function req(method, url, body) {
       conceptId: portraits.json.concepts[0].id,
     });
     assert(locked.status === 200 && locked.json.brand.brandVersion === "v1" && locked.json.brand.generation.status === "READY", "select locks brand v1");
+    const lockedId = created.json.agent.id;
+    const again = await req("POST", base + "/api/show/agents/" + lockedId + "/brand/pfp-concepts", { count: 4, regenerate: true });
+    assert(again.status === 409 && again.json.code === "brand_locked", "a locked portrait cannot be regenerated");
+    const replaced = await req("POST", base + "/api/show/agents/" + lockedId + "/brand/regenerate", { portraitId: "bank_0001" });
+    assert(replaced.status === 409 && replaced.json.code === "brand_locked", "generate after create stays locked");
+    const dirty = await req("POST", base + "/api/show/agents/" + lockedId + "/brand/selections", { archetype: "robot_ai" });
+    assert(dirty.status === 409 && dirty.json.code === "brand_locked", "selections cannot unlock a new portrait");
+    const rebrand = await req("POST", base + "/api/show/agents/" + lockedId + "/brand/rebrand", {});
+    assert(rebrand.status === 409 && rebrand.json.code === "brand_locked", "rebrand is not a public path");
     assert(locked.json.brand.primaryPfpAssetId && locked.json.brand.assets.pfpPortrait && locked.json.brand.pfpStyleVersion === "lda-pfp-v2", "canonical pfp is stored");
     const castAfter = await req("GET", base + "/api/show/agents");
     const made = castAfter.json.agents.find((a) => a.id === created.json.agent.id);

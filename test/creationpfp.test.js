@@ -114,10 +114,10 @@ assert(previewSelections("nope", "nope") == null, "unknown preview is empty");
 eq(normalizeSelections({ archetype: "nope" }).archetype, "executive", "unknown option falls back");
 
 const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
-assert(app.includes("agent-visual-options"), "option grid class");
+assert(!app.includes("agent-visual-options"), "the profile has no portrait option grid");
 assert(app.includes("data-creator-confirm"), "create confirms in one step");
 assert(app.includes("data-portrait"), "create selects a portrait");
-assert(app.includes("Regenerate PFP"), "regenerate control");
+assert(!app.includes("Regenerate PFP") && !app.includes("data-regenerate-pfp"), "spectators cannot regenerate a locked portrait");
 assert(app.includes("/brand/generate"), "generate route");
 assert(app.includes("data-pfp-debug"), "dev inspector");
 assert(!/openai|replicate|stability|fal\.ai/i.test(fs.readFileSync(path.join(__dirname, "..", "src", "branding", "creationSelections.js"), "utf8")), "no new provider in selections");

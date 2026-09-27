@@ -20,10 +20,10 @@ let me = null;
 let position = null;
 let focusAgent = null;
 let creator = null;
-let portraitEdit = null;
 let creatorBeat = null;
 let focusMatch = null;
 let agents = [];
+let agentQuery = "";
 let history = [];
 let leaders = [];
 let err = "";
@@ -584,6 +584,7 @@ function setTab(next) {
   shareNote = "";
   clearReplay();
   clearReplayHash();
+  syncAgentLink("");
   enterView = true;
   clearPainted();
   paintTabs();
@@ -1657,43 +1658,9 @@ async function loadVisualOptions() {
 }
 loadVisualOptions();
 
-function optionLabel(id) {
-  return String(id || "").replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
-}
-
 function visualGroupList() {
   if (liveVisualGroups) return liveVisualGroups.map((g) => [g.id, g.label, g.options.map((o) => o.id), g.section || "identity"]);
   return VISUAL_GROUPS.map(([id, label, ids]) => [id, label, ids, "identity"]);
-}
-
-function visualGroupHtml(group, label, ids, current) {
-  return `<section class="visual-group">
-      <h2>${esc(label)}</h2>
-      <div class="agent-visual-options">${ids.map((id) => {
-        const on = (current[group] || (id === "auto" || id === "none" ? id : "")) === id;
-        const src = `/assets/agent-creation-previews/${group}/${id}.svg`;
-        return `<button class="option-card${on ? " is-selected" : ""}" type="button" data-opt-group="${esc(group)}" data-opt-id="${esc(id)}" aria-pressed="${on ? "true" : "false"}">
-          <img src="${esc(src)}" alt="" width="96" height="96" loading="lazy">
-          <span>${esc(optionLabel(id))}</span>
-        </button>`;
-      }).join("")}</div>
-    </section>`;
-}
-
-function visualOptionGrids(selections) {
-  const current = { ...defaultVisualSelections(), ...(selections || {}) };
-  const groups = visualGroupList();
-  const sections = liveVisualSections || [{ id: "identity", label: "Identity", groups: groups.map((g) => g[0]) }];
-  const byId = Object.fromEntries(groups.map((g) => [g[0], g]));
-  const placed = new Set();
-  const html = sections.map((sec, i) => {
-    const inner = (sec.groups || []).map((gid) => { const g = byId[gid]; if (!g) return ""; placed.add(gid); return visualGroupHtml(g[0], g[1], g[2], current); }).join("");
-    if (!inner) return "";
-    const chosen = (sec.groups || []).filter((gid) => current[gid] && current[gid] !== "auto" && current[gid] !== "none" && byId[gid]).length;
-    return `<details class="visual-section"${i < 2 ? " open" : ""}><summary><b>${esc(sec.label)}</b> <span class="fine">${chosen ? chosen + " set" : "defaults"}</span></summary>${inner}</details>`;
-  }).join("");
-  const rest = groups.filter((g) => !placed.has(g[0])).map((g) => visualGroupHtml(g[0], g[1], g[2], current)).join("");
-  return html + rest;
 }
 
 function pageHead(title, opts) {
@@ -2070,7 +2037,7 @@ function argusDetail(agent) {
         ${argusMetric(stats.holders, "Holders")}
       </div>
       <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(url)}" target="_blank" rel="noopener">Buy on Argus</a>
-      <p class="fine">Opens argus.world. This app does not swap.</p>
+      <p class="fine">Opens argus.world. This app does not swap. The house wallet is the on-chain fee recipient. Spectator splits are later, off this page.</p>
     </section>`;
   }
   if (!argusOffer.enabled) return "";
@@ -2467,7 +2434,7 @@ function creatorView() {
         <div class="section-head">
           <span class="kicker">Portrait</span>
           <h2>Choose a face</h2>
-          <div class="section-head__actions"><button class="lda-btn lda-btn-ghost" type="button" data-more-faces="1"${creator.busy ? " disabled" : ""}>Different faces</button></div>
+          ${creator.resuming ? "" : `<div class="section-head__actions"><button class="lda-btn lda-btn-ghost" type="button" data-more-faces="1"${creator.busy ? " disabled" : ""}>Different faces</button></div>`}
         </div>
         ${portraitChoices()}
         ${derivedPlayLine()}
@@ -2567,6 +2534,7 @@ async function openCreator() {
 function resumeCreator(agent) {
   creator = blankCreator();
   creator.oneShot = true;
+  creator.resuming = true;
   creator.form.name = agent.name || "";
   creator.form.shortDescription = agent.shortDescription || agent.note || "";
   creator.draft = { agent: { id: agent.id, name: agent.name, status: agent.status } };
@@ -2897,6 +2865,154 @@ async function confirmConcept() {
   }
 }
 
+function agentSearchNorm(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function agentSearchHaystack(agent) {
+  const argus = agent && agent.argus;
+  return {
+    name: agent && agent.name ? String(agent.name) : "",
+    symbol: String((argus && (argus.symbol || argus.ticker)) || (agent && (agent.symbol || agent.ticker)) || ""),
+    token: String((argus && argus.tokenAddress) || ""),
+  };
+}
+
+function agentMatchesQuery(agent, query) {
+  const q = agentSearchNorm(query);
+  if (!q) return true;
+  const fields = agentSearchHaystack(agent);
+  return agentSearchNorm(fields.name).includes(q)
+    || (fields.symbol && agentSearchNorm(fields.symbol).includes(q))
+    || (fields.token && agentSearchNorm(fields.token).includes(q));
+}
+
+function agentSearchExact(agent, query) {
+  const q = agentSearchNorm(query);
+  if (!q) return false;
+  const fields = agentSearchHaystack(agent);
+  const name = agentSearchNorm(fields.name);
+  const symbol = agentSearchNorm(fields.symbol);
+  const token = agentSearchNorm(fields.token);
+  return token === q || symbol === q || name === q || name === ("lda " + q);
+}
+
+function agentSearchPick(list, query) {
+  const q = agentSearchNorm(query);
+  if (!q) return null;
+  const hits = (list || []).filter((agent) => agentMatchesQuery(agent, query));
+  if (hits.length === 1) return hits[0];
+  const exact = hits.filter((agent) => agentSearchExact(agent, query));
+  return exact.length === 1 ? exact[0] : null;
+}
+
+function createdAgentOrder(list) {
+  return (list || [])
+    .filter((agent) => agent && agent.roster === "user")
+    .slice()
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
+function agentSearchForm() {
+  const q = agentQuery || "";
+  return `<form class="agent-search" role="search" data-agent-search-form autocomplete="off">
+    <label class="agent-search__label" for="agent-search">Find an agent</label>
+    <div class="agent-search__row">
+      <input id="agent-search" type="search" name="q" data-agent-search inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Name, ticker, or 0x address" aria-controls="agent-roster" value="${esc(q)}">
+      <button class="lda-btn lda-btn-ghost agent-search__clear" type="button" data-agent-search-clear${String(q).trim() ? "" : " hidden"}>Clear</button>
+    </div>
+  </form>`;
+}
+
+function agentSearchEmpty() {
+  return `<section class="empty lda-empty agent-search__empty" data-state="empty" role="status"><div class="kicker">No match</div><p>No agent has that name, ticker, or token address.</p></section>`;
+}
+
+function createdAgentRow(agent) {
+  const url = argusTokenUrl(agent.argus);
+  const symbol = agent.argus && agent.argus.symbol ? String(agent.argus.symbol) : "";
+  const addr = agent.argus && agent.argus.tokenAddress ? shortAddress(agent.argus.tokenAddress) : "";
+  const meta = [symbol, addr].filter(Boolean).join(" · ");
+  const token = url
+    ? `<a class="agent-directory__token lda-btn lda-btn-ghost" href="${esc(url)}" target="_blank" rel="noopener">Buy on Argus</a>`
+    : `<span class="fine agent-directory__pending">No token yet</span>`;
+  return `<li class="agent-directory__row">
+    <button class="agent-directory__open" type="button" data-agent="${esc(agent.id)}">
+      <span class="agent-directory__name">${esc(agent.name)}</span>
+      ${meta ? `<span class="fine">${esc(meta)}</span>` : ""}
+    </button>
+    ${token}
+  </li>`;
+}
+
+function createdDirectory(rows, query) {
+  if (!rows.length && agentSearchNorm(query)) return "";
+  const body = rows.length
+    ? `<ul class="agent-directory__list">${rows.map(createdAgentRow).join("")}</ul>`
+    : `<p class="fine agent-directory__empty">No created agents yet. They stay on this list after Create Agent.</p>`;
+  return `<section class="agent-directory" data-agent-directory aria-labelledby="created-agents">
+    <h2 id="created-agents" class="agent-directory__title">Created agents</h2>
+    <p class="fine">Newest first. A minted token opens on argus.world. The house wallet is the on-chain fee recipient. Spectator splits are later, off this page.</p>
+    ${body}
+  </section>`;
+}
+
+function agentCard(a) {
+  const roster = a.roster === "user" ? (a.status === "READY" ? "Your competitor" : "Brand in progress") : "";
+  return `<button class="agent-card" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
+        <span class="agent-card__portrait">${facePlate(a, 320, { animate: true, context: "roster", state: "idle" })}</span>
+        <span class="agent-card__identity">
+          ${titleLine(a)}
+          <b class="agent-card__name">${esc(a.name)}</b>
+          <span class="agent-card__stats"><span>${esc(a.record || "0–0")}</span>${a.streak ? `<span>Streak ${a.streak}</span>` : ""}</span>
+          ${roster || a.knownFor ? `<span class="fine">${esc([roster, a.knownFor ? `Known for ${a.knownFor}` : ""].filter(Boolean).join(" · "))}</span>` : ""}
+        </span>
+      </button>`;
+}
+
+function agentRosterMarkup() {
+  const hits = agents.filter((a) => agentMatchesQuery(a, agentQuery));
+  if (!hits.length) return { key: "empty", html: agentSearchEmpty() };
+  const created = createdAgentOrder(hits);
+  const house = hits.filter((agent) => !agent || agent.roster !== "user");
+  const parts = [];
+  const directory = createdDirectory(created, agentQuery);
+  if (directory) parts.push(directory);
+  if (house.length) {
+    parts.push(`<section class="agent-cast" data-house-cast><h2 class="agent-directory__title">House cast</h2><div class="agent-roster">${house.map(agentCard).join("")}</div></section>`);
+  }
+  return {
+    key: [
+      "c",
+      created.map((agent) => agent.id + "=" + ((agent.argus && agent.argus.tokenAddress) || "")).join(","),
+      "h",
+      house.map((agent) => agent.id).join(","),
+    ].join("|"),
+    html: parts.join(""),
+  };
+}
+
+function agentRosterSlot() {
+  const next = agentRosterMarkup();
+  return `<div id="agent-roster" data-agent-roster-slot data-roster-key="${esc(next.key)}">${next.html}</div>`;
+}
+
+function syncAgentSearchChrome() {
+  const btn = matchEl.querySelector("[data-agent-search-clear]");
+  if (btn) btn.hidden = !String(agentQuery || "").trim();
+}
+
+function paintAgentRosterSlot() {
+  const slot = matchEl.querySelector("[data-agent-roster-slot]");
+  if (!slot || tab !== "agents" || focusAgent || creator) return false;
+  const next = agentRosterMarkup();
+  if (slot.dataset.rosterKey === next.key) return true;
+  slot.dataset.rosterKey = next.key;
+  slot.innerHTML = next.html;
+  bindAnimatedPfps(slot);
+  return true;
+}
+
 function agentsView() {
   if (focusAgent) queueHouseMint(focusAgent);
   if (creator) return creatorView();
@@ -2909,47 +3025,55 @@ function agentsView() {
     return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
   }
   if (!agents.length) return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
-  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}${createAgentListNote()}<div class="agent-roster">` +
-    agents.map((a) => {
-      const roster = a.roster === "user" ? (a.status === "READY" ? "Your competitor" : "Brand in progress") : "";
-      return `<button class="agent-card" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
-        <span class="agent-card__portrait">${facePlate(a, 320, { animate: true, context: "roster", state: "idle" })}</span>
-        <span class="agent-card__identity">
-          ${titleLine(a)}
-          <b class="agent-card__name">${esc(a.name)}</b>
-          <span class="agent-card__stats"><span>${esc(a.record || "0–0")}</span>${a.streak ? `<span>Streak ${a.streak}</span>` : ""}</span>
-          ${roster || a.knownFor ? `<span class="fine">${esc([roster, a.knownFor ? `Known for ${a.knownFor}` : ""].filter(Boolean).join(" · "))}</span>` : ""}
-        </span>
-      </button>`;
-    }).join("") + `</div>`;
+  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}${createAgentListNote()}${agentSearchForm()}${agentRosterSlot()}`;
 }
 
-async function confirmRegenConcept(id) {
-  if (!portraitEdit || portraitEdit.id !== id || portraitEdit.busy) return;
-  if (!portraitEdit.selectedId) { portraitEdit.error = "Pick a concept first."; painted = ""; render(); return; }
-  portraitEdit.busy = true;
-  portraitEdit.error = "";
-  painted = "";
-  render();
+function agentIdFromLocation() {
+  try { return new URLSearchParams(location.search).get("agent") || ""; }
+  catch { return ""; }
+}
+
+function syncAgentLink(id, mode) {
+  const params = new URLSearchParams(location.search);
+  if (id) {
+    params.set("agent", id);
+    params.delete("match");
+  } else params.delete("agent");
+  let hash = location.hash || "";
+  if (id && /^#replay=/.test(hash)) hash = "";
+  const search = params.toString();
+  const next = location.pathname + (search ? "?" + search : "") + hash;
+  if (location.pathname + location.search + location.hash === next) return;
+  const write = mode === "push" ? "pushState" : "replaceState";
+  window.history[write](null, "", next);
+}
+
+async function openAgent(id, opts) {
+  if (!id) return;
+  const historyMode = (opts && opts.history) || "push";
   try {
-    const saved = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/pfp-select", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ conceptId: portraitEdit.selectedId }),
-    });
-    portraitEdit.busy = false;
-    portraitEdit.ok = true;
-    portraitEdit.concepts = [];
-    portraitEdit.version = saved.brand && saved.brand.version;
-    await refreshLists();
-    const detail = await api("/api/show/agents/" + encodeURIComponent(id));
-    if (detail && detail.agent && focusAgent && focusAgent.id === id) focusAgent = detail.agent;
-  } catch (ex) {
-    portraitEdit.busy = false;
-    portraitEdit.error = (ex && ex.message) || "Could not save that portrait. The last one was kept.";
-  }
-  painted = "";
-  render();
+    const j = await api("/api/show/agents/" + encodeURIComponent(id));
+    focusAgent = j.agent;
+    if (historyMode !== "keep") syncAgentLink(focusAgent.id, historyMode);
+    try {
+      const cfg = await api("/api/show/argus/config");
+      if (cfg) rememberArgusConfig(cfg);
+    } catch { /* the detail still opens; launch stays hidden until config loads */ }
+    tab = "agents";
+    paintTabs();
+    pinScroll = false;
+    render();
+    window.scrollTo(0, 0);
+    pinScroll = true;
+  } catch (ex) { err = ex.message; render(); }
+}
+
+async function openLinkedAgent() {
+  const id = agentIdFromLocation();
+  if (!id) return;
+  tab = "agents";
+  paintTabs();
+  await openAgent(id, { history: "keep" });
 }
 
 function pfpDebugOn() {
@@ -2981,76 +3105,6 @@ function pfpDebugPanel(info) {
   return `<aside class="pfp-debug" data-pfp-debug>${rows.map(([key, value]) => `<p><b>${esc(key)}</b> <span>${esc(value == null ? "" : String(value))}</span></p>`).join("")}</aside>`;
 }
 
-function regenConceptCard(c, name) {
-  const visual = c.visualIdentity || {};
-  const on = portraitEdit && c.id === portraitEdit.selectedId;
-  const accent = hexColor(visual.accentColor) || "#4AD7FF";
-  return `<button class="concept-card pfp-concept lda-card${on ? " is-selected" : ""}" type="button" data-regen-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait option ${esc(String(c.conceptNumber || 0))}" style="--agent-accent:${esc(accent)}">
-    ${motionConceptWrap(conceptArt(c))}
-    <span class="concept-copy"><span class="concept-name"><b>${esc(name)}</b></span><span class="brand-title">${esc(c.title)}</span></span>
-    <span class="pfp-select pfp-concept__label">${on ? "Selected" : "Option " + esc(String(c.conceptNumber || ""))}</span>
-  </button>`;
-}
-
-function portraitEditor(agent) {
-  if (!agent || agent.roster !== "user") return "";
-  const edit = portraitEdit && portraitEdit.id === agent.id ? portraitEdit : null;
-  const selections = (edit && edit.selections) || agent.creationSelections || defaultVisualSelections();
-  const concepts = (edit && edit.concepts) || [];
-  const picking = concepts.length > 0 && !(edit && edit.ok);
-  return `<details class="portrait-editor"${edit && edit.open ? " open" : ""}>
-    <summary>Regenerate PFP</summary>
-    <p class="fine">Change the look, generate four new concepts, pick one. The current portrait stays live until you save; the new one becomes a new brand version (the old one is kept).</p>
-    ${visualOptionGrids(selections)}
-    <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-regenerate-pfp="${esc(agent.id)}"${edit && edit.busy ? " disabled" : ""}>${picking ? "Generate 4 more" : "Generate 4 concepts"}</button>
-    ${picking ? `<div class="concept-grid" data-regen-grid>${concepts.map((c) => regenConceptCard(c, agent.name)).join("")}</div>
-    <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-regen-confirm="${esc(agent.id)}"${edit && edit.busy ? " disabled" : ""}>Use this portrait</button>` : ""}
-    ${edit && edit.error ? `<div class="err lda-error" role="alert">${esc(edit.error)}</div>` : ""}
-    ${edit && edit.ok ? `<p class="fine" role="status">Portrait saved as version ${esc(String(edit.version || ""))}. Every surface now shows it.</p>` : ""}
-  </details>`;
-}
-
-async function regeneratePortrait(id) {
-  const agent = focusAgent && focusAgent.id === id ? focusAgent : (agents.find((row) => row.id === id) || null);
-  if (!portraitEdit || portraitEdit.id !== id) {
-    portraitEdit = {
-      id,
-      selections: Object.assign(defaultVisualSelections(), (agent && agent.creationSelections) || {}),
-      open: true,
-      error: "",
-      busy: false,
-      ok: false,
-    };
-  }
-  portraitEdit.busy = true;
-  portraitEdit.error = "";
-  portraitEdit.ok = false;
-  portraitEdit.open = true;
-  painted = "";
-  render();
-  try {
-    const round = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/pfp-concepts", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ count: 4, regenerate: true, creationSelections: portraitEdit.selections }),
-    });
-    portraitEdit.busy = false;
-    portraitEdit.ok = false;
-    portraitEdit.concepts = round.concepts || [];
-    portraitEdit.selectedId = (portraitEdit.concepts[0] && portraitEdit.concepts[0].id) || null;
-    if (!portraitEdit.concepts.length) portraitEdit.error = "No concepts came back. Try again.";
-  } catch (ex) {
-    if (portraitEdit) {
-      portraitEdit.busy = false;
-      portraitEdit.ok = false;
-      portraitEdit.open = true;
-      portraitEdit.error = "Portrait generation failed. The last portrait was kept.";
-    }
-  }
-  painted = "";
-  render();
-}
-
 function agentDetail(a) {
   const mine = (me && me.theories && me.theories[a.id]) || [];
   const tags = ["Aggressive", "Conservative", "Bluffer", "Risk-taker", "Pressure player", "Unpredictable"];
@@ -3077,7 +3131,6 @@ function agentDetail(a) {
       ${resume}
     </header>
     <div class="agent-hero" data-cast="${esc(a.id)}"${brandStyle(a)}>${agentPortrait(a)}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
-    ${portraitEditor(a)}
     ${pfpDebugPanel(a)}
     ${argusDetail(a)}
     ${a.roster === "user" && a.playable ? `<p class="fine">User roster. The show seats this agent against the house cast when a chair is free${a.seated ? ", and they are on the slate now" : ""}.</p>` : ""}
@@ -3277,6 +3330,37 @@ function releaseFocus(root) {
   return key;
 }
 
+function syncAgentQueryFromDom() {
+  const el = matchEl.querySelector("[data-agent-search]");
+  if (!el) return;
+  agentQuery = el.value || "";
+}
+
+function holdAgentSearch() {
+  const el = matchEl.querySelector("[data-agent-search]");
+  if (!el) return null;
+  const focused = document.activeElement === el;
+  return {
+    focused,
+    start: typeof el.selectionStart === "number" ? el.selectionStart : null,
+    end: typeof el.selectionEnd === "number" ? el.selectionEnd : null,
+    direction: el.selectionDirection || "none",
+  };
+}
+
+function restoreAgentSearch(held) {
+  if (!held || !held.focused) return;
+  const el = matchEl.querySelector("[data-agent-search]");
+  if (!el || !el.focus) return;
+  el.focus({ preventScroll: true });
+  if (held.start != null && el.setSelectionRange) {
+    const max = String(el.value || "").length;
+    const start = Math.min(held.start, max);
+    const end = Math.min(held.end == null ? start : held.end, max);
+    try { el.setSelectionRange(start, end, held.direction || "none"); } catch { /* search fields can refuse a range */ }
+  }
+}
+
 function syncCreatorFromDom() {
   if (!creatorSession()) return;
   const root = matchEl.querySelector(".creator");
@@ -3461,6 +3545,7 @@ function paintMatchIntro(match) {
 
 function render() {
   syncCreatorFromDom();
+  syncAgentQueryFromDom();
   syncLaunchFromDom();
   frameBeats = activeMotion(live());
   const watching = live();
@@ -3494,6 +3579,7 @@ function render() {
   const saved = pinScroll ? captureScroll() : null;
   const sheetOpened = !paintedSheet && !!sheetHtml;
   const repaintMatch = matchHtml !== paintedMatch || !!arriving;
+  const heldSearch = repaintMatch ? holdAgentSearch() : null;
   const heldCreator = repaintMatch ? holdCreatorDom() : null;
   const focus = [
     matchHtml === paintedMatch ? "" : releaseFocus(matchEl),
@@ -3505,6 +3591,7 @@ function render() {
   paintedMarket = paintSlot(marketEl, marketHtml, arriving ? "" : paintedMarket);
   paintedSheet = paintSlot(sheetEl, sheetHtml, arriving ? "" : paintedSheet);
   restoreCreatorDom(heldCreator);
+  restoreAgentSearch(heldSearch);
   if (saved) restoreScroll(saved);
   if (sheetOpened) {
     const dialog = sheetEl.querySelector("[data-trade-dialog]");
@@ -3558,6 +3645,13 @@ function openPropSheet(btn) {
 }
 
 view.addEventListener("input", (e) => {
+  const search = e.target && e.target.closest ? e.target.closest("[data-agent-search]") : null;
+  if (search) {
+    agentQuery = search.value || "";
+    syncAgentSearchChrome();
+    if (!paintAgentRosterSlot()) render();
+    return;
+  }
   if (!creator) return;
   const el = e.target;
   if (!el.name || !Object.prototype.hasOwnProperty.call(creator.form, el.name)) return;
@@ -3574,45 +3668,40 @@ view.addEventListener("input", (e) => {
   }
 });
 
+view.addEventListener("search", (e) => {
+  const el = e.target;
+  if (!el || !el.matches || !el.matches("[data-agent-search]")) return;
+  const next = el.value || "";
+  if (next === agentQuery) return;
+  agentQuery = next;
+  syncAgentSearchChrome();
+  if (!paintAgentRosterSlot()) render();
+});
+
+view.addEventListener("submit", async (e) => {
+  if (!e.target || !e.target.matches || !e.target.matches("[data-agent-search-form]")) return;
+  e.preventDefault();
+  const field = e.target.querySelector("[data-agent-search]");
+  if (field) agentQuery = field.value || "";
+  const pick = agentSearchPick(agents, agentQuery);
+  if (pick) await openAgent(pick.id);
+});
+
 view.addEventListener("click", async (e) => {
+  const clearSearch = e.target.closest("[data-agent-search-clear]");
+  if (clearSearch) {
+    agentQuery = "";
+    const field = matchEl.querySelector("[data-agent-search]");
+    if (field) field.value = "";
+    syncAgentSearchChrome();
+    if (!paintAgentRosterSlot()) render();
+    if (field && field.focus) field.focus({ preventScroll: true });
+    return;
+  }
   const createBtn = e.target.closest("[data-create-agent]");
   if (createBtn) { openCreator(); return; }
   const resumeBtn = e.target.closest("[data-resume-agent]");
   if (resumeBtn && focusAgent) { resumeCreator(focusAgent); return; }
-  const detailOpt = e.target.closest("[data-opt-group]");
-  if (detailOpt && focusAgent && !creator && focusAgent.roster === "user") {
-    if (!portraitEdit || portraitEdit.id !== focusAgent.id) {
-      portraitEdit = {
-        id: focusAgent.id,
-        selections: Object.assign(defaultVisualSelections(), focusAgent.creationSelections || {}),
-        open: true,
-        error: "",
-        busy: false,
-        ok: false,
-      };
-    }
-    portraitEdit.selections[detailOpt.dataset.optGroup] = detailOpt.dataset.optId;
-    portraitEdit.concepts = [];          // concepts from the old options no longer apply
-    portraitEdit.selectedId = null;
-    portraitEdit.open = true;
-    portraitEdit.ok = false;
-    portraitEdit.error = "";
-    // Persist the change and flag the portrait as needing regeneration (spec §5/§6).
-    api("/api/show/agents/" + encodeURIComponent(focusAgent.id) + "/brand/selections", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ creationSelections: portraitEdit.selections }),
-    }).catch(() => {});
-    painted = "";
-    render();
-    return;
-  }
-  const regen = e.target.closest("[data-regenerate-pfp]");
-  if (regen) { regeneratePortrait(regen.dataset.regeneratePfp); return; }
-  const regenPick = e.target.closest("[data-regen-concept]");
-  if (regenPick && portraitEdit) { portraitEdit.selectedId = regenPick.dataset.regenConcept; portraitEdit.error = ""; painted = ""; render(); return; }
-  const regenConfirm = e.target.closest("[data-regen-confirm]");
-  if (regenConfirm) { confirmRegenConcept(regenConfirm.dataset.regenConfirm); return; }
   if (creator) {
     const portraitBtn = e.target.closest("[data-portrait]");
     if (portraitBtn && !creator.busy) {
@@ -3624,7 +3713,7 @@ view.addEventListener("click", async (e) => {
       render();
       return;
     }
-    if (e.target.closest("[data-more-faces]") && !creator.busy) {
+    if (e.target.closest("[data-more-faces]") && !creator.busy && !creator.resuming) {
       syncCreatorFromDom();
       creator.error = "";
       try { await loadPortraitOffer("more-" + Date.now()); }
@@ -3696,20 +3785,7 @@ view.addEventListener("click", async (e) => {
   if (back) { focusAgent = null; focusMatch = null; setTab(back.dataset.back); return; }
   const agentBtn = e.target.closest("[data-agent]");
   if (agentBtn && !e.target.closest("[data-pick]") && !e.target.closest("[data-pick-side]") && !e.target.closest("[data-trade-prop]")) {
-    try {
-      const j = await api("/api/show/agents/" + encodeURIComponent(agentBtn.dataset.agent));
-      focusAgent = j.agent;
-      try {
-        const cfg = await api("/api/show/argus/config");
-        if (cfg) rememberArgusConfig(cfg);
-      } catch { /* the detail still opens; launch stays hidden until config loads */ }
-      tab = "agents";
-      paintTabs();
-      pinScroll = false;
-      render();
-      window.scrollTo(0, 0);
-      pinScroll = true;
-    } catch (ex) { err = ex.message; render(); }
+    await openAgent(agentBtn.dataset.agent);
     return;
   }
   const matchBtn = e.target.closest("[data-match]");
@@ -4265,9 +4341,25 @@ async function boot() {
   me = opened.predictor;
   renderCredits();
   await poll();
-  await openLinkedReplay();
+  if (agentIdFromLocation()) await openLinkedAgent();
+  else await openLinkedReplay();
   setInterval(poll, 2000);
   window.addEventListener("hashchange", () => { openLinkedReplay().catch(() => {}); });
+  window.addEventListener("popstate", () => {
+    const id = agentIdFromLocation();
+    if (id) {
+      openAgent(id, { history: "keep" }).catch(() => {});
+      return;
+    }
+    if (focusAgent) {
+      focusAgent = null;
+      if (tab === "agents") {
+        paintTabs();
+        render();
+      }
+    }
+    openLinkedReplay().catch(() => {});
+  });
   try {
     const es = new EventSource("/api/show/events");
     es.onmessage = () => { poll(); };

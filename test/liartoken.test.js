@@ -52,7 +52,7 @@ assert(html.includes('id="buy-liar"'), "header has the arena buy control");
 assert(html.includes(">Buy $LIAR</a>"), "header labels the arena coin");
 assert(html.includes(BUY), "header defaults to the arena token page");
 assert(html.includes("/static/app.css?v=37"), "css cache query bumped");
-assert(html.includes("/static/app.js?v=43"), "js cache query bumped");
+assert(html.includes("/static/app.js?v=44"), "js cache query bumped");
 assert(app.includes("Arena token"), "profile names the arena token");
 assert(app.includes("It is not an agent token."), "profile separates $LIAR from agent tokens");
 assert(app.includes("Buy ${esc(token.label)}"), "profile buy label follows the arena ticker");

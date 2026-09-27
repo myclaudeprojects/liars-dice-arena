@@ -198,8 +198,8 @@ function signatures(concepts) {
   assert(app.includes("page-head"), "page titles and creator actions share a header row");
   assert(app.includes("/api/show/agents/brand/create"), "wizard calls create");
   assert(app.includes("/brand/generate"), "wizard generates one portrait");
-  assert(app.includes("agent-visual-options"), "regenerate still has character options");
-  assert(app.includes("Regenerate PFP"), "an agent can regenerate its portrait");
+  assert(!app.includes("Regenerate PFP"), "a locked portrait has no regenerate control");
+  assert(!app.includes("data-regenerate-pfp"), "the profile does not offer a new portrait");
   assert(app.includes("pfp-frame"), "wizard shows square portraits");
   assert(app.includes("agent-reveal"), "lock ends on a reveal");
   assert(app.includes("Choose a face"), "create asks for a portrait");

@@ -20,7 +20,6 @@ let me = null;
 let position = null;
 let focusAgent = null;
 let creator = null;
-let portraitEdit = null;
 let creatorBeat = null;
 let focusMatch = null;
 let agents = [];
@@ -1658,43 +1657,9 @@ async function loadVisualOptions() {
 }
 loadVisualOptions();
 
-function optionLabel(id) {
-  return String(id || "").replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
-}
-
 function visualGroupList() {
   if (liveVisualGroups) return liveVisualGroups.map((g) => [g.id, g.label, g.options.map((o) => o.id), g.section || "identity"]);
   return VISUAL_GROUPS.map(([id, label, ids]) => [id, label, ids, "identity"]);
-}
-
-function visualGroupHtml(group, label, ids, current) {
-  return `<section class="visual-group">
-      <h2>${esc(label)}</h2>
-      <div class="agent-visual-options">${ids.map((id) => {
-        const on = (current[group] || (id === "auto" || id === "none" ? id : "")) === id;
-        const src = `/assets/agent-creation-previews/${group}/${id}.svg`;
-        return `<button class="option-card${on ? " is-selected" : ""}" type="button" data-opt-group="${esc(group)}" data-opt-id="${esc(id)}" aria-pressed="${on ? "true" : "false"}">
-          <img src="${esc(src)}" alt="" width="96" height="96" loading="lazy">
-          <span>${esc(optionLabel(id))}</span>
-        </button>`;
-      }).join("")}</div>
-    </section>`;
-}
-
-function visualOptionGrids(selections) {
-  const current = { ...defaultVisualSelections(), ...(selections || {}) };
-  const groups = visualGroupList();
-  const sections = liveVisualSections || [{ id: "identity", label: "Identity", groups: groups.map((g) => g[0]) }];
-  const byId = Object.fromEntries(groups.map((g) => [g[0], g]));
-  const placed = new Set();
-  const html = sections.map((sec, i) => {
-    const inner = (sec.groups || []).map((gid) => { const g = byId[gid]; if (!g) return ""; placed.add(gid); return visualGroupHtml(g[0], g[1], g[2], current); }).join("");
-    if (!inner) return "";
-    const chosen = (sec.groups || []).filter((gid) => current[gid] && current[gid] !== "auto" && current[gid] !== "none" && byId[gid]).length;
-    return `<details class="visual-section"${i < 2 ? " open" : ""}><summary><b>${esc(sec.label)}</b> <span class="fine">${chosen ? chosen + " set" : "defaults"}</span></summary>${inner}</details>`;
-  }).join("");
-  const rest = groups.filter((g) => !placed.has(g[0])).map((g) => visualGroupHtml(g[0], g[1], g[2], current)).join("");
-  return html + rest;
 }
 
 function pageHead(title, opts) {
@@ -2468,7 +2433,7 @@ function creatorView() {
         <div class="section-head">
           <span class="kicker">Portrait</span>
           <h2>Choose a face</h2>
-          <div class="section-head__actions"><button class="lda-btn lda-btn-ghost" type="button" data-more-faces="1"${creator.busy ? " disabled" : ""}>Different faces</button></div>
+          ${creator.resuming ? "" : `<div class="section-head__actions"><button class="lda-btn lda-btn-ghost" type="button" data-more-faces="1"${creator.busy ? " disabled" : ""}>Different faces</button></div>`}
         </div>
         ${portraitChoices()}
         ${derivedPlayLine()}
@@ -2568,6 +2533,7 @@ async function openCreator() {
 function resumeCreator(agent) {
   creator = blankCreator();
   creator.oneShot = true;
+  creator.resuming = true;
   creator.form.name = agent.name || "";
   creator.form.shortDescription = agent.shortDescription || agent.note || "";
   creator.draft = { agent: { id: agent.id, name: agent.name, status: agent.status } };
@@ -3030,34 +2996,6 @@ async function openAgent(id) {
   } catch (ex) { err = ex.message; render(); }
 }
 
-async function confirmRegenConcept(id) {
-  if (!portraitEdit || portraitEdit.id !== id || portraitEdit.busy) return;
-  if (!portraitEdit.selectedId) { portraitEdit.error = "Pick a concept first."; painted = ""; render(); return; }
-  portraitEdit.busy = true;
-  portraitEdit.error = "";
-  painted = "";
-  render();
-  try {
-    const saved = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/pfp-select", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ conceptId: portraitEdit.selectedId }),
-    });
-    portraitEdit.busy = false;
-    portraitEdit.ok = true;
-    portraitEdit.concepts = [];
-    portraitEdit.version = saved.brand && saved.brand.version;
-    await refreshLists();
-    const detail = await api("/api/show/agents/" + encodeURIComponent(id));
-    if (detail && detail.agent && focusAgent && focusAgent.id === id) focusAgent = detail.agent;
-  } catch (ex) {
-    portraitEdit.busy = false;
-    portraitEdit.error = (ex && ex.message) || "Could not save that portrait. The last one was kept.";
-  }
-  painted = "";
-  render();
-}
-
 function pfpDebugOn() {
   try { return new URLSearchParams(location.search).get("debug") === "1"; }
   catch { return false; }
@@ -3087,76 +3025,6 @@ function pfpDebugPanel(info) {
   return `<aside class="pfp-debug" data-pfp-debug>${rows.map(([key, value]) => `<p><b>${esc(key)}</b> <span>${esc(value == null ? "" : String(value))}</span></p>`).join("")}</aside>`;
 }
 
-function regenConceptCard(c, name) {
-  const visual = c.visualIdentity || {};
-  const on = portraitEdit && c.id === portraitEdit.selectedId;
-  const accent = hexColor(visual.accentColor) || "#4AD7FF";
-  return `<button class="concept-card pfp-concept lda-card${on ? " is-selected" : ""}" type="button" data-regen-concept="${esc(c.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait option ${esc(String(c.conceptNumber || 0))}" style="--agent-accent:${esc(accent)}">
-    ${motionConceptWrap(conceptArt(c))}
-    <span class="concept-copy"><span class="concept-name"><b>${esc(name)}</b></span><span class="brand-title">${esc(c.title)}</span></span>
-    <span class="pfp-select pfp-concept__label">${on ? "Selected" : "Option " + esc(String(c.conceptNumber || ""))}</span>
-  </button>`;
-}
-
-function portraitEditor(agent) {
-  if (!agent || agent.roster !== "user") return "";
-  const edit = portraitEdit && portraitEdit.id === agent.id ? portraitEdit : null;
-  const selections = (edit && edit.selections) || agent.creationSelections || defaultVisualSelections();
-  const concepts = (edit && edit.concepts) || [];
-  const picking = concepts.length > 0 && !(edit && edit.ok);
-  return `<details class="portrait-editor"${edit && edit.open ? " open" : ""}>
-    <summary>Regenerate PFP</summary>
-    <p class="fine">Change the look, generate four new concepts, pick one. The current portrait stays live until you save; the new one becomes a new brand version (the old one is kept).</p>
-    ${visualOptionGrids(selections)}
-    <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-regenerate-pfp="${esc(agent.id)}"${edit && edit.busy ? " disabled" : ""}>${picking ? "Generate 4 more" : "Generate 4 concepts"}</button>
-    ${picking ? `<div class="concept-grid" data-regen-grid>${concepts.map((c) => regenConceptCard(c, agent.name)).join("")}</div>
-    <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-regen-confirm="${esc(agent.id)}"${edit && edit.busy ? " disabled" : ""}>Use this portrait</button>` : ""}
-    ${edit && edit.error ? `<div class="err lda-error" role="alert">${esc(edit.error)}</div>` : ""}
-    ${edit && edit.ok ? `<p class="fine" role="status">Portrait saved as version ${esc(String(edit.version || ""))}. Every surface now shows it.</p>` : ""}
-  </details>`;
-}
-
-async function regeneratePortrait(id) {
-  const agent = focusAgent && focusAgent.id === id ? focusAgent : (agents.find((row) => row.id === id) || null);
-  if (!portraitEdit || portraitEdit.id !== id) {
-    portraitEdit = {
-      id,
-      selections: Object.assign(defaultVisualSelections(), (agent && agent.creationSelections) || {}),
-      open: true,
-      error: "",
-      busy: false,
-      ok: false,
-    };
-  }
-  portraitEdit.busy = true;
-  portraitEdit.error = "";
-  portraitEdit.ok = false;
-  portraitEdit.open = true;
-  painted = "";
-  render();
-  try {
-    const round = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/pfp-concepts", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ count: 4, regenerate: true, creationSelections: portraitEdit.selections }),
-    });
-    portraitEdit.busy = false;
-    portraitEdit.ok = false;
-    portraitEdit.concepts = round.concepts || [];
-    portraitEdit.selectedId = (portraitEdit.concepts[0] && portraitEdit.concepts[0].id) || null;
-    if (!portraitEdit.concepts.length) portraitEdit.error = "No concepts came back. Try again.";
-  } catch (ex) {
-    if (portraitEdit) {
-      portraitEdit.busy = false;
-      portraitEdit.ok = false;
-      portraitEdit.open = true;
-      portraitEdit.error = "Portrait generation failed. The last portrait was kept.";
-    }
-  }
-  painted = "";
-  render();
-}
-
 function agentDetail(a) {
   const mine = (me && me.theories && me.theories[a.id]) || [];
   const tags = ["Aggressive", "Conservative", "Bluffer", "Risk-taker", "Pressure player", "Unpredictable"];
@@ -3183,7 +3051,6 @@ function agentDetail(a) {
       ${resume}
     </header>
     <div class="agent-hero" data-cast="${esc(a.id)}"${brandStyle(a)}>${agentPortrait(a)}<h1 class="page">${esc(a.name)}</h1>${titleLine(a)}${paletteLine(a)}<p>${esc((brandFor(a) && brandFor(a).tagline) || a.line || "")}</p></div>
-    ${portraitEditor(a)}
     ${pfpDebugPanel(a)}
     ${argusDetail(a)}
     ${a.roster === "user" && a.playable ? `<p class="fine">User roster. The show seats this agent against the house cast when a chair is free${a.seated ? ", and they are on the slate now" : ""}.</p>` : ""}
@@ -3755,40 +3622,6 @@ view.addEventListener("click", async (e) => {
   if (createBtn) { openCreator(); return; }
   const resumeBtn = e.target.closest("[data-resume-agent]");
   if (resumeBtn && focusAgent) { resumeCreator(focusAgent); return; }
-  const detailOpt = e.target.closest("[data-opt-group]");
-  if (detailOpt && focusAgent && !creator && focusAgent.roster === "user") {
-    if (!portraitEdit || portraitEdit.id !== focusAgent.id) {
-      portraitEdit = {
-        id: focusAgent.id,
-        selections: Object.assign(defaultVisualSelections(), focusAgent.creationSelections || {}),
-        open: true,
-        error: "",
-        busy: false,
-        ok: false,
-      };
-    }
-    portraitEdit.selections[detailOpt.dataset.optGroup] = detailOpt.dataset.optId;
-    portraitEdit.concepts = [];          // concepts from the old options no longer apply
-    portraitEdit.selectedId = null;
-    portraitEdit.open = true;
-    portraitEdit.ok = false;
-    portraitEdit.error = "";
-    // Persist the change and flag the portrait as needing regeneration (spec §5/§6).
-    api("/api/show/agents/" + encodeURIComponent(focusAgent.id) + "/brand/selections", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ creationSelections: portraitEdit.selections }),
-    }).catch(() => {});
-    painted = "";
-    render();
-    return;
-  }
-  const regen = e.target.closest("[data-regenerate-pfp]");
-  if (regen) { regeneratePortrait(regen.dataset.regeneratePfp); return; }
-  const regenPick = e.target.closest("[data-regen-concept]");
-  if (regenPick && portraitEdit) { portraitEdit.selectedId = regenPick.dataset.regenConcept; portraitEdit.error = ""; painted = ""; render(); return; }
-  const regenConfirm = e.target.closest("[data-regen-confirm]");
-  if (regenConfirm) { confirmRegenConcept(regenConfirm.dataset.regenConfirm); return; }
   if (creator) {
     const portraitBtn = e.target.closest("[data-portrait]");
     if (portraitBtn && !creator.busy) {
@@ -3800,7 +3633,7 @@ view.addEventListener("click", async (e) => {
       render();
       return;
     }
-    if (e.target.closest("[data-more-faces]") && !creator.busy) {
+    if (e.target.closest("[data-more-faces]") && !creator.busy && !creator.resuming) {
       syncCreatorFromDom();
       creator.error = "";
       try { await loadPortraitOffer("more-" + Date.now()); }

@@ -25,6 +25,7 @@ let focusMatch = null;
 let agents = [];
 let agentQuery = "";
 let agentSearchOpen = false;
+let leaderSort = "wins";
 let history = [];
 let leaders = [];
 let err = "";
@@ -2213,14 +2214,58 @@ function argusStatsStale(row) {
 function armArgusStatsWatch() {
   if (argusStatsTimer) return;
   argusStatsTimer = setInterval(() => {
-    const minted = focusAgent && focusAgent.argus && focusAgent.argus.tokenAddress;
-    if (tab !== "agents" || !minted || creator) {
+    const onProfile = !!(focusAgent && focusAgent.argus && focusAgent.argus.tokenAddress);
+    if (tab !== "agents" || creator || (!onProfile && !leaderboardNeedsCaps())) {
       clearInterval(argusStatsTimer);
       argusStatsTimer = 0;
       return;
     }
     render();
   }, ARGUS_STATS_WATCH_MS);
+}
+
+function paintArgusStats(id) {
+  if (tab !== "agents" || creator) return;
+  if (focusAgent && focusAgent.id !== id) return;
+  render();
+}
+
+function requestArgusStats(id, token) {
+  if (!token || !id) return null;
+  const key = String(token).toLowerCase();
+  const row = argusStatCache.get(key);
+  if (argusStatsStale(row)) {
+    argusStatCache.set(key, {
+      loading: true,
+      at: row ? row.at : 0,
+      marketCap: row ? row.marketCap : null,
+      marketCapUsdc: row && Number.isFinite(row.marketCapUsdc) ? row.marketCapUsdc : null,
+      holders: row ? row.holders : null,
+    });
+    api("/api/show/agents/" + encodeURIComponent(id) + "/argus/stats").then((body) => {
+      const cap = body && body.marketCap;
+      argusStatCache.set(key, {
+        loading: false,
+        at: Date.now(),
+        marketCap: (cap && cap.label) || null,
+        marketCapUsdc: marketCapUsdcOf(cap),
+        holders: (body && body.holders && body.holders.label) || null,
+      });
+      paintArgusStats(id);
+    }).catch(() => {
+      const prev = argusStatCache.get(key);
+      argusStatCache.set(key, {
+        loading: false,
+        at: Date.now(),
+        marketCap: (prev && prev.marketCap) || null,
+        marketCapUsdc: prev && Number.isFinite(prev.marketCapUsdc) ? prev.marketCapUsdc : null,
+        holders: (prev && prev.holders) || null,
+      });
+      paintArgusStats(id);
+    });
+  }
+  armArgusStatsWatch();
+  return argusStatCache.get(key);
 }
 
 function metricText(row, key) {
@@ -2233,36 +2278,7 @@ function argusStatsView(agent) {
   const token = agent && agent.argus && agent.argus.tokenAddress;
   const id = agent && agent.id;
   if (!token || !id) return { marketCap: "—", holders: "—" };
-  const key = String(token).toLowerCase();
-  const row = argusStatCache.get(key);
-  if (argusStatsStale(row)) {
-    argusStatCache.set(key, {
-      loading: true,
-      at: row ? row.at : 0,
-      marketCap: row ? row.marketCap : null,
-      holders: row ? row.holders : null,
-    });
-    api("/api/show/agents/" + encodeURIComponent(id) + "/argus/stats").then((body) => {
-      argusStatCache.set(key, {
-        loading: false,
-        at: Date.now(),
-        marketCap: (body && body.marketCap && body.marketCap.label) || null,
-        holders: (body && body.holders && body.holders.label) || null,
-      });
-      if (focusAgent && focusAgent.id === id && tab === "agents" && !creator) render();
-    }).catch(() => {
-      const prev = argusStatCache.get(key);
-      argusStatCache.set(key, {
-        loading: false,
-        at: Date.now(),
-        marketCap: (prev && prev.marketCap) || null,
-        holders: (prev && prev.holders) || null,
-      });
-      if (focusAgent && focusAgent.id === id && tab === "agents" && !creator) render();
-    });
-  }
-  armArgusStatsWatch();
-  const shown = argusStatCache.get(key);
+  const shown = requestArgusStats(id, token);
   return {
     marketCap: metricText(shown, "marketCap"),
     holders: metricText(shown, "holders"),
@@ -3361,6 +3377,116 @@ function openAgentSearch() {
   if (field && field.focus) field.focus({ preventScroll: true });
 }
 
+// Wins are Records.won on the show: incremented in applyMatch when a hand settles.
+// Market cap is the same Argus pool quote the profile already caches. A missing
+// quote stays an em dash and does not drop the agent from the wins ranking.
+function isLeaderboardAgent(agent) {
+  if (!agent || typeof agent.id !== "string" || !agent.id) return false;
+  if (typeof agent.name !== "string" || !agent.name) return false;
+  if (agent.roster === "house") return true;
+  return agent.playable === true || agent.status === "READY";
+}
+
+function marketCapUsdcOf(quote) {
+  if (quote == null || quote === "") return null;
+  const raw = typeof quote === "object" ? quote.usdc : quote;
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function rankAgents(list, sort, caps) {
+  const mode = sort === "mcap" ? "mcap" : "wins";
+  const quotes = caps && typeof caps === "object" ? caps : {};
+  const rows = (Array.isArray(list) ? list : []).filter(isLeaderboardAgent).map((agent) => {
+    const quote = Object.prototype.hasOwnProperty.call(quotes, agent.id) ? quotes[agent.id] : null;
+    const label = quote && typeof quote === "object" && quote.label ? String(quote.label) : "";
+    return {
+      agent,
+      marketCapUsdc: marketCapUsdcOf(quote),
+      marketCapLabel: label,
+    };
+  });
+  rows.sort((a, b) => {
+    if (mode === "mcap") {
+      const aKnown = a.marketCapUsdc != null;
+      const bKnown = b.marketCapUsdc != null;
+      if (aKnown !== bKnown) return aKnown ? -1 : 1;
+      if (aKnown && a.marketCapUsdc !== b.marketCapUsdc) return b.marketCapUsdc - a.marketCapUsdc;
+    }
+    const aw = Number(a.agent.won) || 0;
+    const bw = Number(b.agent.won) || 0;
+    if (aw !== bw) return bw - aw;
+    const byName = String(a.agent.name).localeCompare(String(b.agent.name));
+    if (byName) return byName;
+    return String(a.agent.id).localeCompare(String(b.agent.id));
+  });
+  return rows.map((row, index) => ({
+    rank: index + 1,
+    id: row.agent.id,
+    name: row.agent.name,
+    won: Number(row.agent.won) || 0,
+    marketCapUsdc: row.marketCapUsdc,
+    marketCapLabel: row.marketCapLabel,
+    agent: row.agent,
+  }));
+}
+
+function leaderQuote(agent) {
+  const token = agent && agent.argus && agent.argus.tokenAddress;
+  if (!token) return null;
+  const row = requestArgusStats(agent.id, token);
+  if (!row || !row.marketCap) return null;
+  return { label: row.marketCap, usdc: row.marketCapUsdc };
+}
+
+function leaderboardNeedsCaps() {
+  if (tab !== "agents" || creator || focusAgent) return false;
+  if (agentSearchNorm(agentQuery)) return false;
+  return agents.some((agent) => isLeaderboardAgent(agent) && agent.argus && agent.argus.tokenAddress);
+}
+
+function leaderRow(row) {
+  const agent = row.agent;
+  const cap = row.marketCapLabel || "—";
+  const known = !!row.marketCapLabel;
+  const wins = (Number(row.won) || 0).toLocaleString("en-US");
+  const label = `Rank ${row.rank}. ${agent.name}. ${wins} wins. Market cap ${cap}. Open profile.`;
+  return `<li>
+    <button class="leader-row" type="button" data-leader-row="${esc(String(row.rank))}" data-agent="${esc(agent.id)}" data-cast="${esc(agent.id)}" aria-label="${esc(label)}"${brandStyle(agent)}>
+      <span class="leader-row__rank${row.rank <= 3 ? " is-top" : ""}">${row.rank}</span>
+      <span class="leader-row__face">${facePlate(agent, 48)}</span>
+      <span class="leader-row__name">${esc(agent.name)}</span>
+      <span class="leader-row__metrics">
+        <span class="leader-row__wins"><b>${esc(wins)}</b> wins</span>
+        <span class="leader-row__cap${known ? "" : " is-unknown"}">${esc(cap)}</span>
+      </span>
+    </button>
+  </li>`;
+}
+
+function agentLeaderboard() {
+  const caps = {};
+  for (const agent of agents) {
+    if (!isLeaderboardAgent(agent)) continue;
+    caps[agent.id] = leaderQuote(agent);
+  }
+  const rows = rankAgents(agents, leaderSort, caps);
+  if (!rows.length) return "";
+  const winsOn = leaderSort !== "mcap";
+  return `<section class="section agent-leaders" aria-labelledby="agent-leaders-title">
+    <div class="agent-leaders__head">
+      <h2 id="agent-leaders-title">Leaders</h2>
+      <div class="leader-sort" role="group" aria-label="Rank agents by">
+        <button class="leader-sort__btn${winsOn ? " is-on" : ""}" type="button" data-leader-sort="wins" aria-pressed="${winsOn ? "true" : "false"}">Wins</button>
+        <button class="leader-sort__btn${winsOn ? "" : " is-on"}" type="button" data-leader-sort="mcap" aria-pressed="${winsOn ? "false" : "true"}">Market cap</button>
+      </div>
+    </div>
+    <p class="fine">Match wins from settled hands. Market cap is the Argus quote when the agent has a token.</p>
+    <ol class="leader-list">${rows.map(leaderRow).join("")}</ol>
+  </section>`;
+}
+
 function agentCard(a) {
   const roster = a.roster === "user" ? (a.status === "READY" ? "Your competitor" : "Brand in progress") : "";
   return `<button class="agent-card" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
@@ -3416,7 +3542,8 @@ function agentsView() {
     return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
   }
   if (!agents.length) return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
-  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() + agentSearchToggle(), extra: agentSearchForm() })}${createAgentListNote()}${agentRosterSlot()}`;
+  const board = agentSearchNorm(agentQuery) ? "" : agentLeaderboard();
+  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() + agentSearchToggle(), extra: agentSearchForm() })}${createAgentListNote()}${board}${agentRosterSlot()}`;
 }
 
 function agentIdFromLocation() {
@@ -3687,7 +3814,7 @@ function clearPainted() {
 }
 
 function focusKey(el) {
-  const node = el && el.closest ? el.closest("[data-pick-side], [data-trade-prop], [data-sell], [data-trade-stake], [data-tag], [data-confirm-trade]") : null;
+  const node = el && el.closest ? el.closest("[data-pick-side], [data-trade-prop], [data-sell], [data-trade-stake], [data-tag], [data-confirm-trade], [data-leader-sort]") : null;
   if (!node) return "";
   return [
     node.getAttribute("data-pick-side") || "",
@@ -3698,18 +3825,20 @@ function focusKey(el) {
     node.getAttribute("data-tag") || "",
     node.hasAttribute("data-sell") ? "sell" : "",
     node.hasAttribute("data-confirm-trade") ? "confirm" : "",
+    node.getAttribute("data-leader-sort") || "",
   ].join("|");
 }
 
 function focusSelector(key) {
   if (!key) return "";
-  const [side, agent, prop, propSide, stake, tag, sell, confirm] = key.split("|");
+  const [side, agent, prop, propSide, stake, tag, sell, confirm, leader] = key.split("|");
   if (side) return `[data-pick-side="${side}"]${agent ? `[data-agent="${agent}"]` : ""}`;
   if (prop) return `[data-trade-prop="${prop}"]${propSide ? `[data-side="${propSide}"]` : ""}`;
   if (stake) return `[data-trade-stake="${stake}"]`;
   if (tag) return `[data-tag="${tag}"]`;
   if (sell) return "[data-sell]";
   if (confirm) return "[data-confirm-trade]";
+  if (leader === "wins" || leader === "mcap") return `[data-leader-sort="${leader}"]`;
   return "";
 }
 
@@ -4079,6 +4208,15 @@ view.addEventListener("submit", async (e) => {
 });
 
 view.addEventListener("click", async (e) => {
+  const leaderSortBtn = e.target.closest("[data-leader-sort]");
+  if (leaderSortBtn) {
+    const next = leaderSortBtn.dataset.leaderSort === "mcap" ? "mcap" : "wins";
+    if (leaderSort !== next) {
+      leaderSort = next;
+      render();
+    }
+    return;
+  }
   const toggleSearch = e.target.closest("[data-agent-search-toggle]");
   if (toggleSearch) {
     if (agentSearchShown()) closeAgentSearch();

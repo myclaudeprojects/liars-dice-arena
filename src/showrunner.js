@@ -28,6 +28,9 @@ const {
   createDraft,
   storedAgentName,
   normalizeDisplayName,
+  personaFromPortrait,
+  shapeCreateBody,
+  syncDraftPersona,
   buildConcepts,
   retouchConcepts,
   lockBrand,
@@ -1584,23 +1587,48 @@ class Show {
   }
 
   createAgent(input) {
-    const body = input && typeof input === "object" ? input : {};
-    const brandedName = storedAgentName(body.name, this.takenNames());
+    const incoming = input && typeof input === "object" ? input : {};
+    const shaped = shapeCreateBody(incoming, this.takenPortraits());
+    const brandedName = storedAgentName(shaped.name, this.takenNames());
     const nameKey = normalizeDisplayName(brandedName);
     const existing = [...this.userAgents.values()].find((row) => normalizeDisplayName(row.name) === nameKey);
     if (existing && existing.status !== "READY") {
-      return { agent: this.agentSummary(existing), identity: existing.identity, resumed: true };
+      if (shaped.portraitId) {
+        existing.portraitId = shaped.portraitId;
+        existing.archetype = shaped.archetype;
+        existing.personality = shaped.personality;
+        existing.creationSelections = normalizeSelections(shaped.creationSelections);
+        if (shaped.shortDescription && String(shaped.shortDescription).trim().length >= 8) {
+          existing.shortDescription = String(shaped.shortDescription).replace(/\s+/g, " ").trim().slice(0, 240);
+        }
+        syncDraftPersona(existing);
+      }
+      this.persist();
+      return {
+        agent: this.agentSummary(existing),
+        identity: existing.identity,
+        resumed: true,
+        shortDescription: existing.shortDescription,
+        playstyleSummary: existing.playstyleSummary,
+      };
     }
-    const draft = createDraft({ ...body, name: brandedName }, {
+    const draft = createDraft({ ...shaped, name: brandedName }, {
       names: this.takenNames(),
       takenIds: this.takenIds(),
       brands: this.brandPool(),
       count: this.userAgents.size,
+      takenPortraits: this.takenPortraits(),
     });
     this.userAgents.set(draft.id, draft);
     this.records.ensure(draft.id);
     this.persist();
-    return { agent: this.agentSummary(draft), identity: draft.identity, resumed: false };
+    return {
+      agent: this.agentSummary(draft),
+      identity: draft.identity,
+      resumed: false,
+      shortDescription: draft.shortDescription,
+      playstyleSummary: draft.playstyleSummary,
+    };
   }
 
   // Attach a Portal #7 launch after the receipt has already been checked on Arc.
@@ -1881,8 +1909,24 @@ class Show {
   async generatePortrait(agentId, input = {}) {
     const draft = this.userAgents.get(agentId);
     if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
+    const explicit = String((input && input.portraitId) || "").trim();
+    const wanted = explicit || (!input.creationSelections && draft.portraitId ? String(draft.portraitId) : "");
+    let lockedEntry = null;
+    if (wanted) {
+      lockedEntry = portraitLib.byId(wanted);
+      if (!lockedEntry || lockedEntry.house) throw creatorError("unknown_portrait", "That portrait is not available.", 404);
+      if (this.takenPortraits(agentId).includes(lockedEntry.id)) {
+        throw creatorError("portrait_taken", "That portrait is already in the arena.", 409);
+      }
+      const persona = personaFromPortrait(lockedEntry.tags, lockedEntry.id);
+      draft.archetype = persona.archetype;
+      draft.personality = persona.personality;
+      draft.creationSelections = persona.selections;
+      draft.portraitId = lockedEntry.id;
+      syncDraftPersona(draft);
+    }
     const previous = this.brands.full(agentId);
-    const selections = normalizeSelections(input.creationSelections || draft.creationSelections);
+    const selections = normalizeSelections(wanted ? draft.creationSelections : (input.creationSelections || draft.creationSelections));
     draft.creationSelections = selections;
     draft.visualDirty = true;
     draft.pfpStatus = "AWAITING_REGENERATION";
@@ -1907,6 +1951,8 @@ class Show {
       if (err && err.code) throw err;
       throw creatorError("generation_failed", "Portrait generation failed. The last portrait was kept.", 502);
     }
+    if (lockedEntry) portrait.libraryEntry = lockedEntry;
+    portrait.selections = selections;
     portrait.takenPortraits = this.takenPortraits(agentId);
     const locked = buildPortraitBrand(draft, portrait, previous);
     try {
@@ -1984,6 +2030,28 @@ class Show {
         shareTemplate: assets.shareTemplate || null,
       },
       deferred: ["HERO_ART", "INTRO_CARD", "VICTORY_CARD", "DEFEAT_CARD", "MARKET_CARD", "RIVALRY_CARD"],
+    };
+  }
+
+  offerPortraits(opts = {}) {
+    const count = Math.max(1, Math.min(12, Number(opts.count) || 8));
+    const exclude = Array.isArray(opts.exclude) ? opts.exclude.map((id) => String(id)) : [];
+    const seed = String(opts.seed || "offer");
+    const rows = portraitLib.match({}, {
+      count,
+      exclude: [...this.takenPortraits(), ...exclude],
+      seed,
+    });
+    return {
+      portraits: rows.map((entry) => {
+        const persona = personaFromPortrait(entry.tags, entry.id);
+        return {
+          id: entry.id,
+          url: portraitLib.urlFor(entry),
+          archetypeLabel: persona.archetypeLabel,
+          playstyleSummary: persona.playstyleSummary,
+        };
+      }),
     };
   }
 

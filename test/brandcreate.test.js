@@ -183,6 +183,13 @@ function signatures(concepts) {
 
   const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
   assert(app.includes("saved on the roster as LDA plus this name"), "the name field says the roster name is prefixed");
+  assert(app.includes("data-creator-confirm"), "one confirm creates the agent");
+  assert(app.includes("data-portrait"), "create confirms a portrait");
+  assert(app.includes("This face plays as"), "play style is stated from the portrait");
+  assert(!app.includes('name="archetype"'), "create has no archetype picker");
+  assert(!app.includes("data-more-traits"), "create has no personality knobs");
+  assert(app.includes("submitServerMint"), "confirm can mint the token");
+  assert(app.includes("houseMintReady"), "server mint prefers the house wallet");
   assert(app.includes("applyStoredAgentName"), "reveal uses the stored agent name");
   assert(CAST.every((c) => c.id && c.name.startsWith("LDA ") && !c.name.startsWith("LDA LDA")), "house display names are prefixed and ids stay");
   assert(app.includes("Create agent"), "agents tab labels the action");
@@ -191,11 +198,11 @@ function signatures(concepts) {
   assert(app.includes("page-head"), "page titles and creator actions share a header row");
   assert(app.includes("/api/show/agents/brand/create"), "wizard calls create");
   assert(app.includes("/brand/generate"), "wizard generates one portrait");
-  assert(app.includes("agent-visual-options"), "wizard shows character options");
+  assert(app.includes("agent-visual-options"), "regenerate still has character options");
   assert(app.includes("Regenerate PFP"), "an agent can regenerate its portrait");
   assert(app.includes("pfp-frame"), "wizard shows square portraits");
   assert(app.includes("agent-reveal"), "lock ends on a reveal");
-  assert(app.includes("Advanced / Developer Options"), "developer options stay collapsed");
+  assert(app.includes("Choose a face"), "create asks for a portrait");
   assert(app.includes("hero-match-card"), "arena leads with a match card");
   assert(app.includes("matchup-hero"), "arena hero is a matchup");
   assert(app.includes("Watch live"), "live matchup names the watch action");

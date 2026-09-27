@@ -206,8 +206,11 @@
     return body ? "LDA " + body : "LDA";
   }
 
-  function brandDescription(description, site) {
-    const line = "Play at " + site;
+  // One short line after the spectator's description. Website and X stay in their own fields.
+  const TOKEN_AGENT_LINE = "An LDA agent in Liar's Dice Arena.";
+
+  function brandDescription(description) {
+    const line = TOKEN_AGENT_LINE;
     if (line.length >= 280) return line.slice(0, 280);
     const tail = "\n\n" + line;
     const blurb = cleanText(description, 280 - tail.length);
@@ -216,7 +219,7 @@
 
   function fitLaunchDescription(value) {
     const text = cleanMultiline(value);
-    const mark = "\n\nPlay at ";
+    const mark = "\n\n" + TOKEN_AGENT_LINE;
     const at = text.lastIndexOf(mark);
     if (at < 0 || text.length <= 280) return text.slice(0, 280);
     const tail = text.slice(at);
@@ -265,7 +268,7 @@
       launchTicker: deriveTicker(tickerBody(body.name), body.takenTickers),
       launchImage: fitImageUri(candidates, fallback),
       launchWebsite: site,
-      launchDescription: brandDescription(body.description, site),
+      launchDescription: brandDescription(body.description),
       launchX: socialValue(body.xUrl, HOUSE_LAUNCH_DEFAULTS.xUrl),
       launchTelegram: socialValue(body.telegramUrl, HOUSE_LAUNCH_DEFAULTS.telegramUrl),
       creatorFeeWallet: feeWallet(body.creatorFeeWallet),

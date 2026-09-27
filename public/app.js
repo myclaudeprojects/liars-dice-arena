@@ -1604,7 +1604,19 @@ function blankCreator() {
     concepts: [],
     selectedId: null,
     selections: defaultVisualSelections(),
+    oneShot: false,
+    portraits: [],
+    selectedPortrait: null,
+    seenPortraits: [],
   };
+}
+
+function rosterNamePreview(value) {
+  const cleaned = String(value || "").replace(/\s+/g, " ").trim();
+  if (!cleaned || /^lda$/i.test(cleaned)) return "LDA";
+  const rest = /^lda /i.test(cleaned) ? cleaned.slice(4).trim() : cleaned;
+  const body = rest.slice(0, 28).trim();
+  return body ? "LDA " + body : "LDA";
 }
 
 const VISUAL_GROUPS = [
@@ -1700,7 +1712,7 @@ function createAgentButton() {
 }
 
 function createAgentListNote() {
-  return `<p class="fine">Connect wallet is not on this page. It appears on Reveal, after Generate agent, with the Argus token launch.</p>`;
+  return `<p class="fine">Create agent asks for a name, a description, and a portrait. That same step launches the Argus token. Connect wallet is only the fallback when server mint is not the house wallet.</p>`;
 }
 
 function sliderField(key, label) {
@@ -1740,11 +1752,11 @@ function houseLaunchArgs(cfg, extra) {
     name: more.name != null ? more.name : creator.form.name,
     description: more.description != null ? more.description : creator.form.shortDescription,
     agentId: more.agentId || argusAgentId(),
-    publicBase: offer.publicBase,
-    siteUrl: offer.siteUrl,
-    xUrl: offer.xUrl,
-    telegramUrl: offer.telegramUrl,
-    creatorFeeWallet: offer.creatorFeeWallet,
+    publicBase: more.publicBase != null ? more.publicBase : offer.publicBase,
+    siteUrl: more.siteUrl != null ? more.siteUrl : offer.siteUrl,
+    xUrl: more.xUrl != null ? more.xUrl : offer.xUrl,
+    telegramUrl: more.telegramUrl != null ? more.telegramUrl : offer.telegramUrl,
+    creatorFeeWallet: more.creatorFeeWallet != null ? more.creatorFeeWallet : offer.creatorFeeWallet,
     takenTickers: more.takenTickers || takenArgusTickers(),
     canonicalPfp: more.canonicalPfp,
   };
@@ -2152,22 +2164,7 @@ async function sponsorArgus() {
   painted = "";
   render();
   try {
-    const payload = Object.assign({}, creator.launch, { predictor: predictorId() });
-    delete payload.minted;
-    delete payload.wallet;
-    delete payload.pendingTx;
-    delete payload.status;
-    const saved = await api("/api/show/agents/" + encodeURIComponent(id) + "/argus/sponsor", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (creator && creator.launch) {
-      creator.launch.minted = saved.argus;
-      creator.launch.pendingTx = "";
-      creator.launch.status = "";
-    }
-    await refreshLists();
+    await submitServerMint();
   } catch (ex) {
     if (creator) {
       if (creator.launch && ex.txHash) creator.launch.pendingTx = ex.txHash;
@@ -2243,78 +2240,142 @@ function applyStoredAgentName(agent) {
 
 function creatorPayload() {
   const f = creator.form;
-  return {
+  const body = {
     name: f.name,
     shortDescription: f.shortDescription,
-    archetype: f.archetype,
-    visualDirection: f.visualDirection,
-    creationSelections: creator.selections || defaultVisualSelections(),
-    personality: {
-      aggression: f.aggression,
-      bluffing: f.bluffing,
-      discipline: f.discipline,
-      chaos: f.chaos,
-      confidence: f.confidence,
-      patience: f.patience,
-      showmanship: f.showmanship,
-      calculation: f.calculation,
-      riskTolerance: f.riskTolerance,
-      adaptability: f.adaptability,
-    },
   };
+  if (creator.selectedPortrait && creator.selectedPortrait.id) {
+    body.portraitId = creator.selectedPortrait.id;
+    return body;
+  }
+  body.archetype = f.archetype;
+  body.visualDirection = f.visualDirection;
+  body.creationSelections = creator.selections || defaultVisualSelections();
+  body.personality = {
+    aggression: f.aggression,
+    bluffing: f.bluffing,
+    discipline: f.discipline,
+    chaos: f.chaos,
+    confidence: f.confidence,
+    patience: f.patience,
+    showmanship: f.showmanship,
+    calculation: f.calculation,
+    riskTolerance: f.riskTolerance,
+    adaptability: f.adaptability,
+  };
+  return body;
+}
+
+function tokenSocialCopy(cfg) {
+  const offer = cfg || {};
+  const site = offer.siteUrl || "https://liarsdicearc.app/";
+  const x = offer.xUrl || "https://x.com/LiarsDiceArc";
+  const telegram = String(offer.telegramUrl || "").trim();
+  if (telegram) return `Website ${esc(site)}, X ${esc(x)}, and Telegram ${esc(telegram)}.`;
+  return `Website ${esc(site)} and X ${esc(x)}. Telegram stays empty.`;
+}
+
+function oneShotLaunchParams() {
+  const cfg = creator.argusConfig || {};
+  const canonical = creator.reveal && creator.reveal.canonicalPfp;
+  return suggestedLaunch(cfg, {
+    name: creator.form.name,
+    description: creator.form.shortDescription,
+    canonicalPfp: canonical,
+    siteUrl: cfg.siteUrl || "https://liarsdicearc.app/",
+    xUrl: cfg.xUrl || "https://x.com/LiarsDiceArc",
+    creatorFeeWallet: cfg.creatorFeeWallet || "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488",
+  });
 }
 
 function selectedConcept() {
   return (creator.concepts || []).find((c) => c.id === creator.selectedId) || creator.concepts[0] || null;
 }
 
+function portraitChoices() {
+  const rows = creator.portraits || [];
+  if (!rows.length) return `<p class="fine">No portraits are free right now.</p>`;
+  const selected = creator.selectedPortrait && creator.selectedPortrait.id;
+  return `<div class="portrait-pick__grid">${rows.map((row) => {
+    const on = row.id === selected;
+    return `<button class="portrait-choice${on ? " is-selected" : ""}" type="button" data-portrait="${esc(row.id)}" aria-pressed="${on ? "true" : "false"}" aria-label="Select portrait">
+      <img src="${esc(row.url)}" alt="" width="160" height="160">
+    </button>`;
+  }).join("")}</div>`;
+}
+
+function derivedPlayLine() {
+  const row = creator.selectedPortrait;
+  if (!row || !row.archetypeLabel) return `<p class="fine portrait-derived">Select a portrait. Play style follows the face.</p>`;
+  return `<p class="fine portrait-derived">This face plays as ${esc(row.archetypeLabel)}. ${esc(row.playstyleSummary || "")}</p>`;
+}
+
+function oneShotLaunch() {
+  if (!creator) return "";
+  const cfg = creator.argusConfig || { enabled: false };
+  const minted = creator.launch && creator.launch.minted;
+  if (minted && minted.argusUrl) {
+    return `<section class="argus-launch">
+      <h2>Launched on Argus</h2>
+      <p class="fine">${esc(minted.symbol || "Token")} · ${esc(minted.tokenAddress || "")}</p>
+      ${minted.creatorWallet ? `<p class="fine">On-chain creator ${esc(minted.creatorWallet)}</p>` : ""}
+      <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(minted.argusUrl)}" target="_blank" rel="noopener">Buy on Argus</a>
+      <p class="fine">Opens argus.world. This app does not swap. The profile keeps this link.</p>
+    </section>`;
+  }
+  if (!cfg.enabled) {
+    return `<section class="argus-launch">
+      <h2>Launch on Argus</h2>
+      <p class="fine">This agent is saved. Launch is not open yet. They can play without a token.</p>
+    </section>`;
+  }
+  const houseMint = houseMintReady(cfg);
+  const house = (creator.launch && creator.launch.creatorFeeWallet) || cfg.creatorFeeWallet || "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488";
+  const busy = creator.busy ? " disabled" : "";
+  const sign = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-launch="1"${busy}>Sign create on Arc</button>`;
+  const connect = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-connect="1"${busy}>Connect wallet</button>`;
+  if (houseMint) {
+    return `<section class="argus-launch">
+      <h2>Launch on Argus</h2>
+      <p class="fine">Server mint signs as the house wallet ${esc(house)}, so the 100% creator share accrues there. The token name is the LDA name. The description is yours, plus “An LDA agent in Liar's Dice Arena.” The image is the portrait. ${tokenSocialCopy(cfg)}</p>
+      <p class="fine"><b>Sign create on Arc</b> stays available if server mint does not finish. The signing wallet becomes the on-chain creator. Creator fees then accrue to that wallet instead of ${esc(house)}, unless you are signing as ${esc(house)}.</p>
+      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-sponsor="1"${busy}>Launch with server mint</button>
+      ${connect}
+      ${sign}
+    </section>`;
+  }
+  const why = cfg.sponsored && cfg.mintWallet
+    ? `Server mint would sign as ${esc(cfg.mintWallet)}, which is not the house wallet ${esc(house)}.`
+    : `Server mint is not set up, so this form cannot sign as the house wallet ${esc(house)}.`;
+  return `<section class="argus-launch">
+    <h2>Launch on Argus</h2>
+    <p class="fine">${why} <b>Sign create on Arc</b> stays available. The signing wallet becomes the on-chain creator. Creator fees accrue to that wallet, not to ${esc(house)}, unless you are signing as ${esc(house)}.</p>
+    <p class="fine">Connect wallet only links MetaMask or Rabby, an injected wallet on Arc (chain 5042). Connecting does not mint the token.</p>
+    ${connect}
+    ${sign}
+  </section>`;
+}
+
 function creatorView() {
   const step = creator.step;
   const f = creator.form;
-  const titles = ["Name and personality", "Choose their look", "Reveal"];
-  const kicker = `Step ${step} of 3 · ${titles[step - 1] || "Create"}`;
+  const kicker = step === 3 ? "Saved" : "Name, description, portrait";
   let body = "";
-  if (step === 1) {
-    const options = creator.archetypes.map((row) => `<option value="${esc(row.id)}"${row.id === f.archetype ? " selected" : ""}>${esc(row.label || archetypeLabel(row.id))}</option>`).join("");
+  if (step !== 3) {
     body = `
-      <label>Name <span class="fine">(optional — saved on the roster as LDA plus this name)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Dracula"></label>
-      <label>Archetype<select name="archetype">${options}</select></label>
-      <p class="fine">Persona play. The show seats them. You watch and predict with Arena Credits.</p>
-      ${sliderField("aggression", "Aggression")}
-      ${sliderField("bluffing", "Bluffing")}
-      ${sliderField("discipline", "Discipline")}
-      ${sliderField("chaos", "Chaos")}
-      <details class="advanced-config">
-        <summary>Advanced / Developer Options</summary>
-        <div class="advanced-config__body">
-          <label>Short description <span class="fine">(optional)</span><textarea name="shortDescription" maxlength="240" placeholder="A quiet closer who spends one lie and waits.">${esc(f.shortDescription)}</textarea></label>
-          <button class="lda-btn lda-btn-ghost" type="button" data-more-traits="1">${creator.moreTraits ? "Hide extra traits" : "More traits"}</button>
-          ${creator.moreTraits ? `
-            ${sliderField("confidence", "Confidence")}
-            ${sliderField("patience", "Patience")}
-            ${sliderField("showmanship", "Showmanship")}
-            ${sliderField("calculation", "Calculation")}
-            ${sliderField("riskTolerance", "Risk")}
-            ${sliderField("adaptability", "Adaptability")}
-          ` : ""}
-          <p class="fine">Naming and personality only. No endpoint, API key, or funding on this step. Connect wallet is not part of naming. It appears later on Reveal, for the Argus token. Custom brains and real-money seats are not part of the spectator arena.</p>
+      <p class="fine">You name them and choose a face. Play style follows that portrait. Create agent saves the competitor and launches the Argus token.</p>
+      <label>Name <span class="fine">(optional — saved on the roster as LDA plus this name)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Nightshade"></label>
+      <p class="fine" data-roster-name>Roster name ${esc(rosterNamePreview(f.name))}</p>
+      <label>Description <span class="fine">(optional)</span><textarea name="shortDescription" maxlength="240" placeholder="A quiet closer who spends one lie and waits.">${esc(f.shortDescription)}</textarea></label>
+      <section class="portrait-pick">
+        <div class="section-head">
+          <span class="kicker">Portrait</span>
+          <h2>Choose a face</h2>
+          <div class="section-head__actions"><button class="lda-btn lda-btn-ghost" type="button" data-more-faces="1"${creator.busy ? " disabled" : ""}>Different faces</button></div>
         </div>
-      </details>
-      <p class="fine">Connect wallet is not on this step. It appears on Reveal, after Generate agent, with the Argus token launch.</p>`;
-  } else if (step === 2) {
-    body = `<section class="brand-options">
-      <div class="section-head">
-        <span class="kicker">Character options</span>
-        <h2>One portrait. These choices build it.</h2>
-        <div class="section-head__actions">
-          <button class="lda-btn lda-btn-ghost" type="button" data-random-look="1">Randomize again</button>
-        </div>
-      </div>
-      <p class="fine">Previews are examples. Generate agent locks one neon-competitive identity.</p>
-      ${visualOptionGrids(creator.selections)}
-      <label>Refine<textarea name="refine" maxlength="160" placeholder="Optional note. The options above decide the portrait.">${esc(f.refine)}</textarea></label>
-      <p class="fine">Connect wallet is not on this step. It appears on Reveal, after Generate agent, with the Argus token launch.</p>
-    </section>`;
+        ${portraitChoices()}
+        ${derivedPlayLine()}
+      </section>`;
   } else {
     const reveal = creator.reveal || {};
     const c = selectedConcept();
@@ -2342,10 +2403,13 @@ function creatorView() {
         <span class="agent-reveal__title">${esc(reveal.title || (c && c.title) || "")}</span>
         <h1>${esc(reveal.name || f.name)}</h1>
         <p>${esc(reveal.tagline || (c && c.tagline) || "")}</p>
+        ${reveal.playstyle ? `<p>${esc(reveal.playstyle)}</p>` : ""}
+        ${reveal.description ? `<p class="fine">${esc(reveal.description)}</p>` : ""}
       </div>
       <span class="pfp-sizes" aria-label="Small-size check">${pfpMini(reveal.svg || (c && c.pfpSvg), 48)}${pfpMini(reveal.svg || (c && c.pfpSvg), 96)}</span>
-      ${argusPanel()}
-      <button class="cta lda-btn lda-btn-primary lda-btn-block agent-reveal__enter" type="button" data-enter-arena="1"${creator.busy ? " disabled" : ""}>Enter the Arena</button>
+      ${creator.oneShot ? oneShotLaunch() : argusPanel()}
+      ${creator.oneShot ? `<button class="cta lda-btn lda-btn-primary lda-btn-block agent-reveal__enter" type="button" data-view-created="1"${creator.busy ? " disabled" : ""}>View profile</button>` : ""}
+      <button class="${creator.oneShot ? "ghost lda-btn lda-btn-ghost" : "cta lda-btn lda-btn-primary"} lda-btn-block agent-reveal__enter" type="button" data-enter-arena="1"${creator.busy ? " disabled" : ""}>Enter the Arena</button>
       ${pfpDebugPanel({
         id: revealId,
         creationSelections: reveal.selections || creator.selections,
@@ -2354,8 +2418,6 @@ function creatorView() {
       })}
     </section>`;
   }
-  const nextLabel = step === 1 ? "Create agent" : step === 2 ? "Generate agent" : "Enter the Arena";
-  const nextAttr = step === 1 ? "data-creator-next" : step === 2 ? "data-creator-generate" : "data-enter-arena";
   const working = creator.statusLabel || "Working.";
   return `<div class="creator">
     ${pageHead("Create agent", { kicker })}
@@ -2363,14 +2425,30 @@ function creatorView() {
     ${creator.busy ? `<p class="fine creator-status" role="status">${esc(working)}</p>` : ""}
     ${creator.error ? `<div class="err lda-error" role="alert">${esc(creator.error)}</div>` : ""}
     ${step === 3 ? "" : `<div class="creator-actions">
-      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" ${nextAttr}="1"${creator.busy ? " disabled" : ""}>${creator.busy ? esc(working) : nextLabel}</button>
-      <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-creator-back="1"${creator.busy ? " disabled" : ""}>${step === 1 ? "Back to agents" : "Back"}</button>
+      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-creator-confirm="1"${creator.busy ? " disabled" : ""}>${creator.busy ? esc(working) : "Create agent"}</button>
+      <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-creator-back="1"${creator.busy ? " disabled" : ""}>Back to agents</button>
     </div>`}
   </div>`;
 }
 
+async function loadPortraitOffer(seed) {
+  if (!creator) return;
+  const exclude = (creator.seenPortraits || []).join(",");
+  const q = "/api/show/agents/brand/portraits?count=8&seed=" + encodeURIComponent(seed || String(Date.now()))
+    + (exclude ? "&exclude=" + encodeURIComponent(exclude) : "");
+  const j = await api(q);
+  const rows = (j.portraits || []).slice();
+  const current = creator.selectedPortrait;
+  if (current && current.id && !rows.some((row) => row.id === current.id)) rows.unshift(current);
+  creator.portraits = rows.slice(0, 8);
+  creator.seenPortraits = Array.from(new Set((creator.seenPortraits || []).concat(rows.map((row) => row.id))));
+  const still = creator.portraits.find((row) => current && row.id === current.id);
+  creator.selectedPortrait = still || creator.portraits[0] || null;
+}
+
 async function openCreator() {
   creator = blankCreator();
+  creator.oneShot = true;
   focusAgent = null;
   focusMatch = null;
   tab = "agents";
@@ -2379,35 +2457,176 @@ async function openCreator() {
   paintTabs();
   render();
   try {
-    const j = await api("/api/show/agents/brand/options");
-    if (!creator) return;
-    if (Array.isArray(j.archetypes) && j.archetypes.length && !sameArchetypeList(creator.archetypes, j.archetypes)) {
-      creator.archetypes = j.archetypes;
+    await loadPortraitOffer("offer");
+    if (creator) render();
+  } catch (ex) {
+    if (creator) {
+      creator.error = ex.message || "Portraits did not load.";
       render();
     }
-  } catch { /* the fallback list still submits */ }
+  }
 }
 
 function resumeCreator(agent) {
   creator = blankCreator();
+  creator.oneShot = true;
   creator.form.name = agent.name || "";
   creator.form.shortDescription = agent.shortDescription || agent.note || "";
-  creator.form.archetype = agent.archetypeId || "GAMBLER";
-  creator.form.visualDirection = agent.visualDirection || "";
-  const personality = agent.personality || {};
-  for (const key of Object.keys(creator.form)) {
-    if (typeof personality[key] === "number") creator.form[key] = personality[key];
-  }
   creator.draft = { agent: { id: agent.id, name: agent.name, status: agent.status } };
-  creator.concepts = agent.concepts || [];
-  creator.selectedId = agent.selectedConceptId || (creator.concepts[0] && creator.concepts[0].id) || null;
-  creator.selections = Object.assign(defaultVisualSelections(), agent.creationSelections || {});
-  creator.step = agent.status === "READY" ? 1 : 2;
+  creator.step = 1;
+  const portrait = agent.brand && agent.brand.portrait;
+  if (portrait && portrait.id && portrait.url) {
+    creator.selectedPortrait = {
+      id: portrait.id,
+      url: portrait.url,
+      archetypeLabel: agent.archetype || "",
+      playstyleSummary: agent.line || "",
+    };
+    creator.portraits = [creator.selectedPortrait];
+    creator.seenPortraits = [portrait.id];
+  }
   focusAgent = null;
   tab = "agents";
   painted = "";
   paintTabs();
   render();
+  loadPortraitOffer("resume-" + (agent.id || "agent")).then(() => { if (creator) render(); }).catch(() => {});
+}
+
+async function submitServerMint() {
+  const cfg = creator.argusConfig || {};
+  const id = argusAgentId();
+  if (!cfg.enabled || !id) throw new Error("Launch is not available for this agent. They can still play.");
+  if (!cfg.sponsored) throw new Error(cfg.sponsoredMessage || "Server mint is not set up. Connect a wallet, or leave this agent playable.");
+  if (creator.oneShot && !houseMintReady(cfg)) {
+    throw new Error("Server mint is not the house wallet. Sign create on Arc, or leave this agent playable.");
+  }
+  if (!creator.launch) creator.launch = oneShotLaunchParams();
+  const payload = Object.assign({}, creator.launch, { predictor: predictorId() });
+  delete payload.minted;
+  delete payload.wallet;
+  delete payload.pendingTx;
+  delete payload.status;
+  const saved = await api("/api/show/agents/" + encodeURIComponent(id) + "/argus/sponsor", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (creator && creator.launch) {
+    creator.launch.minted = saved.argus;
+    creator.launch.pendingTx = "";
+    creator.launch.status = "";
+  }
+  await refreshLists();
+  return saved;
+}
+
+async function confirmCreate() {
+  if (!creator || creator.busy) return;
+  syncCreatorFromDom();
+  if (!creator.selectedPortrait || !creator.selectedPortrait.id) {
+    creator.error = "Choose a portrait.";
+    painted = "";
+    render();
+    return;
+  }
+  creator.busy = true;
+  creator.oneShot = true;
+  creator.error = "";
+  startCreatorBeat();
+  painted = "";
+  render();
+  let saved = false;
+  try {
+    if (!creator.draft) {
+      const created = await api("/api/show/agents/brand/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(creatorPayload()),
+      });
+      creator.draft = created;
+      applyStoredAgentName(created.agent);
+      if (created.shortDescription) creator.form.shortDescription = created.shortDescription;
+      if (created.identity && created.identity.playstyleSummary) {
+        creator.selectedPortrait.playstyleSummary = created.identity.playstyleSummary;
+      }
+      if (created.agent && created.agent.archetypeLabel) creator.selectedPortrait.archetypeLabel = created.agent.archetypeLabel;
+    }
+    const id = creator.draft.agent.id;
+    const generated = await api("/api/show/agents/" + encodeURIComponent(id) + "/brand/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ portraitId: creator.selectedPortrait.id }),
+    });
+    const brand = generated.brand || {};
+    const visual = brand.visualIdentity || {};
+    creator.reveal = {
+      name: creator.form.name,
+      description: creator.form.shortDescription,
+      title: brand.title,
+      tagline: brand.tagline,
+      playstyle: (creator.selectedPortrait && creator.selectedPortrait.playstyleSummary) || "",
+      svg: generated.svg,
+      emblem: "",
+      accent: visual.accentColor,
+      primary: visual.primaryColor,
+      version: brand.version,
+      canonicalPfp: (brand.assets && brand.assets.canonicalPfp) || (creator.selectedPortrait && creator.selectedPortrait.url) || "",
+      selections: generated.creationSelections || creator.selections,
+      agentId: id,
+    };
+    creator.step = 3;
+    saved = true;
+    await refreshLists();
+    await loadArgusConfig();
+    creator.launch = oneShotLaunchParams();
+    if (houseMintReady(creator.argusConfig)) {
+      creator.launchMode = "sponsor";
+      creator.statusLabel = "Launching the Argus token…";
+      painted = "";
+      render();
+      try {
+        await submitServerMint();
+      } catch (ex) {
+        creator.error = ex.message || "Server mint did not finish. This agent can still play.";
+      }
+    }
+  } catch (ex) {
+    if (creator) {
+      creator.error = saved
+        ? (ex.message || "Portrait generation failed. The last portrait was kept.")
+        : (ex.message || "Could not create that agent.");
+      if (!saved) creator.step = 1;
+    }
+  } finally {
+    stopCreatorBeat();
+    if (creator) {
+      creator.busy = false;
+      creator.launchMode = "";
+      painted = "";
+      render();
+    }
+  }
+}
+
+async function viewCreatedAgent() {
+  const id = argusAgentId();
+  if (!id) return;
+  stopCreatorBeat();
+  creator = null;
+  try {
+    const j = await api("/api/show/agents/" + encodeURIComponent(id));
+    focusAgent = j.agent;
+    api("/api/show/argus/config").then((cfg) => { argusOffer = cfg || argusOffer; if (focusAgent && focusAgent.id === id) { painted = ""; render(); } }).catch(() => {});
+    tab = "agents";
+    paintTabs();
+    painted = "";
+    render();
+    window.scrollTo(0, 0);
+  } catch (ex) {
+    err = ex.message;
+    render();
+  }
 }
 
 // Pick a random option in every group (never "auto"/"none" so the roll always shows).
@@ -3251,6 +3470,10 @@ view.addEventListener("input", (e) => {
   } else {
     creator.form[el.name] = el.value;
   }
+  if (el.name === "name") {
+    const preview = el.closest(".creator") && el.closest(".creator").querySelector("[data-roster-name]");
+    if (preview) preview.textContent = "Roster name " + rosterNamePreview(el.value);
+  }
 });
 
 view.addEventListener("click", async (e) => {
@@ -3294,18 +3517,27 @@ view.addEventListener("click", async (e) => {
   const regenConfirm = e.target.closest("[data-regen-confirm]");
   if (regenConfirm) { confirmRegenConcept(regenConfirm.dataset.regenConfirm); return; }
   if (creator) {
-    const opt = e.target.closest("[data-opt-group]");
-    if (opt) {
-      creator.selections = Object.assign(defaultVisualSelections(), creator.selections);
-      creator.selections[opt.dataset.optGroup] = opt.dataset.optId;
+    const portraitBtn = e.target.closest("[data-portrait]");
+    if (portraitBtn && !creator.busy) {
+      syncCreatorFromDom();
+      const id = portraitBtn.dataset.portrait;
+      creator.selectedPortrait = (creator.portraits || []).find((row) => row.id === id) || creator.selectedPortrait;
       creator.error = "";
       painted = "";
       render();
       return;
     }
-    if (e.target.closest("[data-creator-next]")) { chooseLook(); return; }
-  if (e.target.closest("[data-random-look]") && creator && !creator.busy) { creator.selections = randomizeLook(); painted = ""; render(); return; }
-    if (e.target.closest("[data-creator-generate]")) { generateAgent(); return; }
+    if (e.target.closest("[data-more-faces]") && !creator.busy) {
+      syncCreatorFromDom();
+      creator.error = "";
+      try { await loadPortraitOffer("more-" + Date.now()); }
+      catch (ex) { creator.error = ex.message || "Could not load more portraits."; }
+      painted = "";
+      render();
+      return;
+    }
+    if (e.target.closest("[data-creator-confirm]")) { confirmCreate(); return; }
+    if (e.target.closest("[data-view-created]")) { viewCreatedAgent(); return; }
     if (e.target.closest("[data-argus-connect]")) { connectArgus(); return; }
     if (e.target.closest("[data-argus-launch]")) { launchArgus(); return; }
     if (e.target.closest("[data-argus-sponsor]")) { sponsorArgus(); return; }
@@ -3317,31 +3549,9 @@ view.addEventListener("click", async (e) => {
       setTab("arena");
       return;
     }
-    if (e.target.closest("[data-more-traits]")) {
-      creator.moreTraits = !creator.moreTraits;
-      creator.error = "";
-      painted = "";
-      render();
-      return;
-    }
-    const concept = e.target.closest("[data-concept]");
-    if (concept) {
-      creator.selectedId = concept.dataset.concept;
-      creator.error = "";
-      painted = "";
-      render();
-      return;
-    }
-    if (e.target.closest("[data-creator-next]")) {
-      if (creator.step === 1) runConcepts("all");
-      return;
-    }
     if (e.target.closest("[data-creator-back]")) {
-      if (creator.step <= 1) {
-        stopCreatorBeat();
-        creator = null;
-      } else if (creator.step === 3) creator.step = 2;
-      else creator.step -= 1;
+      stopCreatorBeat();
+      creator = null;
       painted = "";
       render();
       return;

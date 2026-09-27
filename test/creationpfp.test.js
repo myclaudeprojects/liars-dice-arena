@@ -115,7 +115,8 @@ eq(normalizeSelections({ archetype: "nope" }).archetype, "executive", "unknown o
 
 const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
 assert(app.includes("agent-visual-options"), "option grid class");
-assert(app.includes("Generate agent"), "one generate action");
+assert(app.includes("data-creator-confirm"), "create confirms in one step");
+assert(app.includes("data-portrait"), "create selects a portrait");
 assert(app.includes("Regenerate PFP"), "regenerate control");
 assert(app.includes("/brand/generate"), "generate route");
 assert(app.includes("data-pfp-debug"), "dev inspector");

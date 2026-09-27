@@ -1,14 +1,16 @@
-// Argus Portal #8 launches and the on-chain creator-fee split.
+// Argus Portal #8 spectator launches and the on-chain creator-fee split.
 //
-// Portal #7 stays the fallback. This module is used only when
-// ARGUS_PORTAL=8 or ARGUS_PORTAL8_ENABLED is set.
+// Used when ARGUS_PORTAL=8 or ARGUS_PORTAL8_ENABLED is set.
 //
-// Spectator Create: the spectator wallet is msg.sender. payoutAddress is the
-// house wallet, which Portal 8 allows to differ from the launcher. The house
-// key then calls setPayoutSplit (5000/5000). The spectator cannot clear that
-// split. House-created agents still sign with ARGUS_MINT_KEY. That key is
-// both launcher and payout, and it must be the house wallet. The key never
-// leaves the server.
+// Spectator Create: the spectator wallet is msg.sender and pays the opening
+// buy. payoutAddress is the house wallet, which Portal 8 allows to differ
+// from the launcher. The house key then calls setPayoutSplit (5000/5000).
+// The spectator cannot clear that split. The house key is not the launcher
+// and does not buy tokens for this launch.
+//
+// House and factory server mints do not launch here. They stay on Portal #7
+// in sponsor.js, with a zero dev buy and no opening buy. sponsorPortal8
+// refuses so that path cannot spend the Portal 8 seed.
 
 const { ethers } = require("ethers");
 const { fail, prepareLaunch, QUOTE_ASSET, CHAIN_ID, HOUSE_LAUNCH_DEFAULTS } = require("./launch");
@@ -41,7 +43,6 @@ const ESCROW_ABI_BYTES = ESCROW_ABI_WORDS * 32;
 const ESCROW_WORD_INDEX = 2;
 const CLAIM_URL = "https://argus.world/claim";
 const FALLBACK_GAS = 18_000_000n;
-const APPROVE_GAS = 120_000n;
 const GAS_CAP = 30_000_000n;
 
 const PORTAL_ABI = require("./portal8.abi.json");
@@ -53,16 +54,11 @@ const PARTS_ABI = [
 const QUOTE_ABI = [
   "function economicsFor(address quote) view returns (uint128 startFdvQuote, uint128 bondFdvQuote, uint8 decimals)",
 ];
-const ERC20_ABI = [
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)",
-];
 
 const portalIface = new ethers.Interface(PORTAL_ABI);
 const creatorIface = new ethers.Interface(CREATOR_ABI);
 const partsIface = new ethers.Interface(PARTS_ABI);
 const quoteIface = new ethers.Interface(QUOTE_ABI);
-const erc20Iface = new ethers.Interface(ERC20_ABI);
 
 const REFUSED_SPLIT = new Set([
   PORTAL8,
@@ -468,16 +464,6 @@ async function sendSigned(opts) {
   return txHash;
 }
 
-async function waitReceipt(transport, txHash) {
-  if (!transport || typeof transport.receipt !== "function") return null;
-  for (let i = 0; i < 40; i++) {
-    const receipt = await transport.receipt(txHash);
-    if (receipt) return receipt;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  return null;
-}
-
 // Hook escrow salt is msg.sender (the launcher), not the payout address.
 async function assemblePortal8Launch(opts) {
   const body = opts || {};
@@ -551,88 +537,15 @@ async function assemblePortal8Launch(opts) {
   return { portal, prepared, launcher, payout, recipient, seed, quote, mined, encoded };
 }
 
-async function sponsorPortal8(opts) {
-  const body = opts || {};
-  const kit = sponsorKit();
-  const parsed = kit.parseMintKey(body.privateKey);
-  if (!parsed) {
-    throw fail("mint_key_missing", "Server mint is not set up. Connect a wallet, or leave this agent playable.", 503);
-  }
-  const secrets = [body.privateKey, parsed.privateKey];
-  const prepared = body.prepared || prepareLaunch(body.params || {});
-  const payout = ethers.getAddress(parsed.address);
-  const spectator = parseSpectatorWallet(body.spectatorFeeWallet, payout);
-  const transport = body.transport || await kit.openSponsorTransport(body.env);
-  const ownedTransport = !body.transport;
-  try {
-    const built = await assemblePortal8Launch({
-      prepared,
-      launcher: payout,
-      payout,
-      recipient: payout,
-      transport,
-      maxTries: body.maxTries,
-    });
-    if (built.seed > 0n) {
-      const allowanceRaw = await transport.call({
-        to: built.quote,
-        data: erc20Iface.encodeFunctionData("allowance", [payout, built.portal]),
-      });
-      const allowance = BigInt(decodeWord(["uint256"], allowanceRaw)[0]);
-      if (allowance < built.seed) {
-        const approveHash = await sendSigned({
-          wallet: new ethers.Wallet(parsed.privateKey),
-          transport,
-          secrets,
-          to: built.quote,
-          data: erc20Iface.encodeFunctionData("approve", [built.portal, built.seed]),
-          gasFallback: APPROVE_GAS,
-          abi: ERC20_ABI,
-          rejectCode: "sponsor_rejected",
-          rejectMessage: "The house wallet could not approve USDC for the Portal 8 opening buy. This agent can still play.",
-          rejectStatus: 400,
-        });
-        const approveReceipt = await waitReceipt(transport, approveHash);
-        if (approveReceipt && !receiptOk(approveReceipt.status)) {
-          throw fail("sponsor_rejected", "USDC approval for the Portal 8 opening buy reverted. This agent can still play.", 400);
-        }
-      }
-    }
-    const txHash = await sendSigned({
-      wallet: new ethers.Wallet(parsed.privateKey),
-      transport,
-      secrets,
-      to: built.portal,
-      data: built.encoded.data,
-      gasFallback: FALLBACK_GAS,
-      abi: PORTAL_ABI,
-      rejectCode: "sponsor_rejected",
-      rejectMessage: "Portal 8 did not accept this launch. This agent can still play.",
-      rejectStatus: 400,
-    });
-    return {
-      txHash,
-      creator: payout,
-      hook: built.mined.hook,
-      escrow: built.mined.escrow,
-      portal: built.portal,
-      portalNumber: 8,
-      prepared,
-      spectatorFeeWallet: spectator,
-      openingBuy: {
-        raw: built.seed.toString(),
-        quote: built.quote,
-        recipient: payout,
-      },
-    };
-  } catch (e) {
-    if (e && e.publicMessage) throw e;
-    throw scrub(e, secrets, "sponsor_failed", "Server mint did not send. This agent can still play.", 502, PORTAL_ABI);
-  } finally {
-    if (ownedTransport && transport && typeof transport.destroy === "function") {
-      try { transport.destroy(); } catch { /* already closed */ }
-    }
-  }
+// House server mint must not assemble a Portal 8 launch. Calling this used to
+// approve and spend the opening seed from ARGUS_MINT_KEY. It now refuses
+// before any RPC read or broadcast. Spectator launches use prepareSpectatorLaunch.
+async function sponsorPortal8() {
+  throw fail(
+    "house_portal7",
+    "House server mint launches on Portal 7 with no opening buy. Spectator launches use Portal 8. This agent can still play.",
+    409,
+  );
 }
 
 // Unsigned Portal 8 launch for a spectator wallet. The house wallet is the

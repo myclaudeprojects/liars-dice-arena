@@ -3,6 +3,10 @@
 // Signs with ARGUS_MINT_KEY only. That address is msg.sender, so Portal #7
 // records it as the creator and the creator share accrues there. This module
 // never reads a house or seat wallet key, and it never returns the mint key.
+//
+// House and factory mints stay on this path even when ARGUS_PORTAL=8.
+// There is no opening buy and the dev buy stays zero. Spectator Create
+// prepares and signs on Portal 8 in portal8.js. That launcher pays the seed.
 
 const { ethers } = require("ethers");
 const {
@@ -273,12 +277,10 @@ async function createArcTransport(env) {
 
 async function sponsorLaunch(opts) {
   const body = opts || {};
-  const env = body.env || process.env;
-  // Portal 8 is opt-in. An explicit family keeps tests and the Portal 7
-  // fallback on the original launch even if the process flag is set.
-  if (body.family === 8 || (body.family !== 7 && require("./portal8").portal8Enabled(env))) {
-    return require("./portal8").sponsorPortal8(body);
-  }
+  // House / factory server mints always launch here, on Portal 7, with a
+  // zero dev buy. ARGUS_PORTAL=8 and an explicit family do not move this
+  // send onto Portal 8, so the house wallet never pays an opening buy.
+  // Spectator Create uses prepareSpectatorLaunch instead.
   const parsed = parseMintKey(body.privateKey);
   if (!parsed) {
     throw fail("mint_key_missing", "Server mint is not set up. Connect a wallet, or leave this agent playable.", 503);

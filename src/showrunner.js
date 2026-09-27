@@ -2107,7 +2107,7 @@ class Show {
   agentList() {
     const house = CAST.map((c) => this.listRow(c, "house"));
     const guests = [...this.userAgents.values()]
-      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
       .map((row) => this.listRow(this.named(row.id), "user", row));
     return [...house, ...guests];
   }
@@ -2123,6 +2123,7 @@ class Show {
       roster,
       status: draft ? draft.status : "READY",
       playable: roster === "house" || ready,
+      createdAt: draft ? (draft.createdAt || null) : null,
       argus: draft ? publicArgus(draft.argus) : null,
     };
   }

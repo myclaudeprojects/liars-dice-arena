@@ -584,6 +584,7 @@ function setTab(next) {
   shareNote = "";
   clearReplay();
   clearReplayHash();
+  syncAgentLink("");
   enterView = true;
   clearPainted();
   paintTabs();
@@ -2036,7 +2037,7 @@ function argusDetail(agent) {
         ${argusMetric(stats.holders, "Holders")}
       </div>
       <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(url)}" target="_blank" rel="noopener">Buy on Argus</a>
-      <p class="fine">Opens argus.world. This app does not swap.</p>
+      <p class="fine">Opens argus.world. This app does not swap. The house wallet is the on-chain fee recipient. Spectator splits are later, off this page.</p>
     </section>`;
   }
   if (!argusOffer.enabled) return "";
@@ -2905,6 +2906,13 @@ function agentSearchPick(list, query) {
   return exact.length === 1 ? exact[0] : null;
 }
 
+function createdAgentOrder(list) {
+  return (list || [])
+    .filter((agent) => agent && agent.roster === "user")
+    .slice()
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
 function agentSearchForm() {
   const q = agentQuery || "";
   return `<form class="agent-search" role="search" data-agent-search-form autocomplete="off">
@@ -2918,6 +2926,35 @@ function agentSearchForm() {
 
 function agentSearchEmpty() {
   return `<section class="empty lda-empty agent-search__empty" data-state="empty" role="status"><div class="kicker">No match</div><p>No agent has that name, ticker, or token address.</p></section>`;
+}
+
+function createdAgentRow(agent) {
+  const url = argusTokenUrl(agent.argus);
+  const symbol = agent.argus && agent.argus.symbol ? String(agent.argus.symbol) : "";
+  const addr = agent.argus && agent.argus.tokenAddress ? shortAddress(agent.argus.tokenAddress) : "";
+  const meta = [symbol, addr].filter(Boolean).join(" · ");
+  const token = url
+    ? `<a class="agent-directory__token lda-btn lda-btn-ghost" href="${esc(url)}" target="_blank" rel="noopener">Buy on Argus</a>`
+    : `<span class="fine agent-directory__pending">No token yet</span>`;
+  return `<li class="agent-directory__row">
+    <button class="agent-directory__open" type="button" data-agent="${esc(agent.id)}">
+      <span class="agent-directory__name">${esc(agent.name)}</span>
+      ${meta ? `<span class="fine">${esc(meta)}</span>` : ""}
+    </button>
+    ${token}
+  </li>`;
+}
+
+function createdDirectory(rows, query) {
+  if (!rows.length && agentSearchNorm(query)) return "";
+  const body = rows.length
+    ? `<ul class="agent-directory__list">${rows.map(createdAgentRow).join("")}</ul>`
+    : `<p class="fine agent-directory__empty">No created agents yet. They stay on this list after Create Agent.</p>`;
+  return `<section class="agent-directory" data-agent-directory aria-labelledby="created-agents">
+    <h2 id="created-agents" class="agent-directory__title">Created agents</h2>
+    <p class="fine">Newest first. A minted token opens on argus.world. The house wallet is the on-chain fee recipient. Spectator splits are later, off this page.</p>
+    ${body}
+  </section>`;
 }
 
 function agentCard(a) {
@@ -2936,9 +2973,22 @@ function agentCard(a) {
 function agentRosterMarkup() {
   const hits = agents.filter((a) => agentMatchesQuery(a, agentQuery));
   if (!hits.length) return { key: "empty", html: agentSearchEmpty() };
+  const created = createdAgentOrder(hits);
+  const house = hits.filter((agent) => !agent || agent.roster !== "user");
+  const parts = [];
+  const directory = createdDirectory(created, agentQuery);
+  if (directory) parts.push(directory);
+  if (house.length) {
+    parts.push(`<section class="agent-cast" data-house-cast><h2 class="agent-directory__title">House cast</h2><div class="agent-roster">${house.map(agentCard).join("")}</div></section>`);
+  }
   return {
-    key: hits.map((a) => a.id).join("|"),
-    html: `<div class="agent-roster">${hits.map(agentCard).join("")}</div>`,
+    key: [
+      "c",
+      created.map((agent) => agent.id + "=" + ((agent.argus && agent.argus.tokenAddress) || "")).join(","),
+      "h",
+      house.map((agent) => agent.id).join(","),
+    ].join("|"),
+    html: parts.join(""),
   };
 }
 
@@ -2978,11 +3028,33 @@ function agentsView() {
   return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}${createAgentListNote()}${agentSearchForm()}${agentRosterSlot()}`;
 }
 
-async function openAgent(id) {
+function agentIdFromLocation() {
+  try { return new URLSearchParams(location.search).get("agent") || ""; }
+  catch { return ""; }
+}
+
+function syncAgentLink(id, mode) {
+  const params = new URLSearchParams(location.search);
+  if (id) {
+    params.set("agent", id);
+    params.delete("match");
+  } else params.delete("agent");
+  let hash = location.hash || "";
+  if (id && /^#replay=/.test(hash)) hash = "";
+  const search = params.toString();
+  const next = location.pathname + (search ? "?" + search : "") + hash;
+  if (location.pathname + location.search + location.hash === next) return;
+  const write = mode === "push" ? "pushState" : "replaceState";
+  window.history[write](null, "", next);
+}
+
+async function openAgent(id, opts) {
   if (!id) return;
+  const historyMode = (opts && opts.history) || "push";
   try {
     const j = await api("/api/show/agents/" + encodeURIComponent(id));
     focusAgent = j.agent;
+    if (historyMode !== "keep") syncAgentLink(focusAgent.id, historyMode);
     try {
       const cfg = await api("/api/show/argus/config");
       if (cfg) rememberArgusConfig(cfg);
@@ -2994,6 +3066,14 @@ async function openAgent(id) {
     window.scrollTo(0, 0);
     pinScroll = true;
   } catch (ex) { err = ex.message; render(); }
+}
+
+async function openLinkedAgent() {
+  const id = agentIdFromLocation();
+  if (!id) return;
+  tab = "agents";
+  paintTabs();
+  await openAgent(id, { history: "keep" });
 }
 
 function pfpDebugOn() {
@@ -4261,9 +4341,25 @@ async function boot() {
   me = opened.predictor;
   renderCredits();
   await poll();
-  await openLinkedReplay();
+  if (agentIdFromLocation()) await openLinkedAgent();
+  else await openLinkedReplay();
   setInterval(poll, 2000);
   window.addEventListener("hashchange", () => { openLinkedReplay().catch(() => {}); });
+  window.addEventListener("popstate", () => {
+    const id = agentIdFromLocation();
+    if (id) {
+      openAgent(id, { history: "keep" }).catch(() => {});
+      return;
+    }
+    if (focusAgent) {
+      focusAgent = null;
+      if (tab === "agents") {
+        paintTabs();
+        render();
+      }
+    }
+    openLinkedReplay().catch(() => {});
+  });
   try {
     const es = new EventSource("/api/show/events");
     es.onmessage = () => { poll(); };

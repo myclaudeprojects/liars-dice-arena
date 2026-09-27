@@ -1,10 +1,13 @@
 // Argus Portal #8 launches and the on-chain creator-fee split.
 //
 // Portal #7 stays the fallback. This module is used only when
-// ARGUS_PORTAL=8 or ARGUS_PORTAL8_ENABLED is set. The house mint key is
-// msg.sender and the payout control address. setPayoutSplit is a second
-// transaction from that same key: 5000 bps house, 5000 bps spectator.
-// The key never leaves the server and is never copied into a response.
+// ARGUS_PORTAL=8 or ARGUS_PORTAL8_ENABLED is set.
+//
+// Spectator Create: the spectator wallet is msg.sender. payoutAddress is the
+// house wallet, which Portal 8 allows to differ from the launcher. The house
+// key then calls setPayoutSplit (5000/5000). The spectator cannot clear that
+// split. Factory and tokenless backfill still sign with ARGUS_MINT_KEY, and
+// that key is both launcher and payout. The key never leaves the server.
 
 const { ethers } = require("ethers");
 const { fail, prepareLaunch, QUOTE_ASSET, CHAIN_ID, HOUSE_LAUNCH_DEFAULTS } = require("./launch");
@@ -122,6 +125,23 @@ function parseSpectatorWallet(value, payout) {
     throw fail("bad_fee_wallet", "That address cannot receive a creator-fee split.", 400);
   }
   return addr;
+}
+
+function parseLauncher(value) {
+  const addr = checksumOrNull(value);
+  if (!addr) throw fail("bad_launcher", "Connect a wallet before signing the Portal 8 launch.", 400);
+  if (REFUSED_SPLIT.has(addr.toLowerCase())) {
+    throw fail("bad_launcher", "That wallet cannot sign a Portal 8 launch.", 400);
+  }
+  return addr;
+}
+
+// The signing wallet is the fee-claim half when the form left it blank.
+function spectatorForLaunch(explicit, launcher, payout) {
+  const hinted = parseSpectatorWallet(explicit, payout);
+  if (hinted) return hinted;
+  if (!launcher || sameAddress(launcher, payout)) return null;
+  return parseSpectatorWallet(launcher, payout);
 }
 
 function splitParts(house, spectator) {
@@ -457,6 +477,79 @@ async function waitReceipt(transport, txHash) {
   return null;
 }
 
+// Hook escrow salt is msg.sender (the launcher), not the payout address.
+async function assemblePortal8Launch(opts) {
+  const body = opts || {};
+  const prepared = body.prepared;
+  const launcher = ethers.getAddress(body.launcher);
+  const payout = ethers.getAddress(body.payout);
+  const recipient = ethers.getAddress(body.recipient || launcher);
+  const transport = body.transport;
+  const portal = ethers.getAddress(PORTAL8);
+  const creatorRegistry = await readAddress(transport, portal, portalIface.encodeFunctionData("creatorRegistry", []));
+  const partsFactory = await readAddress(transport, portal, portalIface.encodeFunctionData("partsFactory", []));
+  const hookFactory = await readAddress(transport, portal, portalIface.encodeFunctionData("hookFactory", []));
+  const quoteRegistry = await readAddress(transport, portal, portalIface.encodeFunctionData("registry", []));
+  if (!sameAddress(creatorRegistry, CREATOR_REGISTRY) || !sameAddress(partsFactory, PARTS_FACTORY) || !sameAddress(hookFactory, HOOK_FACTORY)) {
+    throw fail("portal8_pin", "Portal 8 factories do not match the pinned addresses. This agent can still play.", 502);
+  }
+  const ppmRaw = await transport.call({ to: portal, data: portalIface.encodeFunctionData("minSeedPpm", []) });
+  const minSeedPpm = BigInt(decodeWord(["uint32"], ppmRaw)[0]);
+  const econRaw = await transport.call({
+    to: quoteRegistry,
+    data: quoteIface.encodeFunctionData("economicsFor", [QUOTE_ASSET]),
+  });
+  const econ = decodeWord(["uint128", "uint128", "uint8"], econRaw);
+  const seed = openingBuyRaw(econ[1], minSeedPpm);
+  const quote = ethers.getAddress(prepared.quoteAsset || QUOTE_ASSET);
+  if (!sameAddress(quote, QUOTE_ASSET)) {
+    throw fail("quote", "This launch pairs with Arc USDC.", 400);
+  }
+  const templateRaw = await transport.call({
+    to: portal,
+    data: portalIface.encodeFunctionData("hookInitCodeTemplate", [quote, prepared.buyTaxBps, prepared.sellTaxBps]),
+  });
+  const template = decodeWord(["bytes"], templateRaw)[0];
+  const hashRaw = await transport.call({
+    to: partsFactory,
+    data: partsIface.encodeFunctionData("escrowInitCodeHash", [portal]),
+  });
+  const escrowInitCodeHash = ethers.hexlify(decodeWord(["bytes32"], hashRaw)[0]);
+  const mined = minePortal8Hook({
+    hookFactory,
+    partsFactory,
+    portal,
+    creator: launcher,
+    template,
+    escrowInitCodeHash,
+    maxTries: body.maxTries,
+  });
+  const remoteHashRaw = await transport.call({
+    to: portal,
+    data: portalIface.encodeFunctionData("hookInitCodeHash", [
+      launcher,
+      mined.hookSalt,
+      quote,
+      prepared.buyTaxBps,
+      prepared.sellTaxBps,
+    ]),
+  });
+  const remoteHash = ethers.hexlify(decodeWord(["bytes32"], remoteHashRaw)[0]);
+  if (remoteHash.toLowerCase() !== mined.initCodeHash.toLowerCase()) {
+    throw fail("hook_mismatch", "Portal 8 hook hash did not match the miner. This agent can still play.", 502);
+  }
+  const remoteEscrow = await readAddress(
+    transport,
+    portal,
+    portalIface.encodeFunctionData("predictEscrow", [launcher, mined.hookSalt]),
+  );
+  if (!sameAddress(remoteEscrow, mined.escrow)) {
+    throw fail("hook_mismatch", "Portal 8 escrow address did not match the miner. This agent can still play.", 502);
+  }
+  const encoded = encodePortal8Launch(prepared, { payout, seed, recipient, hookSalt: mined.hookSalt });
+  return { portal, prepared, launcher, payout, recipient, seed, quote, mined, encoded };
+}
+
 async function sponsorPortal8(opts) {
   const body = opts || {};
   const kit = sponsorKit();
@@ -471,39 +564,27 @@ async function sponsorPortal8(opts) {
   const transport = body.transport || await kit.openSponsorTransport(body.env);
   const ownedTransport = !body.transport;
   try {
-    const portal = ethers.getAddress(PORTAL8);
-    const creatorRegistry = await readAddress(transport, portal, portalIface.encodeFunctionData("creatorRegistry", []));
-    const partsFactory = await readAddress(transport, portal, portalIface.encodeFunctionData("partsFactory", []));
-    const hookFactory = await readAddress(transport, portal, portalIface.encodeFunctionData("hookFactory", []));
-    const quoteRegistry = await readAddress(transport, portal, portalIface.encodeFunctionData("registry", []));
-    if (!sameAddress(creatorRegistry, CREATOR_REGISTRY) || !sameAddress(partsFactory, PARTS_FACTORY) || !sameAddress(hookFactory, HOOK_FACTORY)) {
-      throw fail("portal8_pin", "Portal 8 factories do not match the pinned addresses. This agent can still play.", 502);
-    }
-    const ppmRaw = await transport.call({ to: portal, data: portalIface.encodeFunctionData("minSeedPpm", []) });
-    const minSeedPpm = BigInt(decodeWord(["uint32"], ppmRaw)[0]);
-    const econRaw = await transport.call({
-      to: quoteRegistry,
-      data: quoteIface.encodeFunctionData("economicsFor", [QUOTE_ASSET]),
+    const built = await assemblePortal8Launch({
+      prepared,
+      launcher: payout,
+      payout,
+      recipient: payout,
+      transport,
+      maxTries: body.maxTries,
     });
-    const econ = decodeWord(["uint128", "uint128", "uint8"], econRaw);
-    const seed = openingBuyRaw(econ[1], minSeedPpm);
-    const quote = ethers.getAddress(prepared.quoteAsset || QUOTE_ASSET);
-    if (!sameAddress(quote, QUOTE_ASSET)) {
-      throw fail("quote", "This launch pairs with Arc USDC.", 400);
-    }
-    if (seed > 0n) {
+    if (built.seed > 0n) {
       const allowanceRaw = await transport.call({
-        to: quote,
-        data: erc20Iface.encodeFunctionData("allowance", [payout, portal]),
+        to: built.quote,
+        data: erc20Iface.encodeFunctionData("allowance", [payout, built.portal]),
       });
       const allowance = BigInt(decodeWord(["uint256"], allowanceRaw)[0]);
-      if (allowance < seed) {
+      if (allowance < built.seed) {
         const approveHash = await sendSigned({
           wallet: new ethers.Wallet(parsed.privateKey),
           transport,
           secrets,
-          to: quote,
-          data: erc20Iface.encodeFunctionData("approve", [portal, seed]),
+          to: built.quote,
+          data: erc20Iface.encodeFunctionData("approve", [built.portal, built.seed]),
           gasFallback: APPROVE_GAS,
           abi: ERC20_ABI,
           rejectCode: "sponsor_rejected",
@@ -516,54 +597,12 @@ async function sponsorPortal8(opts) {
         }
       }
     }
-    const templateRaw = await transport.call({
-      to: portal,
-      data: portalIface.encodeFunctionData("hookInitCodeTemplate", [quote, prepared.buyTaxBps, prepared.sellTaxBps]),
-    });
-    const template = decodeWord(["bytes"], templateRaw)[0];
-    const hashRaw = await transport.call({
-      to: partsFactory,
-      data: partsIface.encodeFunctionData("escrowInitCodeHash", [portal]),
-    });
-    const escrowInitCodeHash = ethers.hexlify(decodeWord(["bytes32"], hashRaw)[0]);
-    const mined = minePortal8Hook({
-      hookFactory,
-      partsFactory,
-      portal,
-      creator: payout,
-      template,
-      escrowInitCodeHash,
-      maxTries: body.maxTries,
-    });
-    const remoteHashRaw = await transport.call({
-      to: portal,
-      data: portalIface.encodeFunctionData("hookInitCodeHash", [
-        payout,
-        mined.hookSalt,
-        quote,
-        prepared.buyTaxBps,
-        prepared.sellTaxBps,
-      ]),
-    });
-    const remoteHash = ethers.hexlify(decodeWord(["bytes32"], remoteHashRaw)[0]);
-    if (remoteHash.toLowerCase() !== mined.initCodeHash.toLowerCase()) {
-      throw fail("hook_mismatch", "Portal 8 hook hash did not match the miner. This agent can still play.", 502);
-    }
-    const remoteEscrow = await readAddress(
-      transport,
-      portal,
-      portalIface.encodeFunctionData("predictEscrow", [payout, mined.hookSalt]),
-    );
-    if (!sameAddress(remoteEscrow, mined.escrow)) {
-      throw fail("hook_mismatch", "Portal 8 escrow address did not match the miner. This agent can still play.", 502);
-    }
-    const encoded = encodePortal8Launch(prepared, { payout, seed, recipient: payout, hookSalt: mined.hookSalt });
     const txHash = await sendSigned({
       wallet: new ethers.Wallet(parsed.privateKey),
       transport,
       secrets,
-      to: portal,
-      data: encoded.data,
+      to: built.portal,
+      data: built.encoded.data,
       gasFallback: FALLBACK_GAS,
       abi: PORTAL_ABI,
       rejectCode: "sponsor_rejected",
@@ -573,15 +612,15 @@ async function sponsorPortal8(opts) {
     return {
       txHash,
       creator: payout,
-      hook: mined.hook,
-      escrow: mined.escrow,
-      portal,
+      hook: built.mined.hook,
+      escrow: built.mined.escrow,
+      portal: built.portal,
       portalNumber: 8,
       prepared,
       spectatorFeeWallet: spectator,
       openingBuy: {
-        raw: seed.toString(),
-        quote: quote,
+        raw: built.seed.toString(),
+        quote: built.quote,
         recipient: payout,
       },
     };
@@ -591,6 +630,69 @@ async function sponsorPortal8(opts) {
   } finally {
     if (ownedTransport && transport && typeof transport.destroy === "function") {
       try { transport.destroy(); } catch { /* already closed */ }
+    }
+  }
+}
+
+// Unsigned Portal 8 launch for a spectator wallet. The house wallet is the
+// payout controller. The spectator pays the opening buy and signs launch.
+async function prepareSpectatorLaunch(opts) {
+  const body = opts || {};
+  const kit = sponsorKit();
+  const prepared = body.prepared || prepareLaunch(body.params || {});
+  if (prepared.devBuyQuote !== 0n) {
+    throw fail("dev_buy", "Portal 8 uses the opening buy, not a dev buy. Set the dev buy to zero. This agent can still play.", 400);
+  }
+  const { houseLaunchProfile } = require("./config");
+  const payout = houseWallet((body.payout) || houseLaunchProfile(body.env).creatorFeeWallet);
+  const launcher = parseLauncher(body.launcher);
+  const spectator = spectatorForLaunch(body.spectatorFeeWallet, launcher, payout);
+  const transport = body.transport || await kit.openSponsorTransport(body.env);
+  const ownedTransport = !body.transport;
+  try {
+    const built = await assemblePortal8Launch({
+      prepared,
+      launcher,
+      payout,
+      recipient: launcher,
+      transport,
+      maxTries: body.maxTries,
+    });
+    return {
+      portal: built.portal,
+      portalNumber: 8,
+      launcher,
+      payout,
+      spectatorFeeWallet: spectator,
+      data: built.encoded.data,
+      hook: built.mined.hook,
+      escrow: built.mined.escrow,
+      hookSalt: built.mined.hookSalt,
+      openingBuy: {
+        raw: built.seed.toString(),
+        quote: built.quote,
+        recipient: launcher,
+      },
+    };
+  } catch (e) {
+    if (e && e.publicMessage) throw e;
+    throw scrub(e, [], "prepare_failed", "Portal 8 could not prepare this launch. This agent can still play.", 502, PORTAL_ABI);
+  } finally {
+    if (ownedTransport && transport && typeof transport.destroy === "function") {
+      try { transport.destroy(); } catch { /* already closed */ }
+    }
+  }
+}
+
+async function readPayoutOf(token, env, transport) {
+  const kit = sponsorKit();
+  const owned = !transport;
+  const live = transport || await kit.openSponsorTransport(env);
+  try {
+    return await readAddress(live, CREATOR_REGISTRY, creatorIface.encodeFunctionData("payoutOf", [ethers.getAddress(token)]));
+  } finally {
+    if (owned && live && typeof live.destroy === "function") {
+      try { live.destroy(); } catch { /* already closed */ }
     }
   }
 }
@@ -681,6 +783,8 @@ module.exports = {
   isPortal8,
   houseWallet,
   parseSpectatorWallet,
+  parseLauncher,
+  spectatorForLaunch,
   splitParts,
   openingBuyRaw,
   escrowWordOffset,
@@ -694,6 +798,8 @@ module.exports = {
   encodeSetPayoutSplit,
   decodePortal8Receipt,
   sponsorPortal8,
+  prepareSpectatorLaunch,
+  readPayoutOf,
   setPayoutSplitTx,
   publicFeeSplit,
 };

@@ -19,5 +19,9 @@
       if (!window.ethereum) throw new Error("Install MetaMask or another injected wallet, then try again.");
       return tools().runLaunch(window.ethereum, opts);
     },
+    sendPrepared: function (opts) {
+      if (!window.ethereum) throw new Error("Install MetaMask or another injected wallet, then try again.");
+      return tools().sendPreparedLaunch(window.ethereum, opts);
+    },
   };
 })();

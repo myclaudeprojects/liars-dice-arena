@@ -88,6 +88,7 @@ function portal8Transport(opts) {
   const allowance = options.allowance == null ? SEED : BigInt(options.allowance);
   return {
     sent,
+    creators: [],
     broadcasts: () => sent.length,
     async call({ data }) {
       const sel = String(data || "").slice(0, 10).toLowerCase();
@@ -110,6 +111,7 @@ function portal8Transport(opts) {
       }
       if (sel === portal.getFunction("hookInitCodeHash").selector) {
         const decoded = portal.decodeFunctionData("hookInitCodeHash", data);
+        this.creators.push(ethers.getAddress(decoded[0]));
         const escrow = portal8.predictEscrowAddress({
           partsFactory: portal8.PARTS_FACTORY,
           portal: portal8.PORTAL8,
@@ -383,6 +385,67 @@ function agent(show, name, extra) {
     eq(attached.json.argus.feeSplit.status, "set", "later split lands");
     eq(attached.json.argus.feeSplit.spectatorWallet, ethers.getAddress(SPECTATOR), "later spectator");
 
+    const prepChain = portal8Transport();
+    setSponsorTransport(() => prepChain);
+    const signerId = agent(show, "Signer");
+    const preparedRes = mockRes();
+    await handleShow(mockReq("POST", form({
+      launchTicker: "SIGN",
+      launchName: "LDA Signer",
+      launcher: SPECTATOR,
+    }), { ip: "203.0.113.84" }), preparedRes, "/api/show/agents/" + signerId + "/argus/prepare", new URLSearchParams(), show);
+    eq(preparedRes.statusCode, 200, "spectator prepare " + preparedRes.body);
+    eq(prepChain.broadcasts(), 0, "prepare does not spend the house mint key");
+    eq(preparedRes.json.launcher, ethers.getAddress(SPECTATOR), "launcher is the spectator");
+    eq(preparedRes.json.payout, ethers.getAddress(launch.HOUSE_LAUNCH_DEFAULTS.creatorFeeWallet), "payout is the house");
+    eq(preparedRes.json.spectatorFeeWallet, ethers.getAddress(SPECTATOR), "blank fee wallet uses the signer");
+    eq(preparedRes.json.openingBuy.recipient, ethers.getAddress(SPECTATOR), "signer pays and receives the opening buy");
+    const preparedTx = portal8.portalIface.parseTransaction({ data: preparedRes.json.data });
+    eq(preparedTx.name, "launch", "prepared calldata is launch");
+    eq(ethers.getAddress(preparedTx.args[0].payoutAddress), ethers.getAddress(launch.HOUSE_LAUNCH_DEFAULTS.creatorFeeWallet), "calldata payout is the house");
+    eq(ethers.getAddress(preparedTx.args[0].bundle[0].to), ethers.getAddress(SPECTATOR), "calldata bundle pays the signer");
+    assert(prepChain.creators.includes(ethers.getAddress(SPECTATOR)), "hook is mined for the signer");
+    assert(!prepChain.creators.includes(ethers.getAddress(launch.HOUSE_LAUNCH_DEFAULTS.creatorFeeWallet)), "hook is not mined for the house");
+    assert(!preparedRes.body.includes(TEST_KEY.slice(2)), "prepare body has no key");
+    const providerCalls = [];
+    const preparedSend = await launch.sendPreparedLaunch({
+      request: async (payload) => {
+        providerCalls.push(payload);
+        if (payload.method === "eth_requestAccounts") return [SPECTATOR];
+        if (payload.method === "eth_chainId") return "0x13b2";
+        if (payload.method === "eth_call") return ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [0]);
+        if (payload.method === "eth_getTransactionReceipt") return { status: "0x1", transactionHash: "0x" + "cd".repeat(32) };
+        if (payload.method === "eth_sendTransaction") return "0x" + "ab".repeat(32);
+        throw new Error(payload.method);
+      },
+    }, {
+      launcher: SPECTATOR,
+      portal: portal8.PORTAL8,
+      quote: launch.QUOTE_ASSET,
+      openingBuyRaw: SEED.toString(),
+      data: preparedRes.json.data,
+    });
+    eq(preparedSend.creator, ethers.getAddress(SPECTATOR), "prepared send uses the spectator");
+    eq(preparedSend.txHash, "0x" + "ab".repeat(32), "prepared send returns the wallet hash");
+    assert(providerCalls.some((row) => row.method === "eth_sendTransaction" && String(row.params[0].to).toLowerCase() === portal8.PORTAL8.toLowerCase()), "wallet sends to portal 8");
+    assert(providerCalls.some((row) => row.method === "eth_sendTransaction" && row.params[0].data === preparedRes.json.data), "wallet sends the prepared calldata");
+
+    global.fetch = async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      const hash = body.params[0];
+      return { ok: true, json: async () => ({ jsonrpc: "2.0", id: body.id, result: launchedReceipt(hash, SPECTATOR) }) };
+    };
+    setSponsorTransport(() => portal8Transport());
+    const signed = mockRes();
+    const signedHash = "0x" + "ee".repeat(32);
+    await handleShow(mockReq("POST", { txHash: signedHash, spectatorFeeWallet: SPECTATOR }, { ip: "203.0.113.85" }), signed, "/api/show/agents/" + signerId + "/argus", new URLSearchParams(), show);
+    eq(signed.statusCode, 200, "spectator receipt " + signed.body);
+    eq(signed.json.argus.creatorWallet, ethers.getAddress(SPECTATOR), "on-chain creator is the signer");
+    eq(signed.json.argus.payoutWallet, MINT, "recorded payout is the controller the registry reports");
+    eq(signed.json.argus.feeSplit.status, "set", "house sets the split after the spectator mint");
+    eq(signed.json.argus.feeSplit.spectatorWallet, ethers.getAddress(SPECTATOR), "split spectator is the signer");
+    global.fetch = mockFetch();
+
     const old = agent(show, "Nightshade");
     show.attachArgusMint(old, {
       status: "minted",
@@ -421,6 +484,11 @@ function agent(show, name, extra) {
   const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
   const src = fs.readFileSync(path.join(__dirname, "..", "src", "argus", "portal8.js"), "utf8");
   assert(app.includes("50/50 on-chain via Argus Portal 8 payout-split"), "create copy names the on-chain split");
+  assert(app.includes("Sign Portal 8 launch"), "spectator signs the portal 8 mint");
+  assert(app.includes("payout controller"), "copy says the house stays the payout controller");
+  assert(app.includes("if (argusOffer.portal8Enabled) return;"), "profile view does not house-mint a portal 8 agent");
+  assert(app.includes("!portal8SpectatorSign(creator.argusConfig)"), "create does not auto house-mint when the spectator can sign");
+  assert(!app.includes("You do not sign the mint"), "portal 8 create no longer says the spectator skips the signature");
   assert(app.includes("data-set-fee-wallet"), "profile can set the fee wallet later");
   assert(app.includes("data-fee-wallet-connect"), "create can fill a wallet without minting");
   assert(app.includes("Claim creator fees"), "claim link is offered");

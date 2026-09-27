@@ -632,6 +632,44 @@ function encodeLaunch(abi, prepared) {
     return { txHash: decoded.txHash, creator, hook: mined.hook, decoded, prepared: aligned };
   }
 
+  // Spectator Portal 8 launch. The server mined the hook and set payoutAddress
+  // to the house wallet. This only approves the opening buy and sends that
+  // calldata from the connected wallet.
+  async function sendPreparedLaunch(provider, opts) {
+    const body = opts || {};
+    const status = typeof body.onStatus === "function" ? body.onStatus : function () {};
+    status("Connecting wallet…");
+    const from = await connectWallet(provider);
+    const launcher = body.launcher ? addr(body.launcher) : from;
+    if (launcher !== from) {
+      throw fail("launcher_mismatch", "The connected wallet is not the wallet this launch was prepared for. Connect that wallet and try again.");
+    }
+    const portal = addr(body.portal);
+    const data = String(body.data || "");
+    if (!/^0x[0-9a-fA-F]+$/.test(data) || data.length < 10) {
+      throw fail("bad_tx", "The Portal 8 launch transaction is missing. This agent can still play.");
+    }
+    const opening = BigInt(body.openingBuyRaw || 0);
+    const quote = body.quote ? addr(body.quote) : null;
+    if (opening > 0n) {
+      if (!quote) throw fail("quote", "This launch pairs with Arc USDC.");
+      status("Approving USDC for the opening buy…");
+      await ensureQuoteAllowance(provider, from, portal, quote, opening);
+    }
+    status("Confirm the Portal 8 launch in your wallet…");
+    let txHash;
+    try {
+      txHash = await provider.request({
+        method: "eth_sendTransaction",
+        params: [{ from, to: portal, data, value: "0x0" }],
+      });
+    } catch (e) {
+      if (e && e.code === 4001) throw fail("wallet_rejected", "The wallet request was declined. The agent is still saved.");
+      throw e;
+    }
+    return { txHash, creator: from };
+  }
+
   function publicArgus(raw) {
     if (!raw || raw.status !== "minted" || !raw.tokenAddress || !raw.txHash) return null;
     let portalNumber = null;
@@ -742,6 +780,7 @@ function encodeLaunch(abi, prepared) {
     mineHookSalt,
     connectWallet,
     runLaunch,
+    sendPreparedLaunch,
     publicArgus,
     portal7FromBundle,
     pinnedBundle,

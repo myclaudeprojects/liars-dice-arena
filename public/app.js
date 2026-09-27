@@ -1676,18 +1676,18 @@ function createAgentButton() {
   return `<button class="lda-btn lda-btn-primary" type="button" data-create-agent="1">Create agent</button>`;
 }
 
-function portal8HouseMint(cfg) {
-  return !!(cfg && cfg.portal8Enabled && houseMintReady(cfg));
+function portal8SpectatorSign(cfg) {
+  return !!(cfg && cfg.enabled && cfg.portal8Enabled);
 }
 
 function feeSplitSentence(cfg) {
-  if (portal8HouseMint(cfg)) return "Creator-lane fees split 50/50 on-chain via Argus Portal 8 payout-split.";
+  if (portal8SpectatorSign(cfg)) return "Creator-lane fees split 50/50 on-chain via Argus Portal 8 payout-split.";
   return "You get a cut of the trading fees. The house pays you.";
 }
 
 function feeWalletEditor(agent) {
   const minted8 = agent && agent.argus && Number(agent.argus.portalNumber) === 8;
-  const waiting = portal8HouseMint(argusOffer) && agent && (!agent.argus || !agent.argus.tokenAddress);
+  const waiting = portal8SpectatorSign(argusOffer) && agent && (!agent.argus || !agent.argus.tokenAddress);
   if (!minted8 && !waiting) return "";
   const split = agent.argus && agent.argus.feeSplit;
   if (split && split.status === "set" && split.spectatorWallet) return "";
@@ -1718,6 +1718,9 @@ function feeWalletField(value) {
 }
 
 function createAgentListNote() {
+  if (portal8SpectatorSign(argusOffer)) {
+    return `<p class="fine">Connect your wallet, create the agent, then sign the Portal 8 launch. ${feeSplitSentence(argusOffer)} The house wallet is the payout controller.</p>`;
+  }
   if (houseMintReady(argusOffer)) {
     return `<p class="fine">Invent a player for Liar's Dice Arena. They join the roster and play, and confirming creates their Argus token. ${feeSplitSentence(argusOffer)}</p>`;
   }
@@ -2084,6 +2087,16 @@ function argusDetail(agent) {
     </section>`;
   }
   if (!argusOffer.enabled) return "";
+  if (portal8SpectatorSign(argusOffer)) {
+    const busy = portal8SignBusy ? " disabled" : "";
+    return `<section class="argus-launch" data-portal8-sign-panel="1">
+      <h2>Argus token</h2>
+      <p class="fine" role="status">This agent can play without a token. Sign the Portal 8 launch when you are ready.</p>
+      ${feeWalletEditor(agent)}
+      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-portal8-sign="${esc(agent.id)}"${busy}>Sign Portal 8 launch</button>
+      <p class="fine">You sign the mint from your wallet. The payout address is the house wallet, so the house stays the payout controller and signs the 50/50 split. You claim your half on Argus. You pay the opening buy (4.50 USDC) and Arc gas. Factory and tokenless backfill still use the house mint.</p>
+    </section>`;
+  }
   const note = houseMintState.get(agent.id);
   const line = houseMintReady(argusOffer)
     ? (note === "failed"
@@ -2093,9 +2106,10 @@ function argusDetail(agent) {
   return `<section class="argus-launch" data-argus-house="1">
     <h2>Argus token</h2>
     <p class="fine" role="status">${esc(line)}</p>
-    ${portal8HouseMint(argusOffer) ? feeWalletEditor(agent) : ""}
   </section>`;
 }
+
+let portal8SignBusy = false;
 
 const houseMintState = new Map();
 
@@ -2113,6 +2127,7 @@ function launchParamsForAgent(agent) {
 
 function queueHouseMint(agent) {
   if (!agent || !agent.id || creator) return;
+  if (argusOffer.portal8Enabled) return;
   if (!houseMintReady(argusOffer)) return;
   if (agent.argus && agent.argus.tokenAddress) return;
   if (houseMintState.has(agent.id)) return;
@@ -2211,11 +2226,12 @@ async function connectArgus() {
   }
 }
 
-async function saveArgusTx(id, txHash) {
+async function saveArgusTx(id, txHash, extra) {
+  const payload = Object.assign({ txHash }, extra || {});
   const saved = await api("/api/show/agents/" + encodeURIComponent(id) + "/argus", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ txHash }),
+    body: JSON.stringify(payload),
   });
   if (creator && creator.launch) {
     creator.launch.minted = saved.argus;
@@ -2226,11 +2242,78 @@ async function saveArgusTx(id, txHash) {
   return saved;
 }
 
+async function connectForPortal8() {
+  if (!window.ArgusMint) throw new Error("Launch tools did not load. The agent is still saved.");
+  const wallet = await window.ArgusMint.connect();
+  if (creator) {
+    creator.connectedWallet = wallet;
+    if (creator.launch) creator.launch.wallet = wallet;
+    if (creator.form && !String(creator.form.spectatorFeeWallet || "").trim()) creator.form.spectatorFeeWallet = wallet;
+  }
+  return wallet;
+}
+
+async function runPortal8Sign(agentId, params, spectatorFeeWallet) {
+  if (!window.ArgusMint || !window.ArgusMint.sendPrepared) throw new Error("Launch tools did not load. The agent is still saved.");
+  const wallet = await connectForPortal8();
+  const fee = String(spectatorFeeWallet || wallet || "").trim();
+  const prepared = await api("/api/show/agents/" + encodeURIComponent(agentId) + "/argus/prepare", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(Object.assign({}, params || {}, {
+      predictor: predictorId(),
+      launcher: wallet,
+      spectatorFeeWallet: fee,
+    })),
+  });
+  const sent = await window.ArgusMint.sendPrepared({
+    portal: prepared.portal,
+    data: prepared.data,
+    quote: prepared.openingBuy && prepared.openingBuy.quote,
+    openingBuyRaw: prepared.openingBuy && prepared.openingBuy.raw,
+    launcher: prepared.launcher || wallet,
+    onStatus: (text) => {
+      if (!creator) return;
+      if (creator.launch) creator.launch.status = text;
+      creator.statusLabel = text;
+      painted = "";
+      render();
+    },
+  });
+  return saveArgusTx(agentId, sent.txHash, { spectatorFeeWallet: prepared.spectatorFeeWallet || fee });
+}
+
 async function launchArgus() {
   if (!creator || creator.busy) return;
   syncLaunchFromDom();
   const cfg = creator.argusConfig || {};
   const id = argusAgentId();
+  if (portal8SpectatorSign(cfg) && id) {
+    creator.busy = true;
+    creator.launchMode = "wallet";
+    creator.error = "";
+    painted = "";
+    render();
+    try {
+      if (!creator.launch) creator.launch = oneShotLaunchParams();
+      const fee = (creator.form && creator.form.spectatorFeeWallet) || creator.connectedWallet || "";
+      await runPortal8Sign(id, creator.launch, fee);
+    } catch (ex) {
+      if (creator) {
+        if (creator.launch && ex.txHash) creator.launch.pendingTx = ex.txHash;
+        creator.error = ex.publicMessage || ex.message || "Launch did not finish. The agent is still saved.";
+      }
+    } finally {
+      if (creator) {
+        creator.busy = false;
+        creator.launchMode = "";
+        creator.statusLabel = "";
+        painted = "";
+        render();
+      }
+    }
+    return;
+  }
   if (!cfg.enabled || !id) {
     creator.error = "Launch is not available for this agent. They can still play.";
     painted = "";
@@ -2474,7 +2557,7 @@ function oneShotLaunch() {
       ${minted.creatorWallet ? `<p class="fine">On-chain creator ${esc(minted.creatorWallet)}</p>` : ""}
       <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(minted.argusUrl)}" target="_blank" rel="noopener">Buy on Argus</a>
       <p class="fine">Opens argus.world. This app does not swap. ${feeSplitSentence(cfg)}</p>
-      ${portal8HouseMint(cfg) ? feeSplitLines(minted) : ""}
+      ${portal8SpectatorSign(cfg) ? feeSplitLines(minted) : ""}
     </section>`;
   }
   if (!cfg.enabled) {
@@ -2483,8 +2566,20 @@ function oneShotLaunch() {
       <p class="fine">This agent is saved. Launch is not open yet. They can play without a token.</p>
     </section>`;
   }
-  const houseMint = houseMintReady(cfg);
   const house = (creator.launch && creator.launch.creatorFeeWallet) || cfg.creatorFeeWallet || "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488";
+  if (portal8SpectatorSign(cfg)) {
+    const wallet = (creator.launch && creator.launch.wallet) || creator.connectedWallet || "";
+    const who = wallet ? `Connected ${esc(wallet.slice(0, 6))}…${esc(wallet.slice(-4))}.` : "Wallet not connected.";
+    const signBusy = creator.busy ? " disabled" : "";
+    return `<section class="argus-launch" data-portal8-sign-panel="1">
+      <h2>Sign the Portal 8 launch</h2>
+      <p class="fine" role="status">${who} You sign the mint. The payout address is the house wallet ${esc(house)}, so the house stays the payout controller and signs the 50/50 split. You claim your half on Argus.</p>
+      <p class="fine">${feeSplitSentence(cfg)} You pay the opening buy (4.50 USDC) and Arc gas. The house mint key is not used for this launch.</p>
+      <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-portal8-connect="1"${signBusy}>Connect wallet</button>
+      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-launch="1"${signBusy}>Sign Portal 8 launch</button>
+    </section>`;
+  }
+  const houseMint = houseMintReady(cfg);
   const busy = creator.busy ? " disabled" : "";
   const sign = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-launch="1"${busy}>Sign create on Arc</button>`;
   const connect = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-connect="1"${busy}>Connect wallet</button>`;
@@ -2520,9 +2615,11 @@ function creatorView() {
   const kicker = step === 3 ? "Saved" : "Name, description, portrait";
   let body = "";
   if (step !== 3) {
-    const feeCopy = portal8HouseMint(creator.argusConfig || argusOffer)
-      ? `<p class="fine">Creator-lane fees split 50/50 on-chain via Argus Portal 8 payout-split. Paste a fee claim wallet now, or set it later on the profile. You do not sign the mint. The house wallet pays the required opening buy.</p>
-      ${feeWalletField(f.spectatorFeeWallet)}`
+    const feeCopy = portal8SpectatorSign(creator.argusConfig || argusOffer)
+      ? `<p class="fine">Creator-lane fees split 50/50 on-chain via Argus Portal 8 payout-split. Connect your wallet, create the agent, then sign the Portal 8 launch. The payout address is the house wallet, and the house signs the split. Paste a fee claim wallet, or the connected wallet is used.</p>
+      ${feeWalletField(f.spectatorFeeWallet)}
+      <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-portal8-connect="1"${creator.busy ? " disabled" : ""}>Connect wallet</button>
+      <p class="fine">${creator.connectedWallet ? `Connected ${esc(creator.connectedWallet)}.` : "Wallet not connected."} You pay the opening buy (4.50 USDC) and Arc gas.</p>`
       : `<p class="fine">You get a cut of that token's trading fees. The house pays you.</p>`;
     body = `
       <p class="fine">You invent a player for Liar's Dice Arena. Pick a name and a face. They join the roster and play, and confirming creates their Argus token.</p>
@@ -2581,7 +2678,7 @@ function creatorView() {
     </section>`;
   }
   const working = creator.statusLabel || "Working.";
-  const houseMinting = creator.oneShot && houseMintReady(creator.argusConfig || {});
+  const houseMinting = creator.oneShot && houseMintReady(creator.argusConfig || {}) && !portal8SpectatorSign(creator.argusConfig || {});
   const quietMint = houseMinting && (creator.mintPhase === "auto" || creator.mintPhase === "failed");
   return `<div class="creator">
     ${pageHead("Create agent", { kicker })}
@@ -2749,7 +2846,7 @@ async function confirmCreate() {
     creator.launch = oneShotLaunchParams();
     stopCreatorBeat();
     creator.step = 3;
-    if (houseMintReady(creator.argusConfig)) {
+    if (houseMintReady(creator.argusConfig) && !portal8SpectatorSign(creator.argusConfig)) {
       creator.mintPhase = "auto";
       creator.launchMode = "sponsor";
       creator.statusLabel = "Launching the Argus token…";
@@ -3827,6 +3924,20 @@ view.addEventListener("click", async (e) => {
     }
     if (e.target.closest("[data-creator-confirm]")) { confirmCreate(); return; }
     if (e.target.closest("[data-view-created]")) { viewCreatedAgent(); return; }
+    if (e.target.closest("[data-portal8-connect]")) {
+      if (!creator || creator.busy) return;
+      syncCreatorFromDom();
+      creator.busy = true;
+      creator.error = "";
+      painted = "";
+      render();
+      try { await connectForPortal8(); }
+      catch (ex) { if (creator) creator.error = ex.publicMessage || ex.message || "Could not connect the wallet. The agent is still saved."; }
+      finally {
+        if (creator) { creator.busy = false; painted = ""; render(); }
+      }
+      return;
+    }
     if (e.target.closest("[data-argus-connect]")) { connectArgus(); return; }
     if (e.target.closest("[data-fee-wallet-connect]")) { fillFeeWalletFromBrowser(); return; }
     if (e.target.closest("[data-argus-launch]")) { launchArgus(); return; }
@@ -3846,6 +3957,28 @@ view.addEventListener("click", async (e) => {
       render();
       return;
     }
+  }
+  const portal8Sign = e.target.closest("[data-portal8-sign]");
+  if (portal8Sign) {
+    const agentId = portal8Sign.dataset.portal8Sign;
+    const agent = focusAgent && focusAgent.id === agentId ? focusAgent : null;
+    if (!agent || portal8SignBusy) return;
+    portal8SignBusy = true;
+    err = "";
+    painted = "";
+    render();
+    try {
+      const saved = await runPortal8Sign(agentId, launchParamsForAgent(agent), agent.spectatorFeeWallet || "");
+      if (focusAgent && focusAgent.id === agentId && saved && saved.argus) focusAgent.argus = saved.argus;
+      if (saved && saved.spectatorFeeWallet && focusAgent && focusAgent.id === agentId) focusAgent.spectatorFeeWallet = saved.spectatorFeeWallet;
+    } catch (ex) {
+      err = ex.publicMessage || ex.message || "Launch did not finish. The agent is still saved.";
+    } finally {
+      portal8SignBusy = false;
+      painted = "";
+      render();
+    }
+    return;
   }
   const setFee = e.target.closest("[data-set-fee-wallet]");
   if (setFee) { saveSpectatorFeeWallet(setFee.dataset.setFeeWallet); return; }

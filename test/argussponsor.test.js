@@ -9,12 +9,14 @@ const { Show } = require("../src/showrunner");
 const { handleShow } = require("../src/showhttp");
 const launch = require("../src/argus/launch");
 const { argusPublicConfig, SPONSOR_UNAVAILABLE } = require("../src/argus/config");
+const { findPriorLaunch, setReceiptTimeout } = require("../src/argus/verify");
 const {
   parseMintKey,
   sponsorLaunch,
   describeRevert,
   setSponsorTransport,
   resetSponsorGuard,
+  setSponsorStepTimeout,
   clientKeys,
 } = require("../src/argus/sponsor");
 
@@ -56,7 +58,7 @@ function eventLog(name, args) {
   return { address: launch.PORTAL7, topics: encoded.topics, data: encoded.data };
 }
 
-function receipt(creator) {
+function receipt(creator, name, symbol) {
   return {
     status: "0x1",
     transactionHash: TX,
@@ -64,7 +66,7 @@ function receipt(creator) {
     from: creator,
     to: launch.PORTAL7,
     logs: [
-      eventLog("TokenCreated", [TOKEN, creator, "Vesper", "VESPER", POOL, IMAGE, SITE, "", ""]),
+      eventLog("TokenCreated", [TOKEN, creator, name || "Vesper", symbol || "VESPER", POOL, IMAGE, SITE, "", ""]),
       eventLog("PartsDeployed", [TOKEN, LOCKER, HOOK, SPLITTER]),
     ],
   };
@@ -370,6 +372,62 @@ function agent(show, name) {
   const named = describeRevert({ data: "0xabec626d", shortMessage: "execution reverted (unknown custom error)" }, launch.loadAbi());
   eq(named, "RewardTrackerWithoutDividend selector=0xabec626d", "describeRevert decodes the portal error");
 
+  setSponsorStepTimeout(200);
+  const hanging = mockTransport();
+  hanging.estimateGas = () => new Promise(() => {});
+  const timeoutLogs = [];
+  console.warn = (...args) => timeoutLogs.push(args.map(String).join(" "));
+  let timeoutCode = "";
+  try {
+    await sponsorLaunch({ privateKey: TEST_KEY, params: form(), transport: hanging });
+  } catch (e) {
+    timeoutCode = e.code;
+    assert(/can still play/i.test(e.publicMessage), "a timeout stays playable");
+  } finally {
+    console.warn = prevWarn;
+    setSponsorStepTimeout(null);
+  }
+  eq(timeoutCode, "sponsor_timeout", "a hung estimateGas times out");
+  eq(hanging.broadcasts(), 0, "a timeout does not broadcast");
+  const timeoutLine = timeoutLogs.find((line) => line.includes("sponsor_timeout")) || "";
+  assert(timeoutLine.includes("estimateGas"), "timeout log names the step");
+  assert(!timeoutLine.toLowerCase().includes(TEST_KEY.slice(2)), "timeout log omits the key");
+
+  const priorOnly = eventLog("TokenCreated", [TOKEN, MINT, "LDA NightshadeX", "NIGHTSHADE", POOL, IMAGE, SITE, "", ""]);
+  const priorRow = await findPriorLaunch({
+    creator: MINT,
+    name: "LDA NightshadeX",
+    symbol: "NIGHTSHADE",
+    rpcUrls: ["https://rpc.mainnet.arc.io"],
+    fetchImpl: async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      if (body.method === "eth_blockNumber") return { ok: true, json: async () => ({ result: "0x2000" }) };
+      if (body.method === "eth_getLogs") {
+        const from = body.params[0].fromBlock;
+        const hit = from === "0x0" || BigInt(from) <= 0x20n;
+        return { ok: true, json: async () => ({ result: hit ? [{ address: launch.PORTAL7, topics: priorOnly.topics, data: priorOnly.data, transactionHash: TX, blockNumber: "0x20" }] : [] }) };
+      }
+      return { ok: false, status: 503, json: async () => ({}) };
+    },
+  });
+  eq(priorRow && priorRow.txHash, TX, "a mined NightshadeX launch is found in an older window");
+  const skipped = await findPriorLaunch({
+    creator: MINT,
+    name: "LDA NightshadeX",
+    symbol: "NIGHTSHADE",
+    taken: new Set([TX.toLowerCase()]),
+    rpcUrls: ["https://rpc.mainnet.arc.io"],
+    fetchImpl: async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      if (body.method === "eth_blockNumber") return { ok: true, json: async () => ({ result: "0x30" }) };
+      if (body.method === "eth_getLogs") {
+        return { ok: true, json: async () => ({ result: [{ address: launch.PORTAL7, topics: priorOnly.topics, data: priorOnly.data, transactionHash: TX, blockNumber: "0x20" }] }) };
+      }
+      return { ok: false, status: 503, json: async () => ({}) };
+    },
+  });
+  eq(skipped, null, "a token already saved on an agent is not reused");
+
   const wrongChain = mockTransport({ chainId: 1 });
   let wrong = false;
   try { await sponsorLaunch({ privateKey: TEST_KEY, params: form(), transport: wrongChain }); }
@@ -566,10 +624,103 @@ function agent(show, name) {
     eq(stuck.estimates, 2, "retry stops after one extra attempt");
     eq(stuck.broadcasts(), 0, "a repeated reject is not broadcast");
     eq(show.agentDetail(stuckId).argus, null, "a repeated reject stores nothing");
+
+    const priorId = agent(show, "Piper");
+    const TX2 = "0x" + "ee".repeat(32);
+    const priorLog = eventLog("TokenCreated", [TOKEN, MINT, "Piper", "PIPER", POOL, IMAGE, SITE, "", ""]);
+    const priorFetch = async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      const host = new URL(url).host;
+      if (body.method === "eth_blockNumber") return { ok: true, json: async () => ({ result: "0x30" }) };
+      if (body.method === "eth_getLogs") {
+        return { ok: true, json: async () => ({ result: [{ address: launch.PORTAL7, topics: priorLog.topics, data: priorLog.data, transactionHash: TX2, blockNumber: "0x20" }] }) };
+      }
+      if (body.method === "eth_getTransactionReceipt") {
+        if (host === "rpc.quicknode.mainnet.arc.io") return { ok: false, status: 503, json: async () => ({}) };
+        const row = receipt(MINT, "Piper", "PIPER");
+        row.transactionHash = TX2;
+        return { ok: true, json: async () => ({ result: row }) };
+      }
+      return { ok: false, status: 503, json: async () => ({}) };
+    };
+    const quiet = mockTransport();
+    setSponsorTransport(() => quiet);
+    global.fetch = priorFetch;
+    const reused = mockRes();
+    await handleShow(mockReq("POST", form({ launchTicker: "PIPER", launchName: "Piper" }), { ip: "203.0.113.80" }), reused, "/api/show/agents/" + priorId + "/argus/sponsor", new URLSearchParams(), show);
+    eq(reused.statusCode, 200, "an already mined launch is attached " + reused.body);
+    eq(reused.json.argus.txHash, TX2, "reused tx");
+    eq(reused.json.argus.symbol, "PIPER", "reused ticker");
+    eq(quiet.broadcasts(), 0, "reuse does not broadcast");
+    eq(show.agentDetail(priorId).argus.status, "minted", "reused token is minted");
+
+    const heldId = agent(show, "Hold");
+    show.noteArgusPending(heldId, { txHash: TX, creatorWallet: MINT, name: "Hold", symbol: "HOLD" });
+    global.fetch = mockFetch(agreeingHosts(MINT));
+    const heldRes = mockRes();
+    await handleShow(mockReq("POST", form({ launchTicker: "HOLD", launchName: "Hold" }), { ip: "203.0.113.81" }), heldRes, "/api/show/agents/" + heldId + "/argus/sponsor", new URLSearchParams(), show);
+    eq(heldRes.statusCode, 200, "a pending hash is confirmed without a new send " + heldRes.body);
+    eq(quiet.broadcasts(), 0, "pending confirm does not broadcast");
+    eq(show.agentDetail(heldId).argus.tokenAddress, ethers.getAddress(TOKEN), "pending confirm stores the token");
+
+    setReceiptTimeout(200);
+    const slowId = agent(show, "Linger");
+    let receiptCalls = 0;
+    global.fetch = async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      if (body.method === "eth_blockNumber") return { ok: true, json: async () => ({ result: "0x10" }) };
+      if (body.method === "eth_getLogs") return { ok: true, json: async () => ({ result: [] }) };
+      if (body.method === "eth_getTransactionReceipt") {
+        receiptCalls += 1;
+        await new Promise(() => {});
+      }
+      return { ok: false, status: 503, json: async () => ({}) };
+    };
+    const once = mockTransport();
+    setSponsorTransport(() => once);
+    const hangLogs = [];
+    console.warn = (...args) => hangLogs.push(args.map(String).join(" "));
+    const hung = mockRes();
+    await handleShow(mockReq("POST", form({ launchTicker: "LINGER", launchName: "Linger" }), { ip: "203.0.113.82" }), hung, "/api/show/agents/" + slowId + "/argus/sponsor", new URLSearchParams(), show);
+    eq(hung.statusCode, 502, "a hung receipt becomes an RPC failure " + hung.body);
+    eq(hung.json.code, "rpc_unavailable", "hung receipt code");
+    eq(hung.json.txHash, TX, "hung receipt keeps the hash");
+    eq(once.broadcasts(), 1, "the hung confirm already broadcast");
+    eq(show.agentDetail(slowId).argus, null, "a hung confirm is not shown as minted");
+    assert(show.userAgents.get(slowId).argus.status === "pending", "the hash is kept for the retry");
+    assert(hangLogs.some((line) => line.includes("argus_sponsor") && line.includes("rpc_unavailable") && line.includes("timeout") && line.includes(TX)), "a hung receipt logs argus_sponsor");
+    assert(hangLogs.every((line) => !line.toLowerCase().includes(TEST_KEY.slice(2))), "hung receipt log omits the key");
+    console.warn = prevWarn;
+    global.fetch = mockFetch(agreeingHosts(MINT));
+    const againSlow = mockRes();
+    await handleShow(mockReq("POST", form({ launchTicker: "LINGER", launchName: "Linger" }), { ip: "203.0.113.83" }), againSlow, "/api/show/agents/" + slowId + "/argus/sponsor", new URLSearchParams(), show);
+    eq(againSlow.statusCode, 200, "the same hash confirms on retry " + againSlow.body);
+    eq(once.broadcasts(), 1, "retry does not mint a second token");
+    eq(show.agentDetail(slowId).argus.txHash, TX, "retry stores the first token");
+    setReceiptTimeout(null);
+
+    const failedReceipt = receipt(MINT);
+    failedReceipt.status = "0x0";
+    failedReceipt.logs = [];
+    const droppedId = agent(show, "Drop");
+    show.noteArgusPending(droppedId, { txHash: TX, creatorWallet: MINT, name: "Drop", symbol: "DROP" });
+    global.fetch = mockFetch({
+      "rpc.mainnet.arc.io": failedReceipt,
+      "rpc.drpc.mainnet.arc.io": failedReceipt,
+      "rpc.quicknode.mainnet.arc.io": failedReceipt,
+      "rpc.blockdaemon.mainnet.arc.io": failedReceipt,
+    });
+    const dropped = mockRes();
+    await handleShow(mockReq("POST", form({ launchTicker: "DROP", launchName: "Drop" }), { ip: "203.0.113.84" }), dropped, "/api/show/agents/" + droppedId + "/argus/sponsor", new URLSearchParams(), show);
+    eq(dropped.json.code, "tx_failed", "a reverted launch is not reused " + dropped.body);
+    eq(show.userAgents.get(droppedId).argus, null, "a reverted hash is cleared");
+    eq(once.broadcasts(), 1, "clearing a revert does not send inside that request");
   } finally {
     console.warn = prevWarn;
     global.fetch = prevFetch;
     setSponsorTransport(null);
+    setReceiptTimeout(null);
+    setSponsorStepTimeout(null);
     resetSponsorGuard();
     if (prevFlag == null) delete process.env.ARGUS_MINT_ENABLED;
     else process.env.ARGUS_MINT_ENABLED = prevFlag;

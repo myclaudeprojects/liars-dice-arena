@@ -2033,30 +2033,15 @@ function argusDetail(agent) {
     </section>`;
   }
   if (!argusOffer.enabled) return "";
-  if (houseMintReady(argusOffer)) {
-    const note = houseMintState.get(agent.id);
-    const line = note === "failed"
+  const note = houseMintState.get(agent.id);
+  const line = houseMintReady(argusOffer)
+    ? (note === "failed"
       ? "The token will retry. This agent can still play."
-      : "Creating this agent's token…";
-    return `<section class="argus-launch" data-argus-house="1">
-      <h2>Argus token</h2>
-      <p class="fine" role="status">${esc(line)}</p>
-    </section>`;
-  }
-  const stillPlays = agent.playable
-    ? "Skip the launch, or if it fails, this agent still plays."
-    : "Continue branding finishes their look. They can join the show after that, with or without a token.";
-  const offer = [
-    "This agent is already saved. Creating the agent and minting a token are separate steps.",
-    "The image is this agent's portrait from Create Agent.",
-    "Connect wallet only links MetaMask or Rabby. Sign create on Arc makes that wallet the on-chain creator.",
-    stillPlays,
-  ].filter(Boolean).join(" ");
-  return `<section class="argus-launch">
-    <h2>Launch on Argus</h2>
-    <p class="fine">${esc(offer)}</p>
-    ${argusOffer.sponsoredMessage ? `<p class="fine">${esc(argusOffer.sponsoredMessage)}</p>` : ""}
-    <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-for="1">Launch on Argus</button>
+      : "Creating this agent's token…")
+    : "This agent can play without a token.";
+  return `<section class="argus-launch" data-argus-house="1">
+    <h2>Argus token</h2>
+    <p class="fine" role="status">${esc(line)}</p>
   </section>`;
 }
 
@@ -3552,7 +3537,6 @@ view.addEventListener("click", async (e) => {
   if (createBtn) { openCreator(); return; }
   const resumeBtn = e.target.closest("[data-resume-agent]");
   if (resumeBtn && focusAgent) { resumeCreator(focusAgent); return; }
-  if (e.target.closest("[data-argus-for]") && focusAgent) { openArgusLaunch(focusAgent); return; }
   const detailOpt = e.target.closest("[data-opt-group]");
   if (detailOpt && focusAgent && !creator && focusAgent.roster === "user") {
     if (!portraitEdit || portraitEdit.id !== focusAgent.id) {

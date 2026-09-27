@@ -581,7 +581,8 @@ function agent(show, name) {
   const mintJs = fs.readFileSync(path.join(__dirname, "..", "public", "argusmint.js"), "utf8");
   const sponsorSrc = fs.readFileSync(path.join(__dirname, "..", "src", "argus", "sponsor.js"), "utf8");
   assert(app.includes("Sign create on Arc"), "browser sign button remains");
-  assert(app.includes("data-argus-for"), "agent detail can open the launch panel");
+  assert(!app.includes("data-argus-for"), "the agent profile has no Launch on Argus button");
+  assert(!app.includes(">Launch on Argus</button>"), "no profile control is labeled Launch on Argus");
   assert(!app.includes("!argusOffer.enabled || !agent.playable"), "a saved user agent can launch before they are playable");
   assert(app.includes("data-argus-launch"), "browser launch action remains");
   assert(app.includes("Launch with server mint"), "server mint button");

@@ -1631,6 +1631,43 @@ class Show {
     };
   }
 
+  // Remember a broadcast hash before the receipt is confirmed. publicArgus hides
+  // this until status is minted, so the profile still silent-retries.
+  noteArgusPending(agentId, row) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft) return null;
+    if (draft.argus && draft.argus.status === "minted" && draft.argus.txHash) return draft.argus;
+    const txHash = String((row && row.txHash) || "");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) return null;
+    draft.argus = {
+      status: "pending",
+      txHash,
+      creatorWallet: (row && row.creatorWallet) || null,
+      name: (row && row.name) || null,
+      symbol: (row && row.symbol) || null,
+      notedAt: new Date().toISOString(),
+    };
+    this.persist();
+    return draft.argus;
+  }
+
+  clearArgusPending(agentId, txHash) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft || !draft.argus || draft.argus.status === "minted") return;
+    if (txHash && draft.argus.txHash && draft.argus.txHash.toLowerCase() !== String(txHash).toLowerCase()) return;
+    draft.argus = null;
+    this.persist();
+  }
+
+  argusTxHashes() {
+    const taken = new Set();
+    for (const draft of this.userAgents.values()) {
+      const row = draft && draft.argus;
+      if (row && row.status === "minted" && row.txHash) taken.add(String(row.txHash).toLowerCase());
+    }
+    return taken;
+  }
+
   // Attach a Portal #7 launch after the receipt has already been checked on Arc.
   // A failed or missing mint leaves the saved agent playable.
   attachArgusMint(agentId, launch) {
@@ -1644,7 +1681,7 @@ class Show {
     if (prev && prev.status === "minted" && prev.txHash && prev.txHash.toLowerCase() !== next.txHash.toLowerCase()) {
       throw creatorError("already_minted", "This agent already has an Argus token.", 409);
     }
-    if (prev && prev.txHash && prev.txHash.toLowerCase() === next.txHash.toLowerCase()) {
+    if (prev && prev.status === "minted" && prev.txHash && prev.txHash.toLowerCase() === next.txHash.toLowerCase()) {
       return { agent: this.agentSummary(draft), argus: publicArgus(prev) };
     }
     draft.argus = {

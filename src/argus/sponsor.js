@@ -96,10 +96,42 @@ function describeRevert(err, abi) {
   return bits.join(" ") || "reverted";
 }
 
+function sponsorFailureText(err, abi) {
+  const named = describeRevert(err, abi);
+  const msg = String((err && (err.detail || err.publicMessage || err.shortMessage || err.message)) || "");
+  if (named && named !== "reverted" && msg && !msg.includes(named)) return (named + " " + msg).replace(/\s+/g, " ").trim();
+  if (named && named !== "reverted") return named;
+  return (msg || named || "failed").replace(/\s+/g, " ").trim();
+}
+
 function scrubbed(err, secrets, code, fallback, status, abi) {
-  const detail = redactAll(describeRevert(err, abi), secrets).slice(0, 220);
+  const detail = redactAll(sponsorFailureText(err, abi), secrets).slice(0, 220);
   console.warn("argus_sponsor", code, detail || "failed");
-  return fail(code, fallback, status);
+  const wrapped = fail(code, fallback, status);
+  wrapped.sponsorLogged = true;
+  return wrapped;
+}
+
+let stepTimeoutMs = 12_000;
+
+function setSponsorStepTimeout(ms) {
+  stepTimeoutMs = ms == null ? 12_000 : ms;
+}
+
+function deadline(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(fail(
+        "sponsor_timeout",
+        "Server mint timed out during " + label + ". This agent can still play.",
+        504,
+      ));
+    }, ms);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
 }
 
 function createSponsorGuard(opts) {
@@ -248,12 +280,14 @@ async function sponsorLaunch(opts) {
   const transport = body.transport || await resolveTransport(body.env);
   const abi = body.abi || loadAbi();
   const portal = prepared.portal || body.portal || activePortal();
+  const stepMs = body.stepTimeoutMs == null ? stepTimeoutMs : body.stepTimeoutMs;
+  const step = (label, promise) => deadline(promise, stepMs, label);
   try {
     try {
     const creator = parsed.address;
     let launchParams = prepared;
     try {
-      const rewardMode = await readRewardMode((tx) => transport.call(tx), portal, abi, creator);
+      const rewardMode = await step("rewardMode", readRewardMode((tx) => step("eth_call", transport.call(tx)), portal, abi, creator));
       launchParams = seatRewardDividend(prepared, rewardMode);
       if (launchParams.dividendBps !== prepared.dividendBps) {
         console.warn("argus_sponsor", "reward_dividend", "mode=" + rewardMode, "dividendBps=" + launchParams.dividendBps);
@@ -262,30 +296,31 @@ async function sponsorLaunch(opts) {
       if (e && e.publicMessage) throw e;
       console.warn("argus_sponsor", "reward_mode_unread", redactAll(describeRevert(e, abi), secrets).slice(0, 180));
     }
-    const splitterRaw = await transport.call({
+    const splitterRaw = await step("predictSplitter", transport.call({
       to: portal,
       data: encodeCall(abi, "predictSplitter", [creator, prepared.salt]),
-    });
+    }));
     const splitter = ethers.getAddress(decodeWord(["address"], splitterRaw)[0]);
-    const hashRaw = await transport.call({
+    const hashRaw = await step("hookInitCodeHash", transport.call({
       to: portal,
       data: encodeCall(abi, "hookInitCodeHash", [splitter, prepared.buyTaxBps, prepared.sellTaxBps, prepared.quoteAsset]),
-    });
+    }));
     const initCodeHash = ethers.hexlify(decodeWord(["bytes32"], hashRaw)[0]);
     const mined = mineHookSalt({ portal, creator, initCodeHash });
     const data = encodeLaunch(abi, { ...launchParams, hookSalt: mined.hookSalt });
-    const chainId = Number(await transport.chainId());
+    const chainId = Number(await step("chainId", transport.chainId()));
     if (chainId !== CHAIN_ID) {
       throw fail("wrong_chain", "Server mint is not pointed at Arc mainnet (chain id 5042). This agent can still play.", 502);
     }
-    const nonce = Number(await transport.nonce(creator));
-    const fees = transport.feeData ? await transport.feeData() : { gasPrice: 1n };
+    const nonce = Number(await step("nonce", transport.nonce(creator)));
+    const fees = transport.feeData ? await step("feeData", transport.feeData()) : { gasPrice: 1n };
     let gasLimit = FALLBACK_GAS;
     if (typeof transport.estimateGas === "function") {
       try {
-        const est = BigInt(await transport.estimateGas({ from: creator, to: portal, data, value: 0n }));
+        const est = BigInt(await step("estimateGas", transport.estimateGas({ from: creator, to: portal, data, value: 0n })));
         if (est > 0n) gasLimit = est + (est / 5n) + 50_000n;
       } catch (e) {
+        if (e && e.code === "sponsor_timeout") throw e;
         throw scrubbed(e, secrets, "sponsor_rejected", "Portal #7 did not accept this launch. This agent can still play.", 400, abi);
       }
     }
@@ -310,19 +345,22 @@ async function sponsorLaunch(opts) {
     const wallet = new ethers.Wallet(parsed.privateKey);
     let raw;
     try {
-      raw = await wallet.signTransaction(tx);
+      raw = await step("sign", wallet.signTransaction(tx));
     } catch (e) {
+      if (e && e.code === "sponsor_timeout") throw e;
       throw scrubbed(e, secrets, "sponsor_failed", "Server mint could not sign the launch. This agent can still play.", 502, abi);
     }
     let txHash;
     try {
-      txHash = await transport.broadcast(raw);
+      txHash = await step("broadcast", transport.broadcast(raw));
     } catch (e) {
+      if (e && e.code === "sponsor_timeout") throw e;
       throw scrubbed(e, secrets, "sponsor_failed", "Server mint did not send. This agent can still play.", 502, abi);
     }
     if (!/^0x[0-9a-fA-F]{64}$/.test(String(txHash || ""))) {
       throw fail("sponsor_failed", "Server mint did not return a transaction. This agent can still play.", 502);
     }
+    console.warn("argus_sponsor", "broadcast", "tx=" + txHash);
     return {
       txHash,
       creator,
@@ -331,7 +369,13 @@ async function sponsorLaunch(opts) {
       prepared: launchParams,
     };
     } catch (e) {
-      if (e && e.publicMessage) throw e;
+      if (e && e.publicMessage) {
+        if (!e.sponsorLogged) {
+          console.warn("argus_sponsor", e.code || "sponsor_failed", redactAll(sponsorFailureText(e, abi), secrets).slice(0, 220));
+          e.sponsorLogged = true;
+        }
+        throw e;
+      }
       throw scrubbed(e, secrets, "sponsor_failed", "Server mint did not send. This agent can still play.", 502, abi);
     }
   } finally {
@@ -345,7 +389,9 @@ module.exports = {
   parseMintKey,
   redact,
   describeRevert,
+  sponsorFailureText,
   sponsorLaunch,
+  setSponsorStepTimeout,
   createSponsorGuard,
   resetSponsorGuard,
   sponsorGuard,

@@ -3,7 +3,7 @@
 
 const { ERROR_TEXT, DEFAULT_STAKE, THEORY_TAGS } = require("./simmarket");
 const { argusEnabled, argusPublicConfig, sponsoredState } = require("./argus/config");
-const { verifyLaunchTx } = require("./argus/verify");
+const { verifyLaunchTx, findPriorLaunch } = require("./argus/verify");
 const { prepareLaunch } = require("./argus/launch");
 const { readArgusStats } = require("./argus/stats");
 const {
@@ -11,6 +11,8 @@ const {
   sponsorGuard,
   clientKeys,
   redact,
+  describeRevert,
+  parseMintKey,
 } = require("./argus/sponsor");
 
 function send(res, code, obj) {
@@ -57,6 +59,18 @@ function fail(res, e) {
   const body = { ok: false, error: safeErrorText(e), code };
   if (e.txHash && /^0x[0-9a-fA-F]{64}$/.test(e.txHash)) body.txHash = e.txHash;
   send(res, status, body);
+}
+
+function logSponsorFailure(e, txHash) {
+  if (e && e.sponsorLogged) return;
+  const code = (e && e.code) || "sponsor_failed";
+  let named = "";
+  try { named = describeRevert(e); } catch { named = ""; }
+  const msg = String((e && (e.detail || e.publicMessage || e.message)) || "");
+  const text = named && named !== "reverted" && !msg.includes(named) ? named + " " + msg : (msg || named || "failed");
+  const hash = txHash && /^0x[0-9a-fA-F]{64}$/.test(String(txHash)) ? "tx=" + txHash + " " : "";
+  console.warn("argus_sponsor", code, redact((hash + text).replace(/\s+/g, " ").trim(), process.env.ARGUS_MINT_KEY).slice(0, 240));
+  if (e) e.sponsorLogged = true;
 }
 
 function stillPlayable(e, fallback) {
@@ -190,18 +204,59 @@ async function handleShow(req, res, url, query, show) {
       let txHash = "";
       try {
         sponsorGuard().take(clientKeys(req, body));
-        let sent;
-        try {
-          sent = await sponsorLaunch({ privateKey: process.env.ARGUS_MINT_KEY, prepared });
-        } catch (e) {
-          const retryable = e && (e.code === "sponsor_rejected" || e.code === "rpc_unavailable");
-          if (!retryable) throw e;
-          console.warn("argus_sponsor", "silent_retry", e.code);
-          sent = await sponsorLaunch({ privateKey: process.env.ARGUS_MINT_KEY, prepared });
+        const mint = parseMintKey(process.env.ARGUS_MINT_KEY);
+        const pending = draft.argus && draft.argus.status === "pending" && /^0x[0-9a-fA-F]{64}$/.test(String(draft.argus.txHash || ""))
+          ? String(draft.argus.txHash)
+          : "";
+        let sent = null;
+        if (pending) {
+          txHash = pending;
+          console.warn("argus_sponsor", "reuse", "tx=" + txHash, "pending");
+        } else if (mint) {
+          const prior = await findPriorLaunch({
+            creator: mint.address,
+            name: prepared.name,
+            symbol: prepared.symbol,
+            taken: show.argusTxHashes(),
+          });
+          if (prior && prior.txHash) {
+            txHash = prior.txHash;
+            console.warn("argus_sponsor", "reuse", "tx=" + txHash, prepared.symbol);
+            show.noteArgusPending(agentId, {
+              txHash,
+              creatorWallet: mint.address,
+              name: prepared.name,
+              symbol: prepared.symbol,
+            });
+          }
         }
-        txHash = sent.txHash;
+        if (!txHash) {
+          try {
+            sent = await sponsorLaunch({ privateKey: process.env.ARGUS_MINT_KEY, prepared });
+          } catch (e) {
+            const retryable = e && (e.code === "sponsor_rejected" || e.code === "rpc_unavailable");
+            if (!retryable) throw e;
+            console.warn("argus_sponsor", "silent_retry", e.code);
+            sent = await sponsorLaunch({ privateKey: process.env.ARGUS_MINT_KEY, prepared });
+          }
+          txHash = sent.txHash;
+          show.noteArgusPending(agentId, {
+            txHash,
+            creatorWallet: sent.creator,
+            name: prepared.name,
+            symbol: prepared.symbol,
+          });
+        }
         const launch = await verifyLaunchTx(txHash);
-        if (sent.creator && launch.creatorWallet && launch.creatorWallet.toLowerCase() !== sent.creator.toLowerCase()) {
+        if (sent && sent.creator && launch.creatorWallet && launch.creatorWallet.toLowerCase() !== sent.creator.toLowerCase()) {
+          const mismatch = new Error("creator mismatch");
+          mismatch.code = "creator_mismatch";
+          mismatch.status = 409;
+          mismatch.publicMessage = "The launch creator did not match the server mint wallet. This agent can still play.";
+          mismatch.txHash = txHash;
+          throw mismatch;
+        }
+        if (mint && launch.creatorWallet && launch.creatorWallet.toLowerCase() !== mint.address.toLowerCase()) {
           const mismatch = new Error("creator mismatch");
           mismatch.code = "creator_mismatch";
           mismatch.status = 409;
@@ -213,6 +268,10 @@ async function handleShow(req, res, url, query, show) {
         send(res, 200, { ok: true, sponsored: true, ...saved });
       } catch (e) {
         if (txHash && !e.txHash) e.txHash = txHash;
+        if (e && e.code === "tx_failed") {
+          try { show.clearArgusPending(agentId, txHash); } catch { /* the agent stays playable */ }
+        }
+        logSponsorFailure(e, txHash);
         if (!res.headersSent) fail(res, stillPlayable(e));
       } finally {
         sponsorGuard().end(agentId);

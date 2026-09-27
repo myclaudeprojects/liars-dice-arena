@@ -184,7 +184,8 @@ function mockRes() {
   eq(suggested.launchX, HOUSE_X, "X is the house profile");
   eq(suggested.launchTelegram, "", "Telegram is left blank");
   eq(suggested.creatorFeeWallet, HOUSE_WALLET, "creator-fee wallet is the house default");
-  eq(suggested.launchDescription, "A quiet closer who spends one lie and waits.\n\nPlay at " + HOUSE, "description keeps the blurb and the site line");
+  eq(suggested.launchName, "LDA Vesper", "token name keeps the LDA prefix and the space");
+  eq(suggested.launchDescription, "A quiet closer who spends one lie and waits.\n\nAn LDA agent in Liar's Dice Arena.", "description keeps the blurb and one LDA line");
   eq(suggested.launchBuy, "5", "buy default");
   eq(suggested.launchCreator, "100", "creator default");
   eq(suggested.launchDevBuy, "0", "no dev buy");
@@ -197,8 +198,8 @@ function mockRes() {
   const longBlurb = "word ".repeat(80).trim();
   const longSuggested = launch.suggestLaunch({ name: "Dracula", description: longBlurb, publicBase: "https://liars-dice-arena.onrender.com" });
   assert(longSuggested.launchDescription.length <= 280, "branded description stays within 280");
-  assert(longSuggested.launchDescription.endsWith("\n\nPlay at " + HOUSE), "a long blurb keeps the site line");
-  eq(launch.suggestLaunch({ name: "Dracula", description: "", publicBase: "https://liars-dice-arena.onrender.com" }).launchDescription, "Play at " + HOUSE, "missing blurb is only the site line");
+  assert(longSuggested.launchDescription.endsWith("\n\nAn LDA agent in Liar's Dice Arena."), "a long blurb keeps the LDA line");
+  eq(launch.suggestLaunch({ name: "Dracula", description: "", publicBase: "https://liars-dice-arena.onrender.com" }).launchDescription, "An LDA agent in Liar's Dice Arena.", "missing blurb is only the LDA line");
   const canon = launch.suggestLaunch({ name: "LDA Dracula", publicBase: "https://liarsdicearc.app", canonicalPfp: "/api/show/agents/dracula/pfp.svg" });
   eq(canon.launchWebsite, HOUSE, "a canonical public base is the website");
   eq(canon.launchImage, "https://liarsdicearc.app/api/show/agents/dracula/pfp.svg", "portrait stays on the app host");
@@ -214,8 +215,8 @@ function mockRes() {
   eq(custom.launchTelegram, "https://t.me/example", "an explicit Telegram replaces the house default");
   eq(custom.creatorFeeWallet, "0x2222222222222222222222222222222222222222", "an explicit fee wallet replaces the house default");
   const prepared = launch.prepareLaunch(suggested);
-  eq(prepared.name, "LDA Vesper", "prepared name");
-  eq(prepared.description, suggested.launchDescription, "prepared description keeps the site line");
+  eq(prepared.name, "LDA Vesper", "prepared name keeps the space after LDA");
+  eq(prepared.description, suggested.launchDescription, "prepared description keeps the LDA line");
   eq(prepared.symbol, "VESPER2", "prepared ticker");
   eq(prepared.buyTaxBps, 500, "prepared buy");
   eq(prepared.sellTaxBps, 500, "prepared sell");
@@ -252,6 +253,7 @@ function mockRes() {
   eq(decodedCall[1].website, HOUSE, "calldata website");
   eq(decodedCall[1].twitter, HOUSE_X, "calldata X");
   eq(decodedCall[1].telegram, "", "calldata Telegram stays empty");
+  eq(decodedCall[1].description, prepared.description, "calldata description keeps the LDA line");
   const launchNames = launchFn.inputs.flatMap((input) => (input.components || []).map((row) => row.name).concat(input.name));
   assert(!launchNames.includes("feeRecipient") && !launchNames.includes("creator"), "launch args have no fee recipient");
   eq(decodedCall[2], prepared.salt, "calldata salt");

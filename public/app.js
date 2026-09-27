@@ -2266,6 +2266,15 @@ function creatorPayload() {
   return body;
 }
 
+function tokenSocialCopy(cfg) {
+  const offer = cfg || {};
+  const site = offer.siteUrl || "https://liarsdicearc.app/";
+  const x = offer.xUrl || "https://x.com/LiarsDiceArc";
+  const telegram = String(offer.telegramUrl || "").trim();
+  if (telegram) return `Website ${esc(site)}, X ${esc(x)}, and Telegram ${esc(telegram)}.`;
+  return `Website ${esc(site)} and X ${esc(x)}. Telegram stays empty.`;
+}
+
 function oneShotLaunchParams() {
   const cfg = creator.argusConfig || {};
   const canonical = creator.reveal && creator.reveal.canonicalPfp;
@@ -2273,7 +2282,6 @@ function oneShotLaunchParams() {
     name: creator.form.name,
     description: creator.form.shortDescription,
     canonicalPfp: canonical,
-    telegramUrl: "",
     siteUrl: cfg.siteUrl || "https://liarsdicearc.app/",
     xUrl: cfg.xUrl || "https://x.com/LiarsDiceArc",
     creatorFeeWallet: cfg.creatorFeeWallet || "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488",
@@ -2329,7 +2337,7 @@ function oneShotLaunch() {
   if (houseMint) {
     return `<section class="argus-launch">
       <h2>Launch on Argus</h2>
-      <p class="fine">Server mint signs as the house wallet ${esc(house)}, so the 100% creator share accrues there. The token uses the LDA name, this description plus Play at the site, the portrait, https://liarsdicearc.app/, https://x.com/LiarsDiceArc, and no Telegram.</p>
+      <p class="fine">Server mint signs as the house wallet ${esc(house)}, so the 100% creator share accrues there. The token name is the LDA name. The description is yours, plus “An LDA agent in Liar's Dice Arena.” The image is the portrait. ${tokenSocialCopy(cfg)}</p>
       <p class="fine"><b>Sign create on Arc</b> stays available if server mint does not finish. The signing wallet becomes the on-chain creator. Creator fees then accrue to that wallet instead of ${esc(house)}, unless you are signing as ${esc(house)}.</p>
       <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-sponsor="1"${busy}>Launch with server mint</button>
       ${connect}

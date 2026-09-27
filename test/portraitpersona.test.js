@@ -146,14 +146,15 @@ assert(celeb.archetype !== robot.archetype, "different faces do not share an arc
     publicBase: "https://liars-dice-arena.onrender.com",
     agentId: made.agent.id,
   });
-  eq(suggested.launchName, "LDA Nightshade", "token name keeps the LDA prefix");
+  eq(suggested.launchName, "LDA Nightshade", "token name keeps the LDA prefix and the space");
+  eq(suggestLaunch({ name: "Nightshade" }).launchName, "LDA Nightshade", "a typed name gains LDA and a space");
   eq(suggested.launchWebsite, "https://liarsdicearc.app/", "token website is the LDA site");
   eq(suggested.launchX, "https://x.com/LiarsDiceArc", "token X is the LDA account");
-  eq(suggested.launchTelegram, "", "telegram stays empty");
+  eq(suggested.launchTelegram, "", "telegram stays empty when unset");
+  eq(suggestLaunch({ name: "Nightshade", telegramUrl: "https://t.me/LiarsDiceArc" }).launchTelegram, "https://t.me/LiarsDiceArc", "a configured Telegram is kept");
   eq(suggested.launchCreator, "100", "creator share stays 100");
   eq(suggested.creatorFeeWallet, "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488", "creator fees target the house wallet");
-  assert(suggested.launchDescription.includes("Deals in silence and waits."), "token description keeps the typed line");
-  assert(suggested.launchDescription.includes("Play at https://liarsdicearc.app/"), "token description points at the site");
+  eq(suggested.launchDescription, "Deals in silence and waits.\n\nAn LDA agent in Liar's Dice Arena.", "token description is the typed line plus one LDA line");
   assert(suggested.launchImage.includes("face_robot.webp"), "token image is the portrait");
 
   const token = "0x" + "ab".repeat(20);
@@ -173,6 +174,8 @@ assert(celeb.archetype !== robot.archetype, "different faces do not share an arc
   assert(app.includes("Buy on Argus"), "profile can open the token");
   assert(app.includes("View profile"), "create reveal can open the profile");
   assert(app.includes("oneShotLaunchParams"), "the mint payload is built from the saved agent");
+  assert(app.includes("An LDA agent in Liar's Dice Arena."), "the reveal names the short token line");
+  assert(!app.includes('telegramUrl: ""'), "one-shot does not clear a configured Telegram");
 
   console.log("portraitpersona ok");
 })().catch((e) => {

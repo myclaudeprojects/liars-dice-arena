@@ -7,7 +7,7 @@
 const { ethers } = require("ethers");
 const { activePortal, loadAbi, QUOTE_ASSET, CHAIN_ID, CHAIN_ID_HEX, BUNDLE_SHA256, BUNDLE_URL, HOUSE_LAUNCH_DEFAULTS } = require("./launch");
 const { parseMintKey } = require("./sponsor");
-const { portal8Enabled, PORTAL8, CREATOR_REGISTRY, CLAIM_URL, HOUSE_SPLIT_BPS, CREATOR_SPLIT_BPS } = require("./portal8");
+const { portal8Enabled, CREATOR_REGISTRY, CLAIM_URL, HOUSE_SPLIT_BPS, CREATOR_SPLIT_BPS } = require("./portal8");
 
 const SPONSOR_UNAVAILABLE = "Server mint is not set up. Connect a wallet, or leave this agent playable.";
 let warnedInvalidMintKey = false;
@@ -143,9 +143,11 @@ function argusPublicConfig(env) {
     xUrl: house.xUrl,
     telegramUrl: house.telegramUrl,
     creatorFeeWallet: house.creatorFeeWallet,
+    // Spectator Create signs Portal 8 when the flag is on. House and factory
+    // server mints stay on Portal 7 with a zero dev buy and no opening buy.
     portal8Enabled: usePortal8,
-    serverPortal: usePortal8 ? PORTAL8 : activePortal(),
-    serverPortalNumber: usePortal8 ? 8 : 7,
+    serverPortal: activePortal(),
+    serverPortalNumber: 7,
     creatorRegistry: usePortal8 ? CREATOR_REGISTRY : null,
     claimUrl: usePortal8 ? CLAIM_URL : null,
     feeSplitBps: usePortal8 ? { house: HOUSE_SPLIT_BPS, creator: CREATOR_SPLIT_BPS } : null,

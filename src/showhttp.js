@@ -365,14 +365,6 @@ async function handleShow(req, res, url, query, show) {
         });
         return true;
       }
-      let spectator = null;
-      if (portal8Enabled()) {
-        const rawWallet = body.spectatorFeeWallet != null && String(body.spectatorFeeWallet).trim()
-          ? body.spectatorFeeWallet
-          : draft.spectatorFeeWallet;
-        spectator = parseSpectatorWallet(rawWallet, state.mintWallet);
-        if (spectator) show.rememberSpectatorFeeWallet(agentId, spectator);
-      }
       if (!sponsorGuard().begin(agentId)) {
         send(res, 409, {
           ok: false,
@@ -392,7 +384,7 @@ async function handleShow(req, res, url, query, show) {
         if (pending) {
           txHash = pending;
           console.warn("argus_sponsor", "reuse", "tx=" + txHash, "pending");
-        } else if (mint && !portal8Enabled()) {
+        } else if (mint) {
           const prior = await findPriorLaunch({
             creator: mint.address,
             name: prepared.name,
@@ -411,11 +403,13 @@ async function handleShow(req, res, url, query, show) {
           }
         }
         if (!txHash) {
+          // House and factory mints stay on Portal 7. family 7 keeps a Portal 8
+          // flag from moving this send. There is no opening buy.
           try {
             sent = await sponsorLaunch({
               privateKey: process.env.ARGUS_MINT_KEY,
               prepared,
-              spectatorFeeWallet: spectator,
+              family: 7,
               env: process.env,
             });
           } catch (e) {
@@ -425,7 +419,7 @@ async function handleShow(req, res, url, query, show) {
             sent = await sponsorLaunch({
               privateKey: process.env.ARGUS_MINT_KEY,
               prepared,
-              spectatorFeeWallet: spectator,
+              family: 7,
               env: process.env,
             });
           }
@@ -446,7 +440,7 @@ async function handleShow(req, res, url, query, show) {
           mismatch.txHash = txHash;
           throw mismatch;
         }
-        if (mint && !portal8Enabled() && launch.creatorWallet && launch.creatorWallet.toLowerCase() !== mint.address.toLowerCase()) {
+        if (mint && launch.creatorWallet && launch.creatorWallet.toLowerCase() !== mint.address.toLowerCase()) {
           const mismatch = new Error("creator mismatch");
           mismatch.code = "creator_mismatch";
           mismatch.status = 409;
@@ -454,18 +448,20 @@ async function handleShow(req, res, url, query, show) {
           mismatch.txHash = txHash;
           throw mismatch;
         }
-        let saved;
-        const portal8Mint = isPortal8(launch.portal) || (sent && isPortal8(sent.portal));
-        if (portal8Mint) {
-          launch.openingBuy = (sent && sent.openingBuy) || launch.openingBuy || null;
-          if (sent && sent.creator) launch.payoutWallet = sent.creator;
-          saved = await applyPortal8AfterMint(show, agentId, launch, spectator, {
-            name: prepared.name,
-            symbol: prepared.symbol,
-          });
-        } else {
-          saved = show.attachArgusMint(agentId, launch);
+        const sentPortal8 = !!(sent && (isPortal8(sent.portal) || Number(sent.portalNumber) === 8));
+        const sentBuy = !!(sent && sent.openingBuy && BigInt(sent.openingBuy.raw || 0) > 0n);
+        if (sentPortal8 || sentBuy) {
+          const wrong = new Error("house portal");
+          wrong.code = "house_portal7";
+          wrong.status = 409;
+          wrong.publicMessage = "House server mint launches on Portal 7 with no opening buy. This agent can still play.";
+          wrong.txHash = txHash;
+          throw wrong;
         }
+        // A house send is Portal 7. Do not copy an opening buy onto it, and do
+        // not call setPayoutSplit. That split is only for spectator Portal 8 mints.
+        delete launch.openingBuy;
+        const saved = show.attachArgusMint(agentId, launch);
         send(res, 200, { ok: true, sponsored: true, ...saved });
       } catch (e) {
         if (txHash && !e.txHash) e.txHash = txHash;

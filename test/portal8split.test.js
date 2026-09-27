@@ -10,7 +10,7 @@ const launch = require("../src/argus/launch");
 const portal8 = require("../src/argus/portal8");
 const { argusPublicConfig } = require("../src/argus/config");
 const { verifyLaunchTx } = require("../src/argus/verify");
-const { setSponsorTransport, resetSponsorGuard } = require("../src/argus/sponsor");
+const { setSponsorTransport, resetSponsorGuard, sponsorLaunch } = require("../src/argus/sponsor");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) { if (a !== b && String(a) !== String(b)) throw new Error((m || "eq") + `: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); }
@@ -157,6 +157,103 @@ function portal8Transport(opts) {
   };
 }
 
+const P7_CONFIG_ABI = [
+  "function launchConfig() view returns (address)",
+  "function configFor(address creator) view returns (uint8 mode, uint96 minimumShareBalance)",
+];
+const p7ConfigIface = new ethers.Interface(P7_CONFIG_ABI);
+const P7_LAUNCH_CONFIG = "0x6666666666666666666666666666666666666666";
+const P7_TOKEN_IMPL = "0x7777777777777777777777777777777777777777";
+const P7_SPLITTER = "0x8888888888888888888888888888888888888888";
+const portal7Label = { name: "LDA Vesper", symbol: "VESPER" };
+
+function portal7Iface() {
+  return new ethers.Interface(launch.loadAbi());
+}
+
+function portal7Transport() {
+  const sent = [];
+  return {
+    sent,
+    broadcasts: () => sent.length,
+    async call({ data }) {
+      const selector = String(data || "").slice(0, 10).toLowerCase();
+      const portal = portal7Iface();
+      if (selector === p7ConfigIface.getFunction("launchConfig").selector) {
+        return ethers.AbiCoder.defaultAbiCoder().encode(["address"], [P7_LAUNCH_CONFIG]);
+      }
+      if (selector === p7ConfigIface.getFunction("configFor").selector) {
+        return ethers.AbiCoder.defaultAbiCoder().encode(["uint8", "uint96"], [0, 0]);
+      }
+      const parsed = portal.parseTransaction({ data });
+      if (parsed.name === "tokenImpl") {
+        return ethers.AbiCoder.defaultAbiCoder().encode(["address"], [P7_TOKEN_IMPL]);
+      }
+      if (parsed.name === "predictSplitter") {
+        return ethers.AbiCoder.defaultAbiCoder().encode(["address"], [P7_SPLITTER]);
+      }
+      if (parsed.name === "hookInitCodeHash") {
+        return ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [ethers.keccak256(ethers.toUtf8Bytes("portal7-hook"))]);
+      }
+      throw new Error("unexpected portal7 call " + parsed.name);
+    },
+    async estimateGas() { return 210000n; },
+    async nonce() { return 4; },
+    async feeData() { return { gasPrice: 1n, maxFeePerGas: null, maxPriorityFeePerGas: null }; },
+    async chainId() { return 5042; },
+    async broadcast(raw) {
+      const tx = ethers.Transaction.from(raw);
+      sent.push(tx);
+      return ethers.keccak256(ethers.toUtf8Bytes("portal7-house-" + sent.length + "-" + tx.data.slice(0, 10)));
+    },
+    destroy() {},
+  };
+}
+
+function portal7Receipt(creator, name, symbol, txHash) {
+  const portal = portal7Iface();
+  const created = portal.encodeEventLog(portal.getEvent("TokenCreated"), [
+    TOKEN, creator, name || "LDA Vesper", symbol || "VESPER", "0x" + "12".repeat(32), IMAGE, "https://liarsdicearc.app/", "", "",
+  ]);
+  const parts = portal.encodeEventLog(portal.getEvent("PartsDeployed"), [
+    TOKEN, LOCKER, HOOK, ESCROW,
+  ]);
+  return {
+    status: "0x1",
+    transactionHash: txHash,
+    blockHash: BLOCK,
+    from: creator,
+    to: launch.PORTAL7,
+    logs: [
+      { address: launch.PORTAL7, topics: created.topics, data: created.data },
+      { address: launch.PORTAL7, topics: parts.topics, data: parts.data },
+    ],
+  };
+}
+
+function mockFetchPortal7(creator) {
+  return async (url, opts) => {
+    const body = JSON.parse(opts.body);
+    if (body.method === "eth_getTransactionReceipt") {
+      return {
+        ok: true,
+        json: async () => ({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: portal7Receipt(creator, portal7Label.name, portal7Label.symbol, body.params[0]),
+        }),
+      };
+    }
+    if (body.method === "eth_blockNumber") {
+      return { ok: true, json: async () => ({ jsonrpc: "2.0", id: body.id, result: "0x10" }) };
+    }
+    if (body.method === "eth_getLogs") {
+      return { ok: true, json: async () => ({ jsonrpc: "2.0", id: body.id, result: [] }) };
+    }
+    return { ok: false, status: 503, json: async () => ({}) };
+  };
+}
+
 function launchedReceipt(txHash, creator) {
   const encoded = portal8.portalIface.encodeEventLog(portal8.portalIface.getEvent("Launched"), [
     TOKEN, creator, HOOK, ESCROW, LOCKER, 9n, -200, 400,
@@ -268,7 +365,8 @@ function agent(show, name, extra) {
   eq(off.portal, ethers.getAddress(launch.PORTAL7), "browser portal stays 7");
   const on = argusPublicConfig({ ARGUS_MINT_ENABLED: "1", ARGUS_MINT_KEY: TEST_KEY, ARGUS_PORTAL: "8" });
   eq(on.portal8Enabled, true, "ARGUS_PORTAL=8");
-  eq(on.serverPortal, ethers.getAddress(portal8.PORTAL8), "server portal is portal 8");
+  eq(on.serverPortal, ethers.getAddress(launch.PORTAL7), "house server portal stays portal 7");
+  eq(on.serverPortalNumber, 7, "house server portal number stays 7");
   eq(on.feeSplitBps.house, 5000, "published house bps");
   eq(on.feeSplitBps.creator, 5000, "published creator bps");
   eq(on.portal, ethers.getAddress(launch.PORTAL7), "wallet fallback stays on portal 7");
@@ -276,32 +374,46 @@ function agent(show, name, extra) {
   const alias = argusPublicConfig({ ARGUS_PORTAL8_ENABLED: "1" });
   eq(alias.portal8Enabled, true, "ARGUS_PORTAL8_ENABLED alias");
 
-  const transport = portal8Transport();
-  const sent = await portal8.sponsorPortal8({
+  const refusedTransport = portal8Transport();
+  let houseCode = "";
+  try {
+    await portal8.sponsorPortal8({
+      privateKey: TEST_KEY,
+      prepared,
+      spectatorFeeWallet: SPECTATOR,
+      transport: refusedTransport,
+    });
+  } catch (e) {
+    houseCode = e.code;
+    assert(/Portal 7/i.test(e.publicMessage), "refusal names portal 7");
+  }
+  eq(houseCode, "house_portal7", "house portal 8 sponsor is refused");
+  eq(refusedTransport.broadcasts(), 0, "refused house portal 8 sponsor does not broadcast");
+  eq(refusedTransport.creators.length, 0, "refused house portal 8 sponsor does not mine a hook");
+
+  const houseChain = portal7Transport();
+  const houseSent = await sponsorLaunch({
     privateKey: TEST_KEY,
     prepared,
     spectatorFeeWallet: SPECTATOR,
-    transport,
+    family: 8,
+    env: { ARGUS_PORTAL: "8", ARGUS_PORTAL8_ENABLED: "1" },
+    transport: houseChain,
   });
-  eq(sent.creator, MINT, "house signs");
-  eq(sent.portalNumber, 8, "family");
-  eq(sent.openingBuy.raw, SEED.toString(), "recorded opening buy");
-  eq(sent.spectatorFeeWallet, ethers.getAddress(SPECTATOR), "spectator rides along");
-  eq(transport.broadcasts(), 1, "allowance was enough, so only launch is sent");
-  const launchTx = portal8.portalIface.parseTransaction({ data: transport.sent[0].data });
-  eq(launchTx.name, "launch", "broadcast is launch");
-  eq(launchTx.args[0].bundle[0].amountQuote, SEED, "broadcast opening buy");
-  assert(!JSON.stringify(sent, (_, value) => typeof value === "bigint" ? value.toString() : value).includes(TEST_KEY.slice(2)), "sponsor result has no key");
+  eq(houseSent.creator, MINT, "house signer is the mint key");
+  eq(houseSent.portal, ethers.getAddress(launch.PORTAL7), "house sponsor targets portal 7 while the flag is on");
+  eq(houseSent.openingBuy, undefined, "house sponsor has no opening buy");
+  eq(houseChain.broadcasts(), 1, "house sponsor broadcasts one portal 7 launch");
+  const houseTx = houseChain.sent[0];
+  eq(ethers.getAddress(houseTx.to), ethers.getAddress(launch.PORTAL7), "house tx is portal 7");
+  eq(houseTx.value, 0n, "house tx sends no value");
+  const houseDecoded = portal7Iface().decodeFunctionData("launch", houseTx.data);
+  eq(houseDecoded[0].devBuyQuote, 0n, "house dev buy stays zero");
+  eq(houseDecoded[0].name, "LDA Vesper", "house calldata name");
+  assert(!houseChain.sent.some((tx) => String(tx.to).toLowerCase() === portal8.PORTAL8.toLowerCase()), "house sponsor does not address portal 8");
+  assert(!JSON.stringify(houseSent, (_, value) => typeof value === "bigint" ? value.toString() : value).includes(TEST_KEY.slice(2)), "sponsor result has no key");
 
-  const low = portal8Transport({ allowance: 0n });
-  await portal8.sponsorPortal8({ privateKey: TEST_KEY, prepared, transport: low });
-  eq(low.broadcasts(), 2, "low allowance approves then launches");
-  const approveTx = erc20Iface.parseTransaction({ data: low.sent[0].data });
-  eq(approveTx.name, "approve", "first tx is the USDC approval");
-  eq(ethers.getAddress(approveTx.args[0]), ethers.getAddress(portal8.PORTAL8), "approval spender is portal 8");
-  eq(approveTx.args[1], SEED, "approval is the opening buy");
-
-  const decoded = portal8.decodePortal8Receipt(launchedReceipt(sent.txHash, MINT));
+  const decoded = portal8.decodePortal8Receipt(launchedReceipt("0x" + "ab".repeat(32), MINT));
   eq(decoded.portalNumber, 8, "decoded family");
   eq(decoded.tokenAddress, ethers.getAddress(TOKEN), "decoded token");
   eq(decoded.escrow, ethers.getAddress(ESCROW), "decoded escrow");
@@ -312,7 +424,7 @@ function agent(show, name, extra) {
 
   const prevFetch = global.fetch;
   global.fetch = mockFetch();
-  const verified = await verifyLaunchTx(sent.txHash, { portal: portal8.PORTAL8 });
+  const verified = await verifyLaunchTx("0x" + "ab".repeat(32), { portal: portal8.PORTAL8 });
   eq(verified.tokenAddress, ethers.getAddress(TOKEN), "two rpcs confirm portal 8");
   eq(verified.creatorWallet, MINT, "confirmed creator");
   global.fetch = prevFetch;
@@ -349,9 +461,9 @@ function agent(show, name, extra) {
     process.env.ARGUS_PORTAL = "8";
     delete process.env.ARGUS_PORTAL8_ENABLED;
     resetSponsorGuard({ max: 10, minIntervalMs: 0, globalMax: 100 });
-    const chain = portal8Transport();
+    const chain = portal7Transport();
     setSponsorTransport(() => chain);
-    global.fetch = mockFetch();
+    global.fetch = mockFetchPortal7(MINT);
 
     const spectatorOnly = agent(show, "Guest");
     eq(show.agentDetail(spectatorOnly).mintOwner, "spectator", "public create is a spectator agent");
@@ -364,37 +476,39 @@ function agent(show, name, extra) {
     const withWallet = agent(show, "Vesper", { spectatorFeeWallet: SPECTATOR, mintOwner: "house" });
     eq(show.agentDetail(withWallet).mintOwner, "house", "factory create is a house agent");
     eq(show.agentDetail(withWallet).spectatorFeeWallet, ethers.getAddress(SPECTATOR), "create stores the fee wallet");
+    portal7Label.name = "LDA Vesper";
+    portal7Label.symbol = "VESPER";
     const minted = mockRes();
     await handleShow(mockReq("POST", form({ spectatorFeeWallet: SPECTATOR }), { ip: "203.0.113.80" }), minted, "/api/show/agents/" + withWallet + "/argus/sponsor", new URLSearchParams(), show);
-    eq(minted.statusCode, 200, "portal 8 sponsor " + minted.body);
-    eq(minted.json.argus.portalNumber, 8, "saved family");
-    eq(minted.json.argus.portal, ethers.getAddress(portal8.PORTAL8), "saved portal");
-    eq(minted.json.argus.feeSplit.status, "set", "split is set");
-    eq(minted.json.argus.feeSplit.houseBps, 5000, "saved house bps");
-    eq(minted.json.argus.feeSplit.creatorBps, 5000, "saved creator bps");
-    eq(minted.json.argus.feeSplit.spectatorWallet, ethers.getAddress(SPECTATOR), "saved spectator");
-    assert(minted.json.argus.feeSplit.splitTxHash, "split tx stored");
+    eq(minted.statusCode, 200, "portal 7 house sponsor " + minted.body);
+    eq(minted.json.argus.portalNumber, 7, "house family stays portal 7");
+    eq(minted.json.argus.portal, ethers.getAddress(launch.PORTAL7), "house portal address");
+    eq(minted.json.argus.feeSplit, null, "house mint does not set a portal 8 split");
+    eq(minted.json.argus.openingBuy, null, "house mint records no opening buy");
+    eq(minted.json.argus.creatorWallet, MINT, "house wallet is the on-chain creator");
     eq(minted.json.argus.symbol, "VESPER", "ticker kept");
     assert(!minted.body.includes(TEST_KEY.slice(2)), "http body has no key");
-    const names = chain.sent.map((tx) => {
-      try { return portal8.portalIface.parseTransaction({ data: tx.data }).name; }
-      catch { return portal8.creatorIface.parseTransaction({ data: tx.data }).name; }
-    });
-    assert(names.includes("launch"), "http path launches");
-    assert(names.includes("setPayoutSplit"), "http path sets the split");
+    eq(chain.broadcasts(), 1, "house sponsor broadcasts once");
+    const httpTx = portal7Iface().decodeFunctionData("launch", chain.sent[0].data);
+    eq(httpTx[0].devBuyQuote, 0n, "http house dev buy is zero");
+    eq(ethers.getAddress(chain.sent[0].to), ethers.getAddress(launch.PORTAL7), "http house tx targets portal 7");
+    eq(chain.sent[0].value, 0n, "http house tx has no value");
 
     const later = agent(show, "Quill", { mintOwner: "house" });
+    portal7Label.name = "LDA Quill";
+    portal7Label.symbol = "QUILL";
     const pendingRes = mockRes();
     await handleShow(mockReq("POST", form({ launchTicker: "QUILL", launchName: "LDA Quill" }), { ip: "203.0.113.81" }), pendingRes, "/api/show/agents/" + later + "/argus/sponsor", new URLSearchParams(), show);
-    eq(pendingRes.statusCode, 200, "mint without a wallet " + pendingRes.body);
-    eq(pendingRes.json.argus.feeSplit.status, "pending", "split waits");
-    eq(pendingRes.json.argus.feeSplit.spectatorWallet, null, "no spectator yet");
-    eq(pendingRes.json.argus.portalNumber, 8, "pending mint is still portal 8");
+    eq(pendingRes.statusCode, 200, "house mint without a fee wallet " + pendingRes.body);
+    eq(pendingRes.json.argus.portalNumber, 7, "second house mint is portal 7");
+    eq(pendingRes.json.argus.feeSplit, null, "no fee wallet still has no portal 8 split");
+    eq(pendingRes.json.argus.openingBuy, null, "second house mint has no opening buy");
+    eq(chain.broadcasts(), 2, "second house mint is another portal 7 launch");
     const attached = mockRes();
     await handleShow(mockReq("POST", { spectatorFeeWallet: SPECTATOR }, { ip: "203.0.113.82" }), attached, "/api/show/agents/" + later + "/argus/payout", new URLSearchParams(), show);
-    eq(attached.statusCode, 200, "later split " + attached.body);
-    eq(attached.json.argus.feeSplit.status, "set", "later split lands");
-    eq(attached.json.argus.feeSplit.spectatorWallet, ethers.getAddress(SPECTATOR), "later spectator");
+    eq(attached.statusCode, 409, "house portal 7 payout is refused " + attached.body);
+    eq(attached.json.code, "portal7", "house payout code");
+    eq(chain.broadcasts(), 2, "payout refusal does not broadcast");
 
     delete process.env.ARGUS_CREATOR_WALLET;
     const prepChain = portal8Transport();
@@ -502,6 +616,9 @@ function agent(show, name, extra) {
   assert(app.includes("payout controller"), "copy says the house stays the payout controller");
   assert(app.includes("argusOffer.portal8Enabled && agent.mintOwner !== \"house\""), "profile view does not house-mint a spectator agent");
   const httpSrc = fs.readFileSync(path.join(__dirname, "..", "src", "showhttp.js"), "utf8");
+  const sponsorSrc = fs.readFileSync(path.join(__dirname, "..", "src", "argus", "sponsor.js"), "utf8");
+  assert(!sponsorSrc.includes("sponsorPortal8"), "house sponsor does not call Portal 8");
+  assert(httpSrc.includes("family: 7"), "house http sponsor asks for portal 7");
   assert(httpSrc.includes("spectator_signs"), "server refuses spectator server-mint");
   assert(httpSrc.includes("not_house_key"), "server mint key must be the house wallet");
   assert(app.includes("!portal8SpectatorSign(creator.argusConfig)"), "create does not auto house-mint when the spectator can sign");

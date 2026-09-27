@@ -65,7 +65,6 @@ function attachLibraryPortraits(draft, concepts, taken) {
 
 const MODEL_VERSION = PFP_STYLE_VERSION;
 const PFP_TOUCHES = Object.freeze(["expression", "darker", "cleaner", "minimal", "premium"]);
-const ROSTER_CAP = 16;
 
 const ARCHETYPE_IDS = Object.freeze([
   "GAMBLER", "STRATEGIST", "EMPEROR", "TRICKSTER", "REAPER", "ORACLE",
@@ -861,9 +860,6 @@ function createDraft(input, ctx) {
   if (displayNameTaken(name, names)) {
     throw creatorError("name_collision", "That name is already in the arena.", 409);
   }
-  if ((ctx.count || 0) >= ROSTER_CAP) {
-    throw creatorError("roster_full", "The user roster is full.", 409);
-  }
   const id = allocateId(name, ctx.takenIds || new Set());
   const personality = personalityFrom(body, archetype);
   const copy = summaries(name, archetype, personality);
@@ -1287,7 +1283,6 @@ module.exports = {
   EMBLEM_IDS,
   MODEL_VERSION,
   PFP_TOUCHES,
-  ROSTER_CAP,
   SAFE_TITLES,
   archetypeLabel,
   humanize,

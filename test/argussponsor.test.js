@@ -128,6 +128,7 @@ function mockTransport(opts) {
   return {
     sent,
     broadcasts: () => broadcasts,
+    get estimates() { return options.estimates || 0; },
     async call({ data }) {
       const selector = String(data || "").slice(0, 10).toLowerCase();
       if (selector === configIface.getFunction("launchConfig").selector) {
@@ -150,11 +151,14 @@ function mockTransport(opts) {
     },
     async estimateGas() {
       if (options.revertData) {
-        const err = new Error("execution reverted");
-        err.shortMessage = "execution reverted (unknown custom error)";
-        err.data = options.revertData;
-        if (options.revertSecret) err.shortMessage += " " + options.revertSecret;
-        throw err;
+        options.estimates = (options.estimates || 0) + 1;
+        if (!(options.revertOnce && options.estimates > 1)) {
+          const err = new Error("execution reverted");
+          err.shortMessage = "execution reverted (unknown custom error)";
+          err.data = options.revertData;
+          if (options.revertSecret) err.shortMessage += " " + options.revertSecret;
+          throw err;
+        }
       }
       return 210000n;
     },
@@ -540,6 +544,28 @@ function agent(show, name) {
     await pendingFirst;
     eq(first.statusCode, 200, "in-flight leader still persists " + first.body);
     eq(show.agentDetail(third).argus.creatorWallet, MINT, "in-flight leader stores the mint wallet");
+
+    resetSponsorGuard({ max: 10, minIntervalMs: 0, globalMax: 100 });
+    const retryId = agent(show, "Relay");
+    const flaky = mockTransport({ rewardMode: 1, revertData: "0xabec626d", revertOnce: true });
+    setSponsorTransport(() => flaky);
+    global.fetch = mockFetch(agreeingHosts(MINT));
+    const retried = mockRes();
+    await handleShow(mockReq("POST", form({ launchTicker: "RELAY", launchName: "Relay" }), { ip: "203.0.113.70" }), retried, "/api/show/agents/" + retryId + "/argus/sponsor", new URLSearchParams(), show);
+    eq(retried.statusCode, 200, "a rejected estimate is retried once " + retried.body);
+    eq(flaky.estimates, 2, "silent retry estimates again");
+    eq(flaky.broadcasts(), 1, "silent retry broadcasts once");
+    eq(show.agentDetail(retryId).argus.status, "minted", "silent retry persists the token");
+
+    const stuck = mockTransport({ rewardMode: 1, revertData: "0xabec626d" });
+    setSponsorTransport(() => stuck);
+    const stuckId = agent(show, "Stuck");
+    const stuckRes = mockRes();
+    await handleShow(mockReq("POST", form({ launchTicker: "STUCK", launchName: "Stuck" }), { ip: "203.0.113.71" }), stuckRes, "/api/show/agents/" + stuckId + "/argus/sponsor", new URLSearchParams(), show);
+    eq(stuckRes.statusCode, 400, "two rejects stay a failure");
+    eq(stuck.estimates, 2, "retry stops after one extra attempt");
+    eq(stuck.broadcasts(), 0, "a repeated reject is not broadcast");
+    eq(show.agentDetail(stuckId).argus, null, "a repeated reject stores nothing");
   } finally {
     console.warn = prevWarn;
     global.fetch = prevFetch;
@@ -561,8 +587,9 @@ function agent(show, name) {
   assert(app.includes("Launch with server mint"), "server mint button");
   assert(app.includes("data-argus-sponsor"), "server mint action");
   assert(app.includes("data-argus-house"), "house mint uses one launch screen");
-  assert(app.includes("Retry mint"), "a failed house mint offers one retry");
-  assert(app.includes("argus-advanced"), "connect and sign stay behind Advanced");
+  assert(app.includes("Creating token"), "house mint shows status instead of a choice");
+  assert(app.includes("The token will retry"), "a failed house mint promises a retry without a button");
+  assert(!app.includes("Retry mint"), "house mint does not ask the spectator to retry");
   assert(app.includes("sponsorArgus({ auto: true })"), "create confirm auto-runs the server mint");
   assert(app.includes("mintPhase"), "mint phase keeps the launching screen stable");
   assert(!app.includes("if (houseMint) return sponsor + connect + sign"), "house mint does not show the three launch buttons");

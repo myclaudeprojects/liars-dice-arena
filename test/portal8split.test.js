@@ -340,10 +340,12 @@ function agent(show, name, extra) {
   const prevKey = process.env.ARGUS_MINT_KEY;
   const prevPortal = process.env.ARGUS_PORTAL;
   const prevAlias = process.env.ARGUS_PORTAL8_ENABLED;
+  const prevHouse = process.env.ARGUS_CREATOR_WALLET;
   const savedFetch = global.fetch;
   try {
     process.env.ARGUS_MINT_ENABLED = "1";
     process.env.ARGUS_MINT_KEY = TEST_KEY;
+    process.env.ARGUS_CREATOR_WALLET = MINT;
     process.env.ARGUS_PORTAL = "8";
     delete process.env.ARGUS_PORTAL8_ENABLED;
     resetSponsorGuard({ max: 10, minIntervalMs: 0, globalMax: 100 });
@@ -351,7 +353,16 @@ function agent(show, name, extra) {
     setSponsorTransport(() => chain);
     global.fetch = mockFetch();
 
-    const withWallet = agent(show, "Vesper", { spectatorFeeWallet: SPECTATOR });
+    const spectatorOnly = agent(show, "Guest");
+    eq(show.agentDetail(spectatorOnly).mintOwner, "spectator", "public create is a spectator agent");
+    const blocked = mockRes();
+    await handleShow(mockReq("POST", form({ launchTicker: "GUEST", launchName: "LDA Guest" }), { ip: "203.0.113.79" }), blocked, "/api/show/agents/" + spectatorOnly + "/argus/sponsor", new URLSearchParams(), show);
+    eq(blocked.statusCode, 409, "spectator agent is not server minted " + blocked.body);
+    eq(blocked.json.code, "spectator_signs", "spectator signs code");
+    eq(chain.broadcasts(), 0, "refused spectator mint does not broadcast");
+
+    const withWallet = agent(show, "Vesper", { spectatorFeeWallet: SPECTATOR, mintOwner: "house" });
+    eq(show.agentDetail(withWallet).mintOwner, "house", "factory create is a house agent");
     eq(show.agentDetail(withWallet).spectatorFeeWallet, ethers.getAddress(SPECTATOR), "create stores the fee wallet");
     const minted = mockRes();
     await handleShow(mockReq("POST", form({ spectatorFeeWallet: SPECTATOR }), { ip: "203.0.113.80" }), minted, "/api/show/agents/" + withWallet + "/argus/sponsor", new URLSearchParams(), show);
@@ -372,7 +383,7 @@ function agent(show, name, extra) {
     assert(names.includes("launch"), "http path launches");
     assert(names.includes("setPayoutSplit"), "http path sets the split");
 
-    const later = agent(show, "Quill");
+    const later = agent(show, "Quill", { mintOwner: "house" });
     const pendingRes = mockRes();
     await handleShow(mockReq("POST", form({ launchTicker: "QUILL", launchName: "LDA Quill" }), { ip: "203.0.113.81" }), pendingRes, "/api/show/agents/" + later + "/argus/sponsor", new URLSearchParams(), show);
     eq(pendingRes.statusCode, 200, "mint without a wallet " + pendingRes.body);
@@ -385,6 +396,7 @@ function agent(show, name, extra) {
     eq(attached.json.argus.feeSplit.status, "set", "later split lands");
     eq(attached.json.argus.feeSplit.spectatorWallet, ethers.getAddress(SPECTATOR), "later spectator");
 
+    delete process.env.ARGUS_CREATOR_WALLET;
     const prepChain = portal8Transport();
     setSponsorTransport(() => prepChain);
     const signerId = agent(show, "Signer");
@@ -479,6 +491,8 @@ function agent(show, name, extra) {
     else process.env.ARGUS_PORTAL = prevPortal;
     if (prevAlias == null) delete process.env.ARGUS_PORTAL8_ENABLED;
     else process.env.ARGUS_PORTAL8_ENABLED = prevAlias;
+    if (prevHouse == null) delete process.env.ARGUS_CREATOR_WALLET;
+    else process.env.ARGUS_CREATOR_WALLET = prevHouse;
   }
 
   const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
@@ -486,7 +500,10 @@ function agent(show, name, extra) {
   assert(app.includes("50/50 on-chain via Argus Portal 8 payout-split"), "create copy names the on-chain split");
   assert(app.includes("Sign Portal 8 launch"), "spectator signs the portal 8 mint");
   assert(app.includes("payout controller"), "copy says the house stays the payout controller");
-  assert(app.includes("if (argusOffer.portal8Enabled) return;"), "profile view does not house-mint a portal 8 agent");
+  assert(app.includes("argusOffer.portal8Enabled && agent.mintOwner !== \"house\""), "profile view does not house-mint a spectator agent");
+  const httpSrc = fs.readFileSync(path.join(__dirname, "..", "src", "showhttp.js"), "utf8");
+  assert(httpSrc.includes("spectator_signs"), "server refuses spectator server-mint");
+  assert(httpSrc.includes("not_house_key"), "server mint key must be the house wallet");
   assert(app.includes("!portal8SpectatorSign(creator.argusConfig)"), "create does not auto house-mint when the spectator can sign");
   assert(!app.includes("You do not sign the mint"), "portal 8 create no longer says the spectator skips the signature");
   assert(app.includes("data-set-fee-wallet"), "profile can set the fee wallet later");

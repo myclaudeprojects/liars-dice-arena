@@ -1630,6 +1630,7 @@ class Show {
       takenPortraits: this.takenPortraits(),
     });
     if (feeWallet) draft.spectatorFeeWallet = feeWallet;
+    draft.mintOwner = incoming.mintOwner === "house" ? "house" : "spectator";
     this.userAgents.set(draft.id, draft);
     this.records.ensure(draft.id);
     this.persist();
@@ -1901,6 +1902,7 @@ class Show {
       archetypeLabel: draft.archetypeLabel,
       argus: publicArgus(draft.argus),
       spectatorFeeWallet: draft.spectatorFeeWallet || null,
+      mintOwner: draft.mintOwner === "house" ? "house" : "spectator",
       brand: draft.status === "READY" ? this.brands.publicOf(draft.id) : this.provisionalBrand(draft),
     };
   }
@@ -2176,6 +2178,7 @@ class Show {
       createdAt: draft ? (draft.createdAt || null) : null,
       argus: draft ? publicArgus(draft.argus) : null,
       spectatorFeeWallet: draft ? (draft.spectatorFeeWallet || null) : null,
+      mintOwner: draft && draft.mintOwner === "house" ? "house" : (draft ? "spectator" : null),
     };
   }
 
@@ -2223,6 +2226,7 @@ class Show {
       visualDirection: draft ? draft.visualDirection : null,
       argus: draft ? publicArgus(draft.argus) : null,
       spectatorFeeWallet: draft ? (draft.spectatorFeeWallet || null) : null,
+      mintOwner: draft && draft.mintOwner === "house" ? "house" : (draft ? "spectator" : null),
     };
   }
 

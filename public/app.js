@@ -1706,7 +1706,7 @@ function feeSplitLines(argus) {
     : "";
   const claimLink = `<a class="ghost lda-btn lda-btn-ghost lda-btn-block" href="${esc(claim)}" target="_blank" rel="noopener">Claim creator fees</a>`;
   if (split && split.status === "set" && split.spectatorWallet) {
-    return `<p class="fine">House ${esc(shortAddress(split.houseWallet))} and your wallet ${esc(shortAddress(split.spectatorWallet))}, 5000 bps each.</p>${escrow}${claimLink}`;
+    return `<p class="fine">House ${esc(shortAddress(split.houseWallet))} and the minter ${esc(shortAddress(split.spectatorWallet))}, 5000 bps each. The minter claims their half on Argus. The house claims its half the same way.</p>${escrow}${claimLink}`;
   }
   return `<p class="fine">Until a fee claim wallet is set, creator fees accrue to the house wallet. Set the wallet on the profile and the house applies the 50/50 split.</p>${escrow}${claimLink}`;
 }
@@ -2087,14 +2087,14 @@ function argusDetail(agent) {
     </section>`;
   }
   if (!argusOffer.enabled) return "";
-  if (portal8SpectatorSign(argusOffer)) {
+  if (portal8SpectatorSign(argusOffer) && agent.mintOwner !== "house") {
     const busy = portal8SignBusy ? " disabled" : "";
     return `<section class="argus-launch" data-portal8-sign-panel="1">
       <h2>Argus token</h2>
       <p class="fine" role="status">This agent can play without a token. Sign the Portal 8 launch when you are ready.</p>
       ${feeWalletEditor(agent)}
       <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-portal8-sign="${esc(agent.id)}"${busy}>Sign Portal 8 launch</button>
-      <p class="fine">You sign the mint from your wallet. The payout address is the house wallet, so the house stays the payout controller and signs the 50/50 split. You claim your half on Argus. You pay the opening buy (4.50 USDC) and Arc gas. Factory and tokenless backfill still use the house mint.</p>
+      <p class="fine">You sign the mint from your wallet. The payout address is the house wallet, so the house stays the payout controller and signs the 50/50 split. You claim your half on Argus. The house claims its half. You pay the opening buy (4.50 USDC) and Arc gas.</p>
     </section>`;
   }
   const note = houseMintState.get(agent.id);
@@ -2127,7 +2127,7 @@ function launchParamsForAgent(agent) {
 
 function queueHouseMint(agent) {
   if (!agent || !agent.id || creator) return;
-  if (argusOffer.portal8Enabled) return;
+  if (argusOffer.portal8Enabled && agent.mintOwner !== "house") return;
   if (!houseMintReady(argusOffer)) return;
   if (agent.argus && agent.argus.tokenAddress) return;
   if (houseMintState.has(agent.id)) return;
@@ -2574,7 +2574,7 @@ function oneShotLaunch() {
     return `<section class="argus-launch" data-portal8-sign-panel="1">
       <h2>Sign the Portal 8 launch</h2>
       <p class="fine" role="status">${who} You sign the mint. The payout address is the house wallet ${esc(house)}, so the house stays the payout controller and signs the 50/50 split. You claim your half on Argus.</p>
-      <p class="fine">${feeSplitSentence(cfg)} You pay the opening buy (4.50 USDC) and Arc gas. The house mint key is not used for this launch.</p>
+      <p class="fine">${feeSplitSentence(cfg)} You pay the opening buy (4.50 USDC) and Arc gas. You claim your half on Argus. The house claims its half. The house mint key does not sign this launch.</p>
       <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-portal8-connect="1"${signBusy}>Connect wallet</button>
       <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-launch="1"${signBusy}>Sign Portal 8 launch</button>
     </section>`;

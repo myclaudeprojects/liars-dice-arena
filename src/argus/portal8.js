@@ -6,8 +6,9 @@
 // Spectator Create: the spectator wallet is msg.sender. payoutAddress is the
 // house wallet, which Portal 8 allows to differ from the launcher. The house
 // key then calls setPayoutSplit (5000/5000). The spectator cannot clear that
-// split. Factory and tokenless backfill still sign with ARGUS_MINT_KEY, and
-// that key is both launcher and payout. The key never leaves the server.
+// split. House-created agents still sign with ARGUS_MINT_KEY. That key is
+// both launcher and payout, and it must be the house wallet. The key never
+// leaves the server.
 
 const { ethers } = require("ethers");
 const { fail, prepareLaunch, QUOTE_ASSET, CHAIN_ID, HOUSE_LAUNCH_DEFAULTS } = require("./launch");

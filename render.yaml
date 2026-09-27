@@ -42,8 +42,8 @@ services:
       # ARGUS_PORTAL=8 (or ARGUS_PORTAL8_ENABLED=1) lets a spectator sign the
       # Portal #8 launch. payoutAddress is the house wallet, then the mint
       # key calls setPayoutSplit 5000/5000. The spectator pays the 4.50 USDC
-      # opening buy. Factory and tokenless backfill still spend the mint key,
-      # which needs that opening buy. Leave the flag unset to stay on Portal #7.
+      # opening buy. The mint key signs only house-created agents. Leave the
+      # flag unset to stay on Portal #7.
       # LDA_LIAR_TOKEN_ADDRESS overrides the arena coin ($LIAR). Unset, Buy
       # $LIAR opens 0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790 on argus.world.
       # LDA_LIAR_BUY_URL, if set to an http(s) URL, is used instead.

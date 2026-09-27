@@ -326,10 +326,29 @@ async function handleShow(req, res, url, query, show) {
         send(res, 409, { ok: false, error: "This agent already has an Argus token.", code: "already_minted" });
         return true;
       }
+      if (portal8Enabled() && draft.mintOwner !== "house") {
+        send(res, 409, {
+          ok: false,
+          error: "This agent was created by a spectator. Their wallet signs the Portal 8 launch. The house mint key is only for house-created agents.",
+          code: "spectator_signs",
+        });
+        return true;
+      }
       const state = sponsoredState();
       if (!state.sponsored) {
         send(res, 503, { ok: false, error: state.sponsoredMessage, code: "mint_key_missing" });
         return true;
+      }
+      if (portal8Enabled()) {
+        const house = houseLaunchProfile().creatorFeeWallet;
+        if (!state.mintWallet || state.mintWallet.toLowerCase() !== house.toLowerCase()) {
+          send(res, 409, {
+            ok: false,
+            error: "Server mint signs only as the house wallet. The mint key must be that wallet. This agent can still play.",
+            code: "not_house_key",
+          });
+          return true;
+        }
       }
       let prepared;
       try {
@@ -572,6 +591,8 @@ async function handleShow(req, res, url, query, show) {
     }
     if (req.method === "POST" && path === "/agents/brand/create") {
       const body = await readBody(req);
+      const admin = process.env.ADMIN_TOKEN && req.headers["x-admin-token"] === process.env.ADMIN_TOKEN;
+      if (!admin && body && typeof body === "object") delete body.mintOwner;
       send(res, 200, { ok: true, ...show.createAgent(body) });
       return true;
     }

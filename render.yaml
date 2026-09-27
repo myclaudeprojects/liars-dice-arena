@@ -39,6 +39,9 @@ services:
       # LDA_SITE_URL, LDA_X_URL, and ARGUS_CREATOR_WALLET prefill the launch
       # form. Leave LDA_TELEGRAM_URL unset so Telegram stays blank. The image
       # is the Create Agent portrait. Allocation stays 100% creator.
+      # ARGUS_PORTAL=8 (or ARGUS_PORTAL8_ENABLED=1) mints new tokens on
+      # Portal #8 and setPayoutSplit 5000/5000. The mint wallet needs the
+      # 4.50 USDC opening buy. Leave it unset to stay on Portal #7.
       # LDA_LIAR_TOKEN_ADDRESS overrides the arena coin ($LIAR). Unset, Buy
       # $LIAR opens 0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790 on argus.world.
       # LDA_LIAR_BUY_URL, if set to an http(s) URL, is used instead.

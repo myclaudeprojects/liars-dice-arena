@@ -634,19 +634,45 @@ function encodeLaunch(abi, prepared) {
 
   function publicArgus(raw) {
     if (!raw || raw.status !== "minted" || !raw.tokenAddress || !raw.txHash) return null;
+    let portalNumber = null;
+    let feeSplit = null;
+    let claimUrl = null;
+    try {
+      const portal8 = require("./portal8");
+      feeSplit = portal8.publicFeeSplit(raw);
+      if (portal8.isPortal8(raw.portal) || Number(raw.portalNumber) === 8) {
+        portalNumber = 8;
+        claimUrl = raw.claimUrl || portal8.CLAIM_URL;
+      }
+    } catch { /* Portal 7 records stay readable if the Portal 8 module fails to load. */ }
+    if (!portalNumber && raw.portal && String(raw.portal).toLowerCase() === String(PORTAL7).toLowerCase()) {
+      portalNumber = 7;
+    }
+    const opening = raw.openingBuy && typeof raw.openingBuy === "object" ? {
+      raw: String(raw.openingBuy.raw || ""),
+      quote: raw.openingBuy.quote || null,
+      recipient: raw.openingBuy.recipient || null,
+    } : null;
     return {
       status: "minted",
       tokenAddress: raw.tokenAddress,
       poolId: raw.poolId || null,
+      tokenIsToken0: raw.tokenIsToken0 == null ? null : !!raw.tokenIsToken0,
       hook: raw.hook || null,
       locker: raw.locker || null,
       splitter: raw.splitter || null,
+      escrow: raw.escrow || null,
       portal: raw.portal || null,
+      portalNumber,
       argusUrl: raw.argusUrl || ("https://argus.world/token/" + raw.tokenAddress),
+      claimUrl,
       txHash: raw.txHash,
       creatorWallet: raw.creatorWallet || null,
+      payoutWallet: raw.payoutWallet || null,
       symbol: raw.symbol || null,
       mintedAt: raw.mintedAt || null,
+      feeSplit,
+      openingBuy: portalNumber === 8 ? opening : null,
     };
   }
 

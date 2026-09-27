@@ -1596,6 +1596,7 @@ function blankCreator() {
       adaptability: 0.5,
       visualDirection: "",
       refine: "",
+      spectatorFeeWallet: "",
     },
     draft: null,
     concepts: [],
@@ -1675,9 +1676,50 @@ function createAgentButton() {
   return `<button class="lda-btn lda-btn-primary" type="button" data-create-agent="1">Create agent</button>`;
 }
 
+function portal8HouseMint(cfg) {
+  return !!(cfg && cfg.portal8Enabled && houseMintReady(cfg));
+}
+
+function feeSplitSentence(cfg) {
+  if (portal8HouseMint(cfg)) return "Creator-lane fees split 50/50 on-chain via Argus Portal 8 payout-split.";
+  return "You get a cut of the trading fees. The house pays you.";
+}
+
+function feeWalletEditor(agent) {
+  const minted8 = agent && agent.argus && Number(agent.argus.portalNumber) === 8;
+  const waiting = portal8HouseMint(argusOffer) && agent && (!agent.argus || !agent.argus.tokenAddress);
+  if (!minted8 && !waiting) return "";
+  const split = agent.argus && agent.argus.feeSplit;
+  if (split && split.status === "set" && split.spectatorWallet) return "";
+  const current = agent.spectatorFeeWallet || (split && split.spectatorWallet) || "";
+  return `<label>Fee claim wallet<input data-fee-wallet="1" type="text" value="${esc(current)}" placeholder="0x…" autocomplete="off" spellcheck="false"></label>
+    <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-set-fee-wallet="${esc(agent.id)}">Set fee wallet</button>
+    <p class="fine">Creator-lane fees split 50/50 on-chain via Argus Portal 8 payout-split. The house signs the split. You do not.</p>`;
+}
+
+function feeSplitLines(argus) {
+  if (!argus || Number(argus.portalNumber) !== 8) return "";
+  const split = argus.feeSplit || null;
+  const claim = argus.claimUrl || "https://argus.world/claim";
+  const escrow = argus.escrow
+    ? `<p class="fine">Anyone can call claimCreator() on the payout escrow ${esc(argus.escrow)}. Payment goes to the 50/50 split.</p>`
+    : "";
+  const claimLink = `<a class="ghost lda-btn lda-btn-ghost lda-btn-block" href="${esc(claim)}" target="_blank" rel="noopener">Claim creator fees</a>`;
+  if (split && split.status === "set" && split.spectatorWallet) {
+    return `<p class="fine">House ${esc(shortAddress(split.houseWallet))} and your wallet ${esc(shortAddress(split.spectatorWallet))}, 5000 bps each.</p>${escrow}${claimLink}`;
+  }
+  return `<p class="fine">Until a fee claim wallet is set, creator fees accrue to the house wallet. Set the wallet on the profile and the house applies the 50/50 split.</p>${escrow}${claimLink}`;
+}
+
+function feeWalletField(value) {
+  return `<label>Fee claim wallet <span class="fine">(optional — paste an address, or set it later on the profile)</span><input type="text" name="spectatorFeeWallet" value="${esc(value || "")}" placeholder="0x…" autocomplete="off" spellcheck="false"></label>
+    <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-fee-wallet-connect="1">Use connected wallet</button>
+    <p class="fine">Creator-lane fees split 50/50 on-chain via Argus Portal 8 payout-split, between the house wallet and this address. Use connected wallet only fills the address. It does not mint or sign.</p>`;
+}
+
 function createAgentListNote() {
   if (houseMintReady(argusOffer)) {
-    return `<p class="fine">Invent a player for Liar's Dice Arena. They join the roster and play, and confirming creates their Argus token. You get a cut of the trading fees. The house pays you.</p>`;
+    return `<p class="fine">Invent a player for Liar's Dice Arena. They join the roster and play, and confirming creates their Argus token. ${feeSplitSentence(argusOffer)}</p>`;
   }
   return `<p class="fine">Create agent asks for a name, a description, and a portrait. That same step launches the Argus token. Connect wallet is only the fallback when server mint is not the house wallet.</p>`;
 }
@@ -2032,6 +2074,7 @@ function argusDetail(agent) {
       <h2>Argus token</h2>
       <p class="fine">${esc(symbol)}${addr ? ` · ${esc(addr)}` : ""}</p>
       ${agent.argus.creatorWallet ? `<p class="fine">On-chain creator ${esc(agent.argus.creatorWallet)}</p>` : ""}
+      ${Number(agent.argus.portalNumber) === 8 ? `<p class="fine">Creator-lane fees split 50/50 on-chain via Argus Portal 8 payout-split.</p>${feeSplitLines(agent.argus)}${feeWalletEditor(agent)}` : ""}
       <div class="statgrid">
         ${argusMetric(stats.marketCap, "Market cap")}
         ${argusMetric(stats.holders, "Holders")}
@@ -2050,6 +2093,7 @@ function argusDetail(agent) {
   return `<section class="argus-launch" data-argus-house="1">
     <h2>Argus token</h2>
     <p class="fine" role="status">${esc(line)}</p>
+    ${portal8HouseMint(argusOffer) ? feeWalletEditor(agent) : ""}
   </section>`;
 }
 
@@ -2063,6 +2107,7 @@ function launchParamsForAgent(agent) {
     description: agent.shortDescription || agent.note || agent.line || "",
     canonicalPfp: assets.canonicalPfp || brand.canonicalPfp || "",
     agentId: agent.id,
+    spectatorFeeWallet: agent.spectatorFeeWallet || "",
   });
 }
 
@@ -2072,7 +2117,10 @@ function queueHouseMint(agent) {
   if (agent.argus && agent.argus.tokenAddress) return;
   if (houseMintState.has(agent.id)) return;
   houseMintState.set(agent.id, "pending");
-  const payload = Object.assign({}, launchParamsForAgent(agent), { predictor: predictorId() });
+  const payload = Object.assign({}, launchParamsForAgent(agent), {
+    predictor: predictorId(),
+    spectatorFeeWallet: agent.spectatorFeeWallet || "",
+  });
   api("/api/show/agents/" + encodeURIComponent(agent.id) + "/argus/sponsor", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -2092,6 +2140,51 @@ function queueHouseMint(agent) {
       render();
     }
   });
+}
+
+async function fillFeeWalletFromBrowser() {
+  if (!creator || creator.busy) return;
+  syncCreatorFromDom();
+  creator.busy = true;
+  creator.error = "";
+  painted = "";
+  render();
+  try {
+    if (!window.ArgusMint) throw new Error("Launch tools did not load. The agent is still saved.");
+    const wallet = await window.ArgusMint.connect();
+    if (creator && creator.form) creator.form.spectatorFeeWallet = wallet;
+  } catch (ex) {
+    if (creator) creator.error = ex.publicMessage || ex.message || "Could not read the wallet. The agent is still saved.";
+  } finally {
+    if (creator) {
+      creator.busy = false;
+      painted = "";
+      render();
+    }
+  }
+}
+
+async function saveSpectatorFeeWallet(agentId) {
+  const input = matchEl && matchEl.querySelector("[data-fee-wallet]");
+  const spectatorFeeWallet = input ? String(input.value || "").trim() : "";
+  err = "";
+  try {
+    const saved = await api("/api/show/agents/" + encodeURIComponent(agentId) + "/argus/payout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ spectatorFeeWallet }),
+    });
+    if (focusAgent && focusAgent.id === agentId) {
+      if (saved && saved.argus) focusAgent.argus = saved.argus;
+      if (saved && saved.agent && saved.agent.argus) focusAgent.argus = saved.agent.argus;
+      const wallet = (saved && saved.spectatorFeeWallet) || (saved && saved.agent && saved.agent.spectatorFeeWallet);
+      if (wallet) focusAgent.spectatorFeeWallet = wallet;
+    }
+  } catch (ex) {
+    err = ex.message || "The fee wallet was not saved.";
+  }
+  painted = "";
+  render();
 }
 
 async function connectArgus() {
@@ -2302,6 +2395,7 @@ function creatorPayload() {
     name: f.name,
     shortDescription: f.shortDescription,
   };
+  if (f.spectatorFeeWallet && String(f.spectatorFeeWallet).trim()) body.spectatorFeeWallet = String(f.spectatorFeeWallet).trim();
   if (creator.selectedPortrait && creator.selectedPortrait.id) {
     body.portraitId = creator.selectedPortrait.id;
     return body;
@@ -2343,6 +2437,7 @@ function oneShotLaunchParams() {
     siteUrl: cfg.siteUrl || "https://liarsdicearc.app/",
     xUrl: cfg.xUrl || "https://x.com/LiarsDiceArc",
     creatorFeeWallet: cfg.creatorFeeWallet || "0x341BB8851Ff8fD9EAE20ea083c2F779e646B8488",
+    spectatorFeeWallet: (creator.form && creator.form.spectatorFeeWallet) || "",
   });
 }
 
@@ -2378,7 +2473,8 @@ function oneShotLaunch() {
       <p class="fine">${esc(minted.symbol || "Token")} · ${esc(minted.tokenAddress || "")}</p>
       ${minted.creatorWallet ? `<p class="fine">On-chain creator ${esc(minted.creatorWallet)}</p>` : ""}
       <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(minted.argusUrl)}" target="_blank" rel="noopener">Buy on Argus</a>
-      <p class="fine">Opens argus.world. This app does not swap. You get a cut of the trading fees. The house pays you.</p>
+      <p class="fine">Opens argus.world. This app does not swap. ${feeSplitSentence(cfg)}</p>
+      ${portal8HouseMint(cfg) ? feeSplitLines(minted) : ""}
     </section>`;
   }
   if (!cfg.enabled) {
@@ -2403,7 +2499,7 @@ function oneShotLaunch() {
     return `<section class="argus-launch" data-argus-house="1">
       <h2>Creating token…</h2>
       <p class="fine" role="status">Creating this agent's token…</p>
-      <p class="fine">You get a cut of the trading fees. The house pays you. The description includes “An LDA agent in Liar's Dice Arena.”</p>
+      <p class="fine">${feeSplitSentence(cfg)} The description includes “An LDA agent in Liar's Dice Arena.”</p>
     </section>`;
   }
   const why = cfg.sponsored && cfg.mintWallet
@@ -2424,9 +2520,13 @@ function creatorView() {
   const kicker = step === 3 ? "Saved" : "Name, description, portrait";
   let body = "";
   if (step !== 3) {
+    const feeCopy = portal8HouseMint(creator.argusConfig || argusOffer)
+      ? `<p class="fine">Creator-lane fees split 50/50 on-chain via Argus Portal 8 payout-split. Paste a fee claim wallet now, or set it later on the profile. You do not sign the mint. The house wallet pays the required opening buy.</p>
+      ${feeWalletField(f.spectatorFeeWallet)}`
+      : `<p class="fine">You get a cut of that token's trading fees. The house pays you.</p>`;
     body = `
       <p class="fine">You invent a player for Liar's Dice Arena. Pick a name and a face. They join the roster and play, and confirming creates their Argus token.</p>
-      <p class="fine">You get a cut of that token's trading fees. The house pays you.</p>
+      ${feeCopy}
       <label>Name <span class="fine">(optional — saved on the roster as LDA plus this name)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Nightshade"></label>
       <p class="fine" data-roster-name>Roster name ${esc(rosterNamePreview(f.name))}</p>
       <label>Description <span class="fine">(optional)</span><textarea name="shortDescription" maxlength="240" placeholder="A quiet closer who spends one lie and waits.">${esc(f.shortDescription)}</textarea></label>
@@ -2567,7 +2667,10 @@ async function submitServerMint() {
     throw new Error("Server mint is not the house wallet. Sign create on Arc, or leave this agent playable.");
   }
   if (!creator.launch) creator.launch = oneShotLaunchParams();
-  const payload = Object.assign({}, creator.launch, { predictor: predictorId() });
+  const payload = Object.assign({}, creator.launch, {
+    predictor: predictorId(),
+    spectatorFeeWallet: (creator.form && creator.form.spectatorFeeWallet) || "",
+  });
   delete payload.minted;
   delete payload.wallet;
   delete payload.pendingTx;
@@ -3725,6 +3828,7 @@ view.addEventListener("click", async (e) => {
     if (e.target.closest("[data-creator-confirm]")) { confirmCreate(); return; }
     if (e.target.closest("[data-view-created]")) { viewCreatedAgent(); return; }
     if (e.target.closest("[data-argus-connect]")) { connectArgus(); return; }
+    if (e.target.closest("[data-fee-wallet-connect]")) { fillFeeWalletFromBrowser(); return; }
     if (e.target.closest("[data-argus-launch]")) { launchArgus(); return; }
     if (e.target.closest("[data-argus-sponsor]")) { sponsorArgus(); return; }
     if (e.target.closest("[data-argus-check]")) { checkArgus(); return; }
@@ -3743,6 +3847,8 @@ view.addEventListener("click", async (e) => {
       return;
     }
   }
+  const setFee = e.target.closest("[data-set-fee-wallet]");
+  if (setFee) { saveSpectatorFeeWallet(setFee.dataset.setFeeWallet); return; }
   const stakeBtn = e.target.closest("[data-trade-stake]");
   if (stakeBtn && tradeSheet) {
     tradeSheet.stake = Number(stakeBtn.dataset.tradeStake) || 50;

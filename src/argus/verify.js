@@ -3,6 +3,7 @@
 
 const { ethers } = require("ethers");
 const { decodeLaunchReceipt, fail, loadAbi, PORTAL7 } = require("./launch");
+const { decodePortal8Receipt, PORTAL8 } = require("./portal8");
 
 const FALLBACK_RPCS = Object.freeze([
   "https://rpc.mainnet.arc.io",
@@ -64,6 +65,15 @@ async function getReceipt(url, txHash, fetchImpl, timeoutMs) {
   return result || null;
 }
 
+function decodeReceipt(receipt, portal) {
+  const to = String((receipt && receipt.to) || "").toLowerCase();
+  const asked = String(portal || "").toLowerCase();
+  if (to === PORTAL8.toLowerCase() || asked === PORTAL8.toLowerCase()) {
+    return decodePortal8Receipt(receipt, PORTAL8);
+  }
+  return decodeLaunchReceipt(receipt, portal || PORTAL7);
+}
+
 function agreementKey(launch) {
   return [
     launch.txHash,
@@ -107,7 +117,7 @@ async function verifyLaunchTx(txHash, opts) {
       continue;
     }
     let launch;
-    try { launch = decodeLaunchReceipt(row.receipt, portal); }
+    try { launch = decodeReceipt(row.receipt, portal); }
     catch (e) {
       if (e && e.code === "tx_failed") failedReceipts += 1;
       continue;
@@ -128,12 +138,13 @@ async function verifyLaunchTx(txHash, opts) {
   }
   const answered = settled.some((row) => row.receipt || row.error);
   const detail = settled.map((row) => hostOf(row.url) + ": " + (row.error || (row.receipt ? "unconfirmed" : "pending"))).join("; ");
+  const family = String(body.portal || "").toLowerCase() === PORTAL8.toLowerCase() ? "Portal 8" : "Portal #7";
   if (!answered || settled.every((row) => row.error)) {
     const err = fail("rpc_unavailable", "Arc RPCs did not return that receipt. Try again in a moment. This agent can still play.", 502);
     err.detail = detail;
     throw err;
   }
-  const err = fail("unconfirmed", "That transaction is not confirmed as a Portal #7 launch on two Arc endpoints yet. This agent can still play.", 409);
+  const err = fail("unconfirmed", "That transaction is not confirmed as a " + family + " launch on two Arc endpoints yet. This agent can still play.", 409);
   err.detail = detail;
   throw err;
 }

@@ -474,6 +474,8 @@ function agent(show, name) {
   try {
     delete process.env.ARGUS_MINT_ENABLED;
     delete process.env.ARGUS_MINT_KEY;
+    delete process.env.ARGUS_PORTAL;
+    delete process.env.ARGUS_PORTAL8_ENABLED;
     setSponsorTransport(() => { throw new Error("transport should stay unused"); });
     const disabled = mockRes();
     await handleShow(mockReq("POST", form()), disabled, "/api/show/agents/" + id + "/argus/sponsor", new URLSearchParams(), show);

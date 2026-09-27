@@ -47,6 +47,8 @@ const {
 const { inferSelectionsFromBrand } = require("./branding/creationSelections");
 const portraitLib = require("./portraitlib");
 const { publicArgus } = require("./argus/launch");
+const { parseSpectatorWallet, isPortal8, HOUSE_SPLIT_BPS, CREATOR_SPLIT_BPS } = require("./argus/portal8");
+const { houseLaunchProfile } = require("./argus/config");
 // Identifies the running build so clients can reload when a deploy lands.
 const BUILD_ID = String(process.env.RENDER_GIT_COMMIT || process.env.BUILD_ID || Date.now()).slice(0, 12);
 const { renderPfp, recipeFromBrand, ASSET_TYPE, PFP_STYLE_VERSION, assetUrls, withBrandVersion } = require("./pfp");
@@ -474,6 +476,11 @@ async function playExhibit({ agents, seed, matchId = null, onEvent = async () =>
     log: match.log,
     hands: match.handNumber,
   };
+}
+
+function readCreateFeeWallet(incoming) {
+  if (!incoming || incoming.spectatorFeeWallet == null || String(incoming.spectatorFeeWallet).trim() === "") return null;
+  return parseSpectatorWallet(incoming.spectatorFeeWallet, houseLaunchProfile().creatorFeeWallet);
 }
 
 class Show {
@@ -1603,6 +1610,8 @@ class Show {
         }
         syncDraftPersona(existing);
       }
+      const resumedFee = readCreateFeeWallet(incoming);
+      if (resumedFee) existing.spectatorFeeWallet = resumedFee;
       this.persist();
       return {
         agent: this.agentSummary(existing),
@@ -1612,6 +1621,7 @@ class Show {
         playstyleSummary: existing.playstyleSummary,
       };
     }
+    const feeWallet = readCreateFeeWallet(incoming);
     const draft = createDraft({ ...shaped, name: brandedName }, {
       names: this.takenNames(),
       takenIds: this.takenIds(),
@@ -1619,6 +1629,7 @@ class Show {
       count: this.userAgents.size,
       takenPortraits: this.takenPortraits(),
     });
+    if (feeWallet) draft.spectatorFeeWallet = feeWallet;
     this.userAgents.set(draft.id, draft);
     this.records.ensure(draft.id);
     this.persist();
@@ -1692,6 +1703,44 @@ class Show {
     draft.updatedAt = draft.argus.mintedAt;
     this.persist();
     return { agent: this.agentSummary(draft), argus: publicArgus(draft.argus) };
+  }
+
+  rememberSpectatorFeeWallet(agentId, wallet) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
+    const next = wallet ? parseSpectatorWallet(wallet, houseLaunchProfile().creatorFeeWallet) : null;
+    draft.spectatorFeeWallet = next;
+    draft.updatedAt = new Date().toISOString();
+    this.persist();
+    return { agent: this.agentSummary(draft), spectatorFeeWallet: next };
+  }
+
+  setArgusFeeSplit(agentId, split) {
+    const draft = this.userAgents.get(agentId);
+    if (!draft) throw creatorError("unknown_agent", "No such agent.", 404);
+    if (!draft.argus || draft.argus.status !== "minted" || !draft.argus.tokenAddress) {
+      throw creatorError("not_minted", "This agent does not have an Argus token yet.", 409);
+    }
+    if (!isPortal8(draft.argus.portal) && Number(draft.argus.portalNumber) !== 8) {
+      throw creatorError("portal7", "This token was minted on Portal 7. A payout split applies to new Portal 8 mints.", 409);
+    }
+    const house = split && split.houseWallet;
+    const spectator = split && split.spectatorWallet;
+    if (!house) throw creatorError("bad_fee_wallet", "The house wallet is missing from the split.", 400);
+    draft.argus.portalNumber = 8;
+    draft.argus.feeSplit = {
+      status: split.status === "set" ? "set" : "pending",
+      houseBps: HOUSE_SPLIT_BPS,
+      creatorBps: CREATOR_SPLIT_BPS,
+      houseWallet: house,
+      spectatorWallet: spectator || null,
+      splitTxHash: split.splitTxHash || null,
+    };
+    if (spectator) draft.spectatorFeeWallet = spectator;
+    draft.argus.payoutWallet = draft.argus.payoutWallet || house;
+    draft.updatedAt = new Date().toISOString();
+    this.persist();
+    return { agent: this.agentSummary(draft), argus: publicArgus(draft.argus), spectatorFeeWallet: draft.spectatorFeeWallet || null };
   }
 
   generateConcepts(agentId, opts = {}) {
@@ -1851,6 +1900,7 @@ class Show {
       archetype: draft.archetype,
       archetypeLabel: draft.archetypeLabel,
       argus: publicArgus(draft.argus),
+      spectatorFeeWallet: draft.spectatorFeeWallet || null,
       brand: draft.status === "READY" ? this.brands.publicOf(draft.id) : this.provisionalBrand(draft),
     };
   }
@@ -2125,6 +2175,7 @@ class Show {
       playable: roster === "house" || ready,
       createdAt: draft ? (draft.createdAt || null) : null,
       argus: draft ? publicArgus(draft.argus) : null,
+      spectatorFeeWallet: draft ? (draft.spectatorFeeWallet || null) : null,
     };
   }
 
@@ -2171,6 +2222,7 @@ class Show {
       personalitySummary: draft ? draft.personalitySummary : null,
       visualDirection: draft ? draft.visualDirection : null,
       argus: draft ? publicArgus(draft.argus) : null,
+      spectatorFeeWallet: draft ? (draft.spectatorFeeWallet || null) : null,
     };
   }
 

@@ -5,6 +5,7 @@
 const fs = require("fs"), path = require("path");
 const src = path.resolve(process.argv[2] || path.join(process.env.USERPROFILE || process.env.HOME || ".", "Desktop", "pfp-forge", "out"));
 const dest = path.join(__dirname, "..", "public", "assets", "portraits");
+const maxArg = process.argv.indexOf("--max"); const MAX_BANK = maxArg >= 0 ? Number(process.argv[maxArg + 1]) || Infinity : Infinity;   // cap on bank entries (house always included)
 fs.mkdirSync(dest, { recursive: true });
 const entries = [];
 for (const set of ["bank", "house"]) {
@@ -13,6 +14,7 @@ for (const set of ["bank", "house"]) {
   for (const row of JSON.parse(fs.readFileSync(mf, "utf8"))) {
     const webp = path.join(src, set, row.file.replace(/\.png$/i, ".webp"));
     if (!fs.existsSync(webp)) continue;
+    if (set === "bank" && entries.filter((e) => !e.house).length >= MAX_BANK) break;
     const file = path.basename(webp);
     fs.copyFileSync(webp, path.join(dest, file));
     const tags = { ...row.tags }; delete tags.n; delete tags.variant;

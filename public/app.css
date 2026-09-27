@@ -2412,3 +2412,41 @@ body {
   .roster-extra { display: none; }
   .matchup-hero { min-height: min(62dvh, 560px); padding: var(--space-3); }
 }
+/* Head-to-head rows. The record is its own full-width line so a short title
+   cannot leave it sitting beside the name. */
+.rowbtn.rival-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "face identity"
+    "record record";
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+}
+.rival-note__face {
+  grid-area: face;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.rival-note__face .portrait-plate { margin: 0; }
+.rival-note__identity {
+  grid-area: identity;
+  min-width: 0;
+}
+.rival-note__identity b,
+.rival-note__identity .brand-title {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rowbtn.rival-note .rival-note__record {
+  grid-area: record;
+  flex: none;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}

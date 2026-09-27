@@ -3632,7 +3632,13 @@ function agentDetail(a) {
     const plate = meetings >= 2
       ? `<span class="portrait-plate portrait-plate--roster">${facePlate(person, 96)}</span>`
       : mark(r.name, null, r.id);
-    return `<div class="rowbtn rival-note" data-cast="${esc(r.id)}">${plate}<span><b>${esc(r.name)}</b>${titleLine(person)}</span><div class="fine">${esc(r.series)} in ${r.meetings}${meetings >= 2 ? " · head to head" : ""}</div></div>`;
+    const record = `${r.series} in ${r.meetings}${meetings >= 2 ? " · head to head" : ""}`;
+    const label = `${r.name}. ${record}. Open profile.`;
+    return `<button class="rowbtn rival-note" type="button" data-agent="${esc(r.id)}" data-cast="${esc(r.id)}" aria-label="${esc(label)}">
+      <span class="rival-note__face">${plate}</span>
+      <span class="rival-note__identity"><b>${esc(r.name)}</b>${titleLine(person)}</span>
+      <span class="fine rival-note__record">${esc(record)}</span>
+    </button>`;
   }).join("");
   const moments = (a.moments || []).map((m) => {
     const replayId = history.find((h) => h.title && h.title === m.title);

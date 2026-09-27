@@ -63,6 +63,40 @@ function withSlash(value) {
   return String(value || "").trim().replace(/\/+$/, "") + "/";
 }
 
+// Arena coin. Distinct from a per-agent Portal #7 mint. Confirmed on Arcscan
+// as name "Liar's Dice Arena", symbol LIAR.
+const DEFAULT_LIAR_TOKEN = "0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790";
+
+function liarTokenAddress(source) {
+  const raw = String(source.LDA_LIAR_TOKEN_ADDRESS || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) return ethers.getAddress(DEFAULT_LIAR_TOKEN);
+  try { return ethers.getAddress(raw); }
+  catch { return ethers.getAddress(DEFAULT_LIAR_TOKEN); }
+}
+
+function liarBuyUrl(source, address) {
+  const raw = String(source.LDA_LIAR_BUY_URL || "").trim();
+  if (raw) {
+    try {
+      const url = new URL(raw);
+      if (url.protocol === "https:" || url.protocol === "http:") return url.href;
+    } catch { /* a bad override keeps the Argus token page */ }
+  }
+  return "https://argus.world/token/" + address;
+}
+
+function arenaToken(env) {
+  const source = env || process.env;
+  const tokenAddress = liarTokenAddress(source);
+  return {
+    symbol: "LIAR",
+    label: "$LIAR",
+    name: "Liar's Dice Arena",
+    tokenAddress,
+    buyUrl: liarBuyUrl(source, tokenAddress),
+  };
+}
+
 function creatorFeeWallet(source) {
   const raw = String(source.ARGUS_CREATOR_WALLET || "").trim();
   const pick = /^0x[0-9a-fA-F]{40}$/.test(raw) ? raw : HOUSE_LAUNCH_DEFAULTS.creatorFeeWallet;
@@ -106,6 +140,7 @@ function argusPublicConfig(env) {
     xUrl: house.xUrl,
     telegramUrl: house.telegramUrl,
     creatorFeeWallet: house.creatorFeeWallet,
+    arenaToken: arenaToken(env),
     bundleUrl: BUNDLE_URL,
     bundleSha256: BUNDLE_SHA256,
   };
@@ -134,4 +169,4 @@ function argusPublicConfig(env) {
   };
 }
 
-module.exports = { argusEnabled, publicBase, houseLaunchProfile, argusPublicConfig, sponsoredState, SPONSOR_UNAVAILABLE };
+module.exports = { argusEnabled, publicBase, houseLaunchProfile, argusPublicConfig, arenaToken, sponsoredState, SPONSOR_UNAVAILABLE, DEFAULT_LIAR_TOKEN };

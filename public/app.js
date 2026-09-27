@@ -1727,6 +1727,47 @@ function safeSvg(svg) {
 }
 
 let argusOffer = { enabled: false };
+const DEFAULT_LIAR_TOKEN = "0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790";
+const DEFAULT_LIAR_BUY_URL = "https://argus.world/token/" + DEFAULT_LIAR_TOKEN;
+
+function rememberArgusConfig(cfg) {
+  if (!cfg) return argusOffer;
+  argusOffer = cfg;
+  const url = cfg.arenaToken && cfg.arenaToken.buyUrl;
+  const link = document.getElementById("buy-liar");
+  if (link && typeof url === "string" && url) link.href = url;
+  return argusOffer;
+}
+
+function arenaTokenOffer() {
+  const token = argusOffer && argusOffer.arenaToken;
+  const link = document.getElementById("buy-liar");
+  return {
+    label: (token && token.label) || "$LIAR",
+    tokenAddress: (token && token.tokenAddress) || DEFAULT_LIAR_TOKEN,
+    buyUrl: (token && token.buyUrl) || (link && link.getAttribute("href")) || DEFAULT_LIAR_BUY_URL,
+  };
+}
+
+function arenaBuyNote(url) {
+  let host = "";
+  try { host = new URL(url).hostname.replace(/^www\./i, "").toLowerCase(); }
+  catch { host = ""; }
+  if (host === "argus.world") return "Opens argus.world. This app does not swap.";
+  return "Opens in a new tab. This app does not swap.";
+}
+
+function arenaTokenCard() {
+  const token = arenaTokenOffer();
+  const addr = shortAddress(token.tokenAddress);
+  return `<section class="argus-launch arena-token" data-arena-token="1">
+    <h2>Arena token</h2>
+    <p class="fine">${esc(token.label)} is the arena coin. It is not an agent token.</p>
+    ${addr ? `<p class="fine">${esc(addr)}</p>` : ""}
+    <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(token.buyUrl)}" target="_blank" rel="noopener">Buy ${esc(token.label)}</a>
+    <p class="fine">${esc(arenaBuyNote(token.buyUrl))}</p>
+  </section>`;
+}
 
 function syncLaunchFromDom() {
   if (!creator || !creator.launch) return;
@@ -1783,7 +1824,7 @@ async function loadArgusConfig() {
     const cfg = await api("/api/show/argus/config");
     if (!creator) return;
     creator.argusConfig = cfg && cfg.enabled ? cfg : { enabled: false, publicBase: (cfg && cfg.publicBase) || "", siteUrl: cfg && cfg.siteUrl, xUrl: cfg && cfg.xUrl, telegramUrl: cfg && cfg.telegramUrl, creatorFeeWallet: cfg && cfg.creatorFeeWallet };
-    argusOffer = cfg || argusOffer;
+    if (cfg) rememberArgusConfig(cfg);
   } catch {
     if (creator) creator.argusConfig = { enabled: false };
   }
@@ -2672,7 +2713,7 @@ async function viewCreatedAgent() {
   try {
     const j = await api("/api/show/agents/" + encodeURIComponent(id));
     focusAgent = j.agent;
-    api("/api/show/argus/config").then((cfg) => { argusOffer = cfg || argusOffer; if (focusAgent && focusAgent.id === id) { painted = ""; render(); } }).catch(() => {});
+    api("/api/show/argus/config").then((cfg) => { if (cfg) rememberArgusConfig(cfg); if (focusAgent && focusAgent.id === id) { painted = ""; render(); } }).catch(() => {});
     tab = "agents";
     paintTabs();
     painted = "";
@@ -3151,9 +3192,10 @@ function castBoard() {
 }
 
 function profile() {
-  if (!me) return `<p class="fine">Setting up your test-credit book…</p>`;
+  if (!me) return `<p class="fine">Setting up your test-credit book…</p>${arenaTokenCard()}`;
   return `
     ${pageHead("Your record")}
+    ${arenaTokenCard()}
     <section class="section"><h2>Career</h2>${careerBlock(me)}</section>
     <div class="statgrid">
       ${ui()
@@ -3659,7 +3701,7 @@ view.addEventListener("click", async (e) => {
       focusAgent = j.agent;
       try {
         const cfg = await api("/api/show/argus/config");
-        if (cfg) argusOffer = cfg;
+        if (cfg) rememberArgusConfig(cfg);
       } catch { /* the detail still opens; launch stays hidden until config loads */ }
       tab = "agents";
       paintTabs();
@@ -4195,14 +4237,21 @@ document.addEventListener("keydown", (e) => {
   render();
 });
 
+async function loadArenaToken() {
+  try {
+    const cfg = await api("/api/show/argus/config");
+    if (cfg) rememberArgusConfig(cfg);
+    // Auto-mint reads this config on the open tab, so refresh after it arrives.
+    painted = "";
+    paintedMatch = "";
+    render();
+  } catch { /* the header keeps the default arena link */ }
+}
+
 async function boot() {
   paintSound();
   render();
-  api("/api/show/argus/config").then((cfg) => {
-    if (cfg) argusOffer = cfg;
-    painted = "";
-    render();
-  }).catch(() => {});
+  loadArenaToken();
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => {
       if (document.querySelector("canvas.share-card")) paintShareCards();

@@ -1533,6 +1533,204 @@ function archetypeLabel(id) {
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : "";
 }
 
+// Neon callsigns and short lines, keyed by CREATOR_ARCHETYPES (the same ids as
+// ARCHETYPE_IDS in brandcreate.js). Open and "New suggestion" roll one pair.
+// The field holds the callsign. The roster stores LDA plus that callsign.
+const AGENT_SUGGESTIONS = {
+  GAMBLER: {
+    names: ["Neon Ace", "Lucky Dice", "Velvet Bluff", "Crimson Rook"],
+    lines: [
+      "Pushes a thin bid and smiles like the cup already paid.",
+      "Spends one loud lie, then waits to see who flinches.",
+      "High pressure, high variance, never the quiet seat.",
+    ],
+  },
+  STRATEGIST: {
+    names: ["Silent Quinn", "Iron Ledger", "Cobalt Knox", "Static Vale"],
+    lines: [
+      "Waits until the count is actually thin, then calls.",
+      "Prices the next bid before the table finishes talking.",
+      "Patient math. The ladder only climbs when it is real.",
+    ],
+  },
+  EMPEROR: {
+    names: ["Royal Nova", "Golden Rex", "Halo Crown", "Solar Dune"],
+    lines: [
+      "Lets the table come to the bid, then takes the room.",
+      "Slow, regal, and expensive to challenge.",
+      "The count moves when this seat says it moves.",
+    ],
+  },
+  TRICKSTER: {
+    names: ["Tiltpickle", "Vandal Grin", "Rogue Dice", "Jade Jinx"],
+    lines: [
+      "The bid is a joke until somebody pays it.",
+      "Changes face often enough to spoil a read.",
+      "Small chaos, big grin, never the same tell twice.",
+    ],
+  },
+  REAPER: {
+    names: ["Sable Voss", "Midnight Knox", "Ember Shade", "Ghost Vale"],
+    lines: [
+      "Difficult to read. Sometimes brilliant, sometimes ridiculous.",
+      "A wild bid with a calm face behind it.",
+      "You cannot study a pattern that is not there.",
+    ],
+  },
+  ORACLE: {
+    names: ["Halo Quinn", "Static Nova", "Cobalt Signal", "Silent Vega"],
+    lines: [
+      "Rarely spectacular. Rarely foolish.",
+      "Speaks like the outcome is already in the cup.",
+      "Steady clock. Does not beat itself.",
+    ],
+  },
+  BEAST: {
+    names: ["Viper Rex", "Ember Fang", "Volt Hound", "Rogue Blaze"],
+    lines: [
+      "Leans on a thin bid until it breaks.",
+      "Smells blood in the count and pushes.",
+      "Predatory tempo. The next raise feels expensive.",
+    ],
+  },
+  MACHINE: {
+    names: ["Static Rook", "Iron Byte", "Cobalt Circuit", "Solar Glitch"],
+    lines: [
+      "Counts everything and admits nothing.",
+      "Exact bids. Almost no wasted motion.",
+      "The ladder is a machine. It does not improvise.",
+    ],
+  },
+  DUELIST: {
+    names: ["Vandal Ace", "Iron Vega", "Neon Knox", "Sable Blaze"],
+    lines: [
+      "One clean challenge, then the hand is over.",
+      "Fast hands, cold face, no extra die for show.",
+      "Treats the bid like a duel, not a conversation.",
+    ],
+  },
+  WARLORD: {
+    names: ["Crimson Rex", "Iron Dune", "Viper Rook", "Royal Blaze"],
+    lines: [
+      "Pressure from the first bid and never lets up.",
+      "Makes the next number feel like a dare.",
+      "Heavy raises. The table pays to stay in.",
+    ],
+  },
+  NOBLE: {
+    names: ["Velvet Vale", "Golden Quinn", "Royal Rain", "Halo Mercer"],
+    lines: [
+      "A calm face can be the loudest bet in the room.",
+      "Raises only when the price is worth the name.",
+      "Elegant patience. The call arrives late and clean.",
+    ],
+  },
+  MADMAN: {
+    names: ["Glitchcrumb", "Chaos Nova", "Ghost Dice", "Ember Loki"],
+    lines: [
+      "Changes the count just to see the table twitch.",
+      "The wild bid that was never in the cup.",
+      "Noise first. The real bid is hiding in the joke.",
+    ],
+  },
+  JUDGE: {
+    names: ["Iron Verdict", "Silent Knox", "Cobalt Quinn", "Sable Rook"],
+    lines: [
+      "Calls when the math is ugly. Rarely bluffs for fun.",
+      "An honest ladder gets a fair count. A lie does not.",
+      "The verdict lands once, and the hand ends.",
+    ],
+  },
+  PHANTOM: {
+    names: ["Ghost Vega", "Midnight Rain", "Sable Nova", "Halo Void"],
+    lines: [
+      "Shows up in the count and disappears from the read.",
+      "Quiet hands. The lie is already spent.",
+      "You notice the bid after you have already paid it.",
+    ],
+  },
+  ALCHEMIST: {
+    names: ["Ember Vial", "Jade Nova", "Solar Mix", "Neon Flux"],
+    lines: [
+      "Mixes a small lie into an honest ladder.",
+      "Turns one extra die into a story the room believes.",
+      "Measured chaos. The formula changes by one.",
+    ],
+  },
+  ASSASSIN: {
+    names: ["Viper Knox", "Silent Edge", "Sable Ace", "Ghost Rook"],
+    lines: [
+      "Waits, then ends the bluff on a single call.",
+      "One precise challenge. No table talk.",
+      "The thin bid does not get a second chance.",
+    ],
+  },
+  MONK: {
+    names: ["Jade Rain", "Silent Still", "Halo Breath", "Cobalt Calm"],
+    lines: [
+      "Matches the count. Calls only when the bid cannot exist.",
+      "Almost never the one who lied.",
+      "Still hands. The truth is enough pressure.",
+    ],
+  },
+  PIRATE: {
+    names: ["Lootcrumb", "Lucky Cruz", "Vandal Tide", "Rogue Sea"],
+    lines: [
+      "Takes the smallest lie that still raises the price.",
+      "Grinning pressure. Never bluffs by more than one.",
+      "Boards the ladder and makes you pay the toll.",
+    ],
+  },
+  SORCERER: {
+    names: ["Velvet Hex", "Neon Rune", "Midnight Hex", "Jade Loki"],
+    lines: [
+      "The next call is already sitting in the cup.",
+      "A quiet line that bends the count without a shout.",
+      "Mystery on purpose. The tell is a prop.",
+    ],
+  },
+  COMMANDER: {
+    names: ["Iron Banner", "Royal Rook", "Cobalt Ace", "Solar Knox"],
+    lines: [
+      "Holds the count until the bid is priced.",
+      "Orders the ladder. The table follows or folds.",
+      "Disciplined raises. No wasted dice.",
+    ],
+  },
+};
+
+function suggestAgentCallsign(rand, avoidName) {
+  const roll = typeof rand === "function" ? rand : Math.random;
+  const avoid = String(avoidName || "").trim().toLowerCase();
+  const ids = CREATOR_ARCHETYPES.filter((id) => {
+    const row = AGENT_SUGGESTIONS[id];
+    return row && row.names && row.names.length && row.lines && row.lines.length;
+  });
+  if (!ids.length) return { archetype: "", name: "", line: "" };
+  let picked = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const archetype = ids[Math.floor(roll() * ids.length) % ids.length];
+    const row = AGENT_SUGGESTIONS[archetype];
+    const open = row.names.filter((name) => String(name).toLowerCase() !== avoid);
+    const pool = open.length ? open : row.names;
+    const name = pool[Math.floor(roll() * pool.length) % pool.length];
+    const line = row.lines[Math.floor(roll() * row.lines.length) % row.lines.length];
+    picked = { archetype, name, line };
+    if (String(name).toLowerCase() !== avoid) return picked;
+  }
+  return picked;
+}
+
+function applyAgentSuggestion(rand) {
+  if (!creator || !creator.form) return null;
+  const avoid = creator.suggestion && creator.suggestion.name;
+  const next = suggestAgentCallsign(rand, avoid);
+  creator.suggestion = next;
+  if (next.name) creator.form.name = next.name;
+  if (next.line) creator.form.shortDescription = next.line;
+  return next;
+}
+
 const CREATOR_BEATS = [
   "Building personality...",
   "Choosing visual DNA...",
@@ -1604,6 +1802,7 @@ function blankCreator() {
     selectedId: null,
     selections: defaultVisualSelections(),
     oneShot: false,
+    suggestion: null,
     mintPhase: "",
     portraits: [],
     selectedPortrait: null,
@@ -2626,9 +2825,10 @@ function creatorView() {
     body = `
       <p class="fine">You invent a player for Liar's Dice Arena. Pick a name and a face. They join the roster and play, and confirming creates their Argus token.</p>
       ${feeCopy}
-      <label>Name <span class="fine">(optional — saved on the roster as LDA plus this name)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Nightshade"></label>
+      <label>Name <span class="fine">(optional — saved on the roster as LDA plus this name)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Callsign"></label>
       <p class="fine" data-roster-name>Roster name ${esc(rosterNamePreview(f.name))}</p>
-      <label>Description <span class="fine">(optional)</span><textarea name="shortDescription" maxlength="240" placeholder="A quiet closer who spends one lie and waits.">${esc(f.shortDescription)}</textarea></label>
+      <label>Description <span class="fine">(optional)</span><textarea name="shortDescription" maxlength="240" placeholder="How this callsign plays the table.">${esc(f.shortDescription)}</textarea></label>
+      ${creator.resuming ? "" : `<div class="creator-suggestion"><p class="fine">A random callsign and a line that fits it.</p><button class="lda-btn lda-btn-ghost" type="button" data-refresh-suggestion="1"${creator.busy ? " disabled" : ""}>New suggestion</button></div>`}
       <section class="portrait-pick">
         <div class="section-head">
           <span class="kicker">Portrait</span>
@@ -2712,6 +2912,7 @@ async function loadPortraitOffer(seed) {
 async function openCreator() {
   creator = blankCreator();
   creator.oneShot = true;
+  applyAgentSuggestion();
   focusAgent = null;
   focusMatch = null;
   tab = "agents";
@@ -3912,6 +4113,14 @@ view.addEventListener("click", async (e) => {
       creator.error = "";
       try { await loadPortraitOffer("more-" + Date.now()); }
       catch (ex) { creator.error = ex.message || "Could not load more portraits."; }
+      painted = "";
+      render();
+      return;
+    }
+    if (e.target.closest("[data-refresh-suggestion]") && !creator.busy && !creator.resuming) {
+      syncCreatorFromDom();
+      applyAgentSuggestion();
+      creator.error = "";
       painted = "";
       render();
       return;

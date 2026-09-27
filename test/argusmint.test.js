@@ -157,7 +157,7 @@ function mockRes() {
     catch (e) { threw = e.code === "allocation"; }
     assert(threw, "bad allocation " + JSON.stringify(bad));
   }
-  eq(launch.validateTaxes(500, 500).buyTaxBps, 500, "default tax");
+  eq(launch.validateTaxes(500, 500).buyTaxBps, 500, "five percent tax still accepted");
   eq(launch.validateTaxes(100, 1000).sellTaxBps, 1000, "tax bounds");
   for (const pair of [[0, 500], [500, 0], [99, 500], [500, 1001]]) {
     let threw = false;
@@ -186,7 +186,8 @@ function mockRes() {
   eq(suggested.creatorFeeWallet, HOUSE_WALLET, "creator-fee wallet is the house default");
   eq(suggested.launchName, "LDA Vesper", "token name keeps the LDA prefix and the space");
   eq(suggested.launchDescription, "A quiet closer who spends one lie and waits.\n\nAn LDA agent in Liar's Dice Arena.", "description keeps the blurb and one LDA line");
-  eq(suggested.launchBuy, "5", "buy default");
+  eq(suggested.launchBuy, "2", "buy default");
+  eq(suggested.launchSell, "2", "sell default");
   eq(suggested.launchCreator, "100", "creator default");
   eq(suggested.launchDevBuy, "0", "no dev buy");
   eq(launch.suggestLaunch({ name: "Dracula", publicBase: "https://liars-dice-arena.onrender.com" }).launchName, "LDA Dracula", "chosen name is prefixed");
@@ -218,8 +219,8 @@ function mockRes() {
   eq(prepared.name, "LDA Vesper", "prepared name keeps the space after LDA");
   eq(prepared.description, suggested.launchDescription, "prepared description keeps the LDA line");
   eq(prepared.symbol, "VESPER2", "prepared ticker");
-  eq(prepared.buyTaxBps, 500, "prepared buy");
-  eq(prepared.sellTaxBps, 500, "prepared sell");
+  eq(prepared.buyTaxBps, 200, "prepared buy");
+  eq(prepared.sellTaxBps, 200, "prepared sell");
   eq(prepared.creatorBps, 10000, "prepared creator");
   eq(prepared.burnBps, 0, "prepared burn");
   eq(prepared.devBuyQuote, 0n, "prepared dev buy");
@@ -243,8 +244,8 @@ function mockRes() {
   const decodedCall = iface().decodeFunctionData("launch", data);
   eq(decodedCall[0].name, "LDA Vesper", "calldata name");
   eq(decodedCall[0].symbol, "VESPER2", "calldata ticker");
-  eq(decodedCall[0].buyTaxBps, 500n, "calldata buy");
-  eq(decodedCall[0].sellTaxBps, 500n, "calldata sell");
+  eq(decodedCall[0].buyTaxBps, 200n, "calldata buy");
+  eq(decodedCall[0].sellTaxBps, 200n, "calldata sell");
   eq(decodedCall[0].creatorBps, 10000n, "calldata allocation");
   eq(decodedCall[0].devBuyQuote, 0n, "calldata dev buy");
   eq(decodedCall[0].expectConvert, 1n, "calldata expectConvert");
@@ -347,7 +348,8 @@ function mockRes() {
         eq(params[0].from, CREATOR, "creator signs");
         const sent = iface().decodeFunctionData("launch", params[0].data);
         eq(sent[0].symbol, "VESPER2", "wallet payload ticker");
-        eq(sent[0].buyTaxBps, 500n, "wallet payload tax");
+        eq(sent[0].buyTaxBps, 200n, "wallet payload tax");
+        eq(sent[0].sellTaxBps, 200n, "wallet payload sell tax");
         return TX;
       }
       if (method === "eth_getTransactionReceipt") return receipt({ transactionHash: params[0] });
@@ -431,7 +433,8 @@ function mockRes() {
     eq(cfg.portal, ethers.getAddress(launch.PORTAL7), "enabled config is portal 7");
     assert(cfg.portal !== ethers.getAddress(launch.PORTAL6), "enabled config is not portal 6");
     assert(Array.isArray(cfg.abi) && cfg.abi.some((row) => row.name === "launch"), "config serves the launch abi");
-    eq(cfg.defaults.buyTaxPercent, 5, "documented buy default");
+    eq(cfg.defaults.buyTaxPercent, 2, "documented buy default");
+    eq(cfg.defaults.sellTaxPercent, 2, "documented sell default");
     eq(cfg.defaults.creatorPercent, 100, "documented allocation");
     const fresh = boot(path.join(dir, "http.json"));
     fresh.ready = true;

@@ -101,8 +101,8 @@ function form(extra) {
     launchDescription: "A quiet closer.",
     launchX: "",
     launchTelegram: "",
-    launchBuy: "5",
-    launchSell: "5",
+    launchBuy: "2",
+    launchSell: "2",
     launchCreator: "100",
     launchBurn: "0",
     launchDividends: "0",
@@ -307,8 +307,8 @@ function agent(show, name) {
   const decoded = iface().decodeFunctionData("launch", tx.data);
   eq(decoded[0].name, "Vesper", "sponsored calldata name");
   eq(decoded[0].symbol, "VESPER", "sponsored calldata ticker");
-  eq(decoded[0].buyTaxBps, 500n, "sponsored calldata buy tax");
-  eq(decoded[0].sellTaxBps, 500n, "sponsored calldata sell tax");
+  eq(decoded[0].buyTaxBps, 200n, "sponsored calldata buy tax");
+  eq(decoded[0].sellTaxBps, 200n, "sponsored calldata sell tax");
   eq(decoded[0].creatorBps, 10000n, "sponsored calldata creator share");
   eq(decoded[0].devBuyQuote, 0n, "sponsored calldata has no dev buy");
   eq(decoded[0].expectConvert, 1n, "sponsored calldata expectConvert");

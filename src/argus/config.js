@@ -165,8 +165,8 @@ function argusPublicConfig(env) {
     hookFlags: "0x2044",
     abi: loadAbi(),
     defaults: {
-      buyTaxPercent: 5,
-      sellTaxPercent: 5,
+      buyTaxPercent: 2,
+      sellTaxPercent: 2,
       creatorPercent: 100,
       burnPercent: 0,
       dividendPercent: 0,

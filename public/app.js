@@ -2028,6 +2028,8 @@ function suggestedLaunch(cfg, extra) {
     launchX: args.xUrl || house.xUrl || "",
     launchTelegram: args.telegramUrl || house.telegramUrl || "",
     creatorFeeWallet: args.creatorFeeWallet || house.creatorFeeWallet || "",
+    launchBuy: "2",
+    launchSell: "2",
   };
 }
 
@@ -2129,7 +2131,7 @@ function argusPanel() {
     <p class="fine">This agent is already saved. Creating the agent and minting a token are separate steps. ${creator.agentPlayable === false ? "Use Enter the Arena to skip the token. Finish branding from their page when you want them in the show. If the launch fails, the saved agent is unchanged." : "Use Enter the Arena to skip. If the launch fails, this agent still plays."}</p>
     <p class="fine">Connect wallet only links MetaMask or Rabby, an injected wallet on Arc (chain 5042). Connecting does not mint the token.</p>
     <p class="fine">The fields below are already filled from this agent and the house profile. Image URL is this agent's portrait from Create Agent. Review or edit the name, ticker, description, image, website, and X. Telegram stays blank. ${houseMint ? "Use <b>Launch with server mint</b> so creator fees land on the house wallet." : "The wallet that signs is the on-chain creator."}</p>
-    <p class="fine">Defaults: 5% buy tax, 5% sell tax, 100% creator, 0% dividends, 0% burn, 0% LP, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply. There is no on-chain split with the spectator.</p>
+    <p class="fine">Defaults: 2% buy tax, 2% sell tax, 100% creator, 0% dividends, 0% burn, 0% LP, no dev buy, 2,500 USDC opening value, 45,000 USDC bond, 1 billion supply. There is no on-chain split with the spectator.</p>
     ${feeNote ? `<p class="fine">${feeNote}</p>` : ""}
     <p class="fine">${esc(wallet)}</p>
     ${f.status ? `<p class="fine" role="status">${esc(f.status)}</p>` : ""}

@@ -24,6 +24,7 @@ let creatorBeat = null;
 let focusMatch = null;
 let agents = [];
 let agentQuery = "";
+let agentSearchOpen = false;
 let history = [];
 let leaders = [];
 let err = "";
@@ -1668,7 +1669,8 @@ function pageHead(title, opts) {
   const kicker = o.kicker ? `<p class="kicker">${esc(o.kicker)}</p>` : "";
   const actions = o.actions ? `<div class="page-head__actions">${o.actions}</div>` : "";
   const lede = o.lede ? `<p class="fine page-head__lede">${esc(o.lede)}</p>` : "";
-  return `<header class="page-head"><div class="page-head__titles">${kicker}<h1 class="page">${esc(title)}</h1></div>${actions}</header>${lede}`;
+  const extra = o.extra || "";
+  return `<header class="page-head"><div class="page-head__titles">${kicker}<h1 class="page">${esc(title)}</h1></div>${actions}${extra}</header>${lede}`;
 }
 
 function createAgentButton() {
@@ -2906,17 +2908,28 @@ function agentSearchPick(list, query) {
   return exact.length === 1 ? exact[0] : null;
 }
 
-function createdAgentOrder(list) {
-  return (list || [])
-    .filter((agent) => agent && agent.roster === "user")
-    .slice()
-    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+function agentSearchShown() {
+  return !!(agentSearchOpen || agentSearchNorm(agentQuery));
+}
+
+function agentSearchGlyph(open) {
+  if (open) {
+    return `<svg class="agent-search__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6.5 18 18.5M18 6.5 6 18.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+  }
+  return `<svg class="agent-search__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.25" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.2 15.2 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+}
+
+function agentSearchToggle() {
+  const open = agentSearchShown();
+  const label = open ? "Close agent search" : "Search agents";
+  return `<button class="lda-btn lda-btn-ghost agent-search__toggle${open ? " is-open" : ""}" type="button" data-agent-search-toggle aria-expanded="${open ? "true" : "false"}" aria-controls="agent-search" aria-label="${label}">${agentSearchGlyph(open)}</button>`;
 }
 
 function agentSearchForm() {
   const q = agentQuery || "";
-  return `<form class="agent-search" role="search" data-agent-search-form autocomplete="off">
-    <label class="agent-search__label" for="agent-search">Find an agent</label>
+  const open = agentSearchShown();
+  return `<form class="agent-search" role="search" data-agent-search-form autocomplete="off"${open ? "" : " hidden"}>
+    <label class="sr" for="agent-search">Find an agent</label>
     <div class="agent-search__row">
       <input id="agent-search" type="search" name="q" data-agent-search inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Name, ticker, or 0x address" aria-controls="agent-roster" value="${esc(q)}">
       <button class="lda-btn lda-btn-ghost agent-search__clear" type="button" data-agent-search-clear${String(q).trim() ? "" : " hidden"}>Clear</button>
@@ -2928,33 +2941,21 @@ function agentSearchEmpty() {
   return `<section class="empty lda-empty agent-search__empty" data-state="empty" role="status"><div class="kicker">No match</div><p>No agent has that name, ticker, or token address.</p></section>`;
 }
 
-function createdAgentRow(agent) {
-  const url = argusTokenUrl(agent.argus);
-  const symbol = agent.argus && agent.argus.symbol ? String(agent.argus.symbol) : "";
-  const addr = agent.argus && agent.argus.tokenAddress ? shortAddress(agent.argus.tokenAddress) : "";
-  const meta = [symbol, addr].filter(Boolean).join(" · ");
-  const token = url
-    ? `<a class="agent-directory__token lda-btn lda-btn-ghost" href="${esc(url)}" target="_blank" rel="noopener">Buy on Argus</a>`
-    : `<span class="fine agent-directory__pending">No token yet</span>`;
-  return `<li class="agent-directory__row">
-    <button class="agent-directory__open" type="button" data-agent="${esc(agent.id)}">
-      <span class="agent-directory__name">${esc(agent.name)}</span>
-      ${meta ? `<span class="fine">${esc(meta)}</span>` : ""}
-    </button>
-    ${token}
-  </li>`;
+function closeAgentSearch() {
+  agentSearchOpen = false;
+  agentQuery = "";
+  const field = matchEl.querySelector("[data-agent-search]");
+  if (field) field.value = "";
+  render();
+  const toggle = matchEl.querySelector("[data-agent-search-toggle]");
+  if (toggle && toggle.focus) toggle.focus({ preventScroll: true });
 }
 
-function createdDirectory(rows, query) {
-  if (!rows.length && agentSearchNorm(query)) return "";
-  const body = rows.length
-    ? `<ul class="agent-directory__list">${rows.map(createdAgentRow).join("")}</ul>`
-    : `<p class="fine agent-directory__empty">No created agents yet. They stay on this list after Create Agent.</p>`;
-  return `<section class="agent-directory" data-agent-directory aria-labelledby="created-agents">
-    <h2 id="created-agents" class="agent-directory__title">Created agents</h2>
-    <p class="fine">Newest first. A minted token opens on argus.world. The house wallet is the on-chain fee recipient. Spectator splits are later, off this page.</p>
-    ${body}
-  </section>`;
+function openAgentSearch() {
+  agentSearchOpen = true;
+  render();
+  const field = matchEl.querySelector("[data-agent-search]");
+  if (field && field.focus) field.focus({ preventScroll: true });
 }
 
 function agentCard(a) {
@@ -2973,22 +2974,9 @@ function agentCard(a) {
 function agentRosterMarkup() {
   const hits = agents.filter((a) => agentMatchesQuery(a, agentQuery));
   if (!hits.length) return { key: "empty", html: agentSearchEmpty() };
-  const created = createdAgentOrder(hits);
-  const house = hits.filter((agent) => !agent || agent.roster !== "user");
-  const parts = [];
-  const directory = createdDirectory(created, agentQuery);
-  if (directory) parts.push(directory);
-  if (house.length) {
-    parts.push(`<section class="agent-cast" data-house-cast><h2 class="agent-directory__title">House cast</h2><div class="agent-roster">${house.map(agentCard).join("")}</div></section>`);
-  }
   return {
-    key: [
-      "c",
-      created.map((agent) => agent.id + "=" + ((agent.argus && agent.argus.tokenAddress) || "")).join(","),
-      "h",
-      house.map((agent) => agent.id).join(","),
-    ].join("|"),
-    html: parts.join(""),
+    key: hits.map((agent) => agent.id + ":" + (agent.record || "") + ":" + (agent.status || "")).join(","),
+    html: `<div class="agent-roster">${hits.map(agentCard).join("")}</div>`,
   };
 }
 
@@ -3025,7 +3013,7 @@ function agentsView() {
     return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
   }
   if (!agents.length) return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
-  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}${createAgentListNote()}${agentSearchForm()}${agentRosterSlot()}`;
+  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() + agentSearchToggle(), extra: agentSearchForm() })}${createAgentListNote()}${agentRosterSlot()}`;
 }
 
 function agentIdFromLocation() {
@@ -3688,6 +3676,12 @@ view.addEventListener("submit", async (e) => {
 });
 
 view.addEventListener("click", async (e) => {
+  const toggleSearch = e.target.closest("[data-agent-search-toggle]");
+  if (toggleSearch) {
+    if (agentSearchShown()) closeAgentSearch();
+    else openAgentSearch();
+    return;
+  }
   const clearSearch = e.target.closest("[data-agent-search-clear]");
   if (clearSearch) {
     agentQuery = "";
@@ -4301,6 +4295,12 @@ document.addEventListener("visibilitychange", () => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  const inAgentSearch = e.target && e.target.closest && e.target.closest("[data-agent-search], [data-agent-search-toggle], [data-agent-search-clear]");
+  if (inAgentSearch && tab === "agents" && agentSearchShown()) {
+    e.preventDefault();
+    closeAgentSearch();
+    return;
+  }
   const tag = (e.target && e.target.tagName) || "";
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   if (introKey) finishIntro();

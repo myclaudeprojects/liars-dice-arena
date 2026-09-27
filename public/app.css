@@ -1819,19 +1819,41 @@ body {
   .broadcast-strip .stage-readout { grid-column: 1 / -1; text-align: center; padding-bottom: 9px; }
   .arena-surface { min-height: 590px; padding-left: 8px; padding-right: 8px; }
   .arena-seats.vs { grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr); gap: 3px; }
+  .arena-shell .arena-seat { min-width: 0; }
   .agent-portrait-wrap { width: 104px; height: 104px; }
   .arena-shell .mark { width: 100%; height: 100%; font-size: 30px; }
   .agent-copy b { font-size: 19px !important; }
   .agent-status { font-size: 8px; letter-spacing: .11em; }
-  .dice-tray { margin-top: 8px; min-height: 64px; padding-left: 2px; padding-right: 2px; }
-  .arena-shell .die { width: 29px; height: 29px; border-radius: 7px; }
-  .arena-shell .pip { width: 4px; height: 4px; }
+  /* A full cup is five dice. Size them to the seat so the row stays inside
+     the shell, above the LIAR card. */
+  .dice-tray {
+    width: 100%;
+    max-width: 100%;
+    margin-top: 6px;
+    min-height: 0;
+    padding: 4px 0 0;
+  }
+  .arena-shell .dice-row {
+    width: 100%;
+    max-width: 100%;
+    min-height: 0;
+    gap: 3px;
+    justify-content: center;
+  }
+  .arena-shell .die {
+    width: min(29px, calc((100% - 12px) / 5));
+    height: auto;
+    aspect-ratio: 1;
+    border-radius: 6px;
+    flex: 0 0 auto;
+  }
+  .arena-shell .pip { width: 3px; height: 3px; }
   .round-orb { width: 50px; height: 50px; }
   .table-ring { width: 62px; height: 62px; }
   .center-action { min-height: 180px; }
 }
 @media (max-width: 360px) {
-  .arena-shell .die { width: 25px; height: 25px; }
+  .arena-shell .die { width: min(22px, calc((100% - 12px) / 5)); }
   .agent-portrait-wrap { width: 96px; height: 96px; }
   .arena-shell .mark { width: 100%; height: 100%; }
 }

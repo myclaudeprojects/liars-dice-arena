@@ -51,7 +51,7 @@ const css = fs.readFileSync(path.join(root, "app.css"), "utf8");
 assert(html.includes('id="buy-liar"'), "header has the arena buy control");
 assert(html.includes(">Buy $LIAR</a>"), "header labels the arena coin");
 assert(html.includes(BUY), "header defaults to the arena token page");
-assert(html.includes("/static/app.css?v=44"), "css cache query bumped");
+assert(html.includes("/static/app.css?v=45"), "css cache query bumped");
 assert(html.includes("/static/app.js?v=51"), "js cache query bumped");
 const xAt = html.indexOf('id="arena-x"');
 const buyAt = html.indexOf('id="buy-liar"');

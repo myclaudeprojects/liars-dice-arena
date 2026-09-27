@@ -29,6 +29,12 @@ Render env vars: `ARGUS_MINT_ENABLED`, `ARGUS_MINT_KEY`, `PUBLIC_BASE_URL`, `LDA
 
 A minted token is shown on that agent's page: Buy on Argus, the ticker, a shortened token address, market cap, and holder count. Market cap is the Portal #7 pool price times total supply, read with the same Arc RPC list (`ARC_RPC_URL`, `ARC_RPC_URLS`, then the public defaults). The first endpoint that answers is enough. Holder count is Arcscan's non-zero holder total (`https://api.arc-scan.org/v1/tokens/{address}`). A full quote is reused for 60 seconds. A missing figure is reused for 15 seconds. The profile still shows the Argus link when a number is unavailable.
 
+## Arena token ($LIAR)
+
+The header and Profile show **Buy $LIAR** before anyone creates an agent. That link is the arena coin, not an agent token. It opens argus.world in a new tab. The app does not swap, and Arena Credits stay test credits with no cash value.
+
+Unset, the contract is `0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790` (Liar's Dice Arena, symbol LIAR). `LDA_LIAR_TOKEN_ADDRESS` replaces that address and the default Argus URL. `LDA_LIAR_BUY_URL`, when it is an http(s) URL, is used instead of `https://argus.world/token/<address>`. A bad address or URL keeps the default. `GET /api/show/argus/config` publishes this as `arenaToken`, including when Portal #7 minting is off. On a narrow screen the header button is a full-width row under the title, so it stays in the sticky chrome.
+
 The rest of this file describes that older table.
 
 Why this is new tech rather than another dApp:

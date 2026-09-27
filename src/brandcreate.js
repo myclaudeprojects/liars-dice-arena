@@ -12,6 +12,8 @@ const {
   paletteNear,
   titlesTooClose,
   brandSimilarity,
+  emblemReuseBlocked,
+  similarityCeiling,
   validateBrand,
   wordCount,
 } = require("./brands");
@@ -619,15 +621,26 @@ function occupied(brands) {
   const emblems = new Set();
   const palettes = [];
   const names = [];
+  const list = [];
   for (const brand of brands || []) {
     if (!brand) continue;
+    list.push(brand);
     if (brand.title) titles.push(brand.title);
     if (brand.name) names.push(brand.name);
     const visual = brand.visualIdentity || brand;
     if (visual.emblem) emblems.add(visual.emblem);
     if (visual.primaryColor) palettes.push(brand.visualIdentity ? brand : { visualIdentity: visual });
   }
-  return { titles, emblems, palettes, names };
+  return {
+    titles,
+    emblems,
+    palettes,
+    names,
+    brands: list,
+    reservedTitles: [],
+    reservedEmblems: new Set(),
+    reservedPalettes: [],
+  };
 }
 
 function titleFree(title, occ, extra) {
@@ -653,10 +666,19 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
   const like = vary === "like" && anchor;
   let hue = (hinted.hue + salt * 19 + index * (like ? 9 : 27) + Math.floor(rand() * 5)) % 360;
   const balance = keepColors ? 0 : (index + salt) % 3;
-  const usedTitles = [];
-  const usedEmblems = new Set();
-  const usedPalettes = [];
-  for (let attempt = 0; attempt < 36; attempt++) {
+  // One concept batch still needs distinct titles, emblems, and palettes.
+  // The global catalogs do not: an emblem may be reused once the title and
+  // palette (or the portrait) already differ. See emblemReuseBlocked.
+  const reservedTitles = occ.reservedTitles || [];
+  const reservedEmblems = occ.reservedEmblems || new Set();
+  const reservedPalettes = occ.reservedPalettes || [];
+  const roster = occ.brands || [];
+  const occupiedCount = roster.length;
+  const ceiling = similarityCeiling(occupiedCount);
+  const attempts = Math.max(192, SAFE_TITLES.length);
+  let best = null;
+  let bestRank = -1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const title = SAFE_TITLES[(hashString(draft.name) + index * 5 + salt * 3 + attempt) % SAFE_TITLES.length];
     const tagline = TAGLINES[(hashString(draft.shortDescription) + index + salt + attempt) % TAGLINES.length];
     const emblem = keepEmblem
@@ -690,14 +712,25 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
       signatureFeature: dna.signatureFeature,
       styleId: PFP_STYLE_ID,
     };
-    if (!titleFree(title, occ, usedTitles)) continue;
-    if (!keepEmblem && (occ.emblems.has(emblem) || usedEmblems.has(emblem))) continue;
-    if (!paletteFree(visual, occ, usedPalettes)) continue;
+    if (!titleFree(title, { titles: reservedTitles }, [])) continue;
+    if (!keepEmblem && reservedEmblems.has(emblem)) continue;
+    if (!paletteFree(visual, { palettes: reservedPalettes }, [])) continue;
     if (wordCount(tagline) < 4 || wordCount(tagline) > 14) continue;
     const candidate = { archetype: draft.archetype, visualIdentity: visual };
-    const crowded = [...(occ.palettes || []), ...usedPalettes].some((other) => brandSimilarity(candidate, other) >= 0.75);
+    const crowded = [...(occ.palettes || []), ...reservedPalettes].some((other) => brandSimilarity(candidate, other) >= ceiling);
     if (crowded) continue;
-    return {
+    const identity = {
+      agentId: draft.id,
+      title,
+      portraitId: draft.portraitId || null,
+      visualIdentity: visual,
+    };
+    if (!keepEmblem && roster.some((other) => emblemReuseBlocked(identity, other, occupiedCount))) continue;
+    const emblemFresh = keepEmblem || !occ.emblems.has(emblem);
+    const titleFresh = titleFree(title, occ, []);
+    const paletteFresh = paletteFree(visual, occ, []);
+    const rank = (emblemFresh ? 4 : 0) + (titleFresh ? 2 : 0) + (paletteFresh ? 1 : 0);
+    const row = {
       id: `c${index + 1}`,
       conceptNumber: index + 1,
       title,
@@ -714,8 +747,15 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
       emblem,
       emblemSvg: emblemSvg(emblem),
     };
+    if (rank > bestRank) {
+      best = row;
+      bestRank = rank;
+    }
+    // A fully fresh identity is the old strict result. Take the first one
+    // so an uncrowded roster stays deterministic.
+    if (rank === 7) return row;
   }
-  return null;
+  return best;
 }
 
 // Concept variant number: concept 0 is the purest rendition of the selections;
@@ -920,10 +960,14 @@ function buildConcepts(draft, opts = {}) {
   };
   for (let i = 0; i < count; i++) {
     const merged = {
-      titles: [...occ.titles, ...local.titles],
-      emblems: new Set([...occ.emblems, ...local.emblems]),
-      palettes: [...occ.palettes, ...local.palettes],
+      titles: occ.titles,
+      emblems: occ.emblems,
+      palettes: occ.palettes,
       names: occ.names,
+      brands: occ.brands || [],
+      reservedTitles: local.titles,
+      reservedEmblems: local.emblems,
+      reservedPalettes: local.palettes,
     };
     const row = conceptVariant(draft, i, salt + i, merged, i === 0 ? vary : "all", i === 0 ? anchor : null);
     if (!row) break;

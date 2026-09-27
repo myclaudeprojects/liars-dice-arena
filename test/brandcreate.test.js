@@ -5,6 +5,7 @@ const path = require("path");
 const { CAST } = require("../src/characters");
 const { Show } = require("../src/showrunner");
 const { paletteNear, titlesTooClose, wordCount, brandSimilarity, SEED_BRANDS } = require("../src/brands");
+const { EMBLEM_IDS } = require("../src/brandcreate");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); }
@@ -215,17 +216,48 @@ function signatures(concepts) {
   const fileScale = path.join(dir, "scale.json");
   const showScale = boot(fileScale);
   const createdIds = [];
-  for (let i = 1; i <= 20; i++) {
-    const made = showScale.createAgent({ ...INPUT, name: "Guest " + String(i).padStart(2, "0") });
+  const target = EMBLEM_IDS.length + 16;
+  assert(target > EMBLEM_IDS.length, "the scale run outgrows the emblem catalog");
+  for (let i = 1; i <= target; i++) {
+    const name = "Guest " + String(i).padStart(3, "0");
+    let made;
+    try { made = showScale.createAgent({ ...INPUT, name }); }
+    catch (e) { throw new Error("create " + i + " failed: " + (e.code || "") + " " + e.message); }
+    let concepts;
+    try { concepts = showScale.generateConcepts(made.agent.id, { count: 3 }); }
+    catch (e) { throw new Error("concepts " + i + " failed: " + (e.code || "") + " " + e.message); }
+    try { showScale.selectConcept(made.agent.id, concepts.concepts[0].id); }
+    catch (e) { throw new Error("lock " + i + " failed: " + (e.code || "") + " " + e.message); }
     assert(made.agent && made.agent.id, "agent " + i + " is created");
     createdIds.push(made.agent.id);
   }
-  eq(showScale.userAgents.size, 20, "create keeps going past the old 16-agent roster");
-  eq(new Set(createdIds).size, 20, "each extra agent gets its own id");
+  eq(showScale.userAgents.size, target, "create keeps going past the emblem catalog");
+  eq(new Set(createdIds).size, target, "each extra agent gets its own id");
   eq(showScale.agentList().filter((row) => row.roster === "house").length, 12, "house cast stays 12 while user agents scale");
+  const lockedRows = createdIds.map((id) => showScale.brands.full(id));
+  assert(lockedRows.every((row) => row && row.visualIdentity && row.visualIdentity.emblem), "each scaled agent locks a brand");
+  const lockedEmblems = lockedRows.map((row) => row.visualIdentity.emblem);
+  assert(lockedEmblems.length > EMBLEM_IDS.length, "locked roster is larger than the emblem catalog");
+  assert(new Set(lockedEmblems).size < lockedEmblems.length, "a later agent reuses an emblem");
+  const seen = new Map();
+  for (const row of lockedRows) {
+    const emblem = row.visualIdentity.emblem;
+    if (!seen.has(emblem)) { seen.set(emblem, row); continue; }
+    assert(!titlesTooClose(seen.get(emblem).title, row.title), "reused emblem keeps a different title");
+    break;
+  }
+  let lateNameHit = false;
+  try { showScale.createAgent({ ...INPUT, name: "Guest 001" }); }
+  catch (e) { lateNameHit = e.code === "name_collision"; }
+  assert(lateNameHit, "name collision stays strict after emblems are reused");
   const brandcreateSrc = fs.readFileSync(path.join(__dirname, "..", "src", "brandcreate.js"), "utf8");
+  const brandsSrc = fs.readFileSync(path.join(__dirname, "..", "src", "brands.js"), "utf8");
   assert(!brandcreateSrc.includes("ROSTER_CAP"), "create no longer exports a user roster cap");
   assert(!brandcreateSrc.includes("The user roster is full."), "create no longer rejects a full user roster");
+  assert(!brandcreateSrc.includes("occ.emblems.has(emblem) || usedEmblems.has(emblem)"), "the emblem catalog is not a hard skip");
+  assert(brandcreateSrc.includes("an emblem may be reused"), "emblem reuse is an explicit rule");
+  assert(brandsSrc.includes("Emblems are not globally unique"), "brand lock does not require a unique emblem");
+  assert(!brandsSrc.includes("other.visualIdentity.emblem === brand.visualIdentity.emblem"), "locking does not reject every shared emblem");
 
   console.log("brandcreate ok");
 })().catch((e) => {

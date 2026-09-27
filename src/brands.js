@@ -6,7 +6,10 @@
 //
 // Emblems are monochrome SVG marks. PFP portraits are procedural squares
 // (src/pfp.js), derived into avatar sizes. Hero cards stay pending.
-// Similarity embeddings are not computed; palette and title checks are local.
+// Similarity embeddings are not computed. Emblem, title, and palette are
+// not globally unique: a shared emblem is allowed when the title and the
+// palette already differ from every brand wearing it, or when the portraits
+// differ. Names and portrait ids stay unique in the creator.
 
 const { CAST } = require("./characters");
 const { assetUrls, PFP_STYLE_VERSION, PFP_STYLE_ID, ASSET_TYPE, withBrandVersion } = require("./pfp");
@@ -709,23 +712,17 @@ class BrandBook {
       err.code = "brand_version_exists";
       throw err;
     }
+    const occupiedCount = this._active.size;
     for (const other of this._versions.values()) {
       if (other.agentId === brand.agentId) continue;
-      if (titlesTooClose(other.title, brand.title)) {
-        const err = new Error("brand_title_collision");
-        err.code = "brand_title_collision";
-        throw err;
-      }
-      if (other.visualIdentity.emblem === brand.visualIdentity.emblem) {
-        const err = new Error("brand_emblem_collision");
-        err.code = "brand_emblem_collision";
-        throw err;
-      }
-      if (paletteNear(other, brand)) {
-        const err = new Error("brand_palette_collision");
-        err.code = "brand_palette_collision";
-        throw err;
-      }
+      // Shared emblem / title / palette values are allowed. Block only an
+      // emblem reuse that does not already differ in title and palette
+      // (or portrait). See emblemReuseBlocked.
+      if (!emblemReuseBlocked(brand, other, occupiedCount)) continue;
+      const sameTitle = brand.title && other.title && titlesTooClose(other.title, brand.title);
+      const err = new Error(sameTitle ? "brand_title_collision" : "brand_emblem_collision");
+      err.code = sameTitle ? "brand_title_collision" : "brand_emblem_collision";
+      throw err;
     }
     const stored = clone(brand);
     this._versions.set(key, stored);
@@ -886,6 +883,56 @@ function identitySimilarity(a, b) {
   return score;
 }
 
+// How close two palettes must be before they count as the same colorway.
+// Early rosters keep the historical distance. A larger roster tightens it so
+// a new agent can sit nearer an existing colorway without being the same
+// identity, and palette distance does not cap the roster.
+function paletteDistinctLimit(occupiedCount) {
+  const n = Number(occupiedCount) || 0;
+  if (n >= 800) return 5;
+  if (n >= 400) return 8;
+  if (n >= 160) return 12;
+  if (n >= 48) return 18;
+  return PALETTE_NEAR;
+}
+
+// Scores at or above this should take another variant. A crowded roster
+// only rejects near-copies, so overlap on a few traits is not a hard stop.
+function similarityCeiling(occupiedCount) {
+  const n = Number(occupiedCount) || 0;
+  if (n >= 400) return 0.95;
+  if (n >= 48) return 0.85;
+  return 0.75;
+}
+
+function portraitKey(brand) {
+  if (!brand) return "";
+  if (brand.portraitId) return String(brand.portraitId);
+  if (brand.portrait && brand.portrait.id) return String(brand.portrait.id);
+  return "";
+}
+
+// Emblems are not globally unique. Reusing one is blocked only when this
+// brand is not already distinct from that wearer: the title is too close,
+// or the palette is still near. A different portrait is enough on its own.
+// A different emblem never blocks. Title-only and palette-only overlaps,
+// across different emblems, do not block.
+function emblemReuseBlocked(candidate, other, occupiedCount) {
+  if (!candidate || !other) return false;
+  if (candidate.agentId && other.agentId && candidate.agentId === other.agentId) return false;
+  const cv = candidate.visualIdentity || candidate;
+  const ov = other.visualIdentity || other;
+  if (!cv.emblem || !ov.emblem || cv.emblem !== ov.emblem) return false;
+  const leftPortrait = portraitKey(candidate);
+  const rightPortrait = portraitKey(other);
+  if (leftPortrait && rightPortrait && leftPortrait !== rightPortrait) return false;
+  if (candidate.title && other.title && titlesTooClose(other.title, candidate.title)) return true;
+  const limit = paletteDistinctLimit(occupiedCount);
+  const left = cv.primaryColor ? { visualIdentity: cv } : candidate;
+  const right = ov.primaryColor ? { visualIdentity: ov } : other;
+  return paletteNear(left, right, limit);
+}
+
 module.exports = {
   BRAND_STATUSES,
   PERSONALITY_KEYS,
@@ -902,6 +949,9 @@ module.exports = {
   paletteNear,
   titlesTooClose,
   brandSimilarity,
+  paletteDistinctLimit,
+  similarityCeiling,
+  emblemReuseBlocked,
   colorDistance,
   wordCount,
 };

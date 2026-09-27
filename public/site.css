@@ -20,6 +20,9 @@ nav.top li a.on{background:var(--felt);color:var(--ivory)}
 nav.top li a.cta{background:var(--gold);color:var(--ink);font-weight:600}
 nav.top li a.buy{background:var(--felt);color:var(--ivory);font-weight:600}
 nav.top li a.buy:hover{background:var(--felt-deep)}
+nav.top li.nav-offers{display:flex;align-items:center;gap:6px}
+nav.top li a.nav-x{display:inline-flex;align-items:center;justify-content:center;min-width:40px;padding:8px 11px;color:var(--ink);font-weight:700;box-shadow:inset 0 0 0 2px var(--gold)}
+nav.top li a.nav-x:hover{background:var(--gold);color:var(--ink)}
 nav.top a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 
 footer{margin-top:70px;padding:26px 0 40px;border-top:1px solid #d9cfb8;color:#5c5a52;font-size:13px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}

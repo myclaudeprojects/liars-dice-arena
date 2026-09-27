@@ -1950,6 +1950,13 @@ function rememberArgusConfig(cfg) {
   const url = cfg.arenaToken && cfg.arenaToken.buyUrl;
   const link = document.getElementById("buy-liar");
   if (link && typeof url === "string" && url) link.href = url;
+  const xLink = document.getElementById("arena-x");
+  if (xLink && typeof cfg.xUrl === "string" && cfg.xUrl) {
+    try {
+      const x = new URL(cfg.xUrl);
+      if (x.protocol === "https:" || x.protocol === "http:") xLink.href = x.href;
+    } catch { /* keep the house default in the header */ }
+  }
   return argusOffer;
 }
 

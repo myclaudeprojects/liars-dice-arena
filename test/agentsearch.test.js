@@ -26,7 +26,7 @@ function sliceFn(source, name) {
 
 const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
 const css = fs.readFileSync(path.join(__dirname, "..", "public", "app.css"), "utf8");
-const names = ["agentSearchNorm", "agentSearchHaystack", "agentMatchesQuery", "agentSearchExact", "agentSearchPick", "createdAgentOrder"];
+const names = ["agentSearchNorm", "agentSearchHaystack", "agentMatchesQuery", "agentSearchExact", "agentSearchPick"];
 const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(names.map((name) => sliceFn(app, name)).join("\n"), sandbox);
@@ -58,14 +58,22 @@ eq(sandbox.agentSearchPick(roster, "shark").id, "shark", "one name hit is enough
 assert(sandbox.agentSearchPick(roster, "") === null, "an empty query does not auto-open anyone");
 assert(sandbox.agentSearchPick(roster, "lda") === null, "a query that hits several agents waits for a tap");
 
-assert(app.includes('data-agent-search'), "Agents tab has a search field");
+assert(app.includes("data-agent-search-toggle"), "Agents tab has a search icon");
+assert(app.includes("Search agents"), "the icon names the search");
+assert(app.includes("Close agent search"), "the open icon can close the field");
+assert(app.includes('data-agent-search-form autocomplete="off"${open ? "" : " hidden"}'), "the search field stays hidden until the icon opens it");
+assert(app.includes('data-agent-search'), "the revealed control is a search field");
 assert(app.includes("Find an agent"), "the search field is labeled");
 assert(app.includes("Name, ticker, or 0x address"), "the placeholder names the three fields");
 assert(app.includes("No agent has that name, ticker, or token address."), "no matches has a short empty state");
 assert(app.includes("function agentsView()"), "the roster view still owns the tab");
-assert(app.includes("agentSearchForm()"), "the loaded roster renders the search field");
+assert(app.includes("agentSearchForm()"), "the loaded roster can reveal the search field");
+assert(app.includes("agentSearchToggle()"), "the loaded roster header includes the search icon");
+assert(app.includes("hits.map(agentCard)"), "matches stay on the portrait roster");
 assert(app.includes("agentMatchesQuery(a, agentQuery)"), "filtering uses the agents already on the tab");
 assert(!app.includes("/api/show/agents?q=") && !app.includes("/api/show/agents/search"), "search does not add a server endpoint");
+assert(!app.includes("data-agent-directory") && !app.includes("Created agents"), "the created-agent directory is gone");
+assert(!app.includes("No token yet"), "the directory pending row is gone");
 assert(app.includes('data-create-agent="1"'), "Create agent stays on the tab");
 assert(app.includes("submitServerMint"), "Argus mint path stays");
 assert(app.includes("houseMintReady"), "house mint path stays");
@@ -73,29 +81,20 @@ assert(app.includes("async function openAgent(id, opts)"), "a match opens throug
 assert(app.includes("await openAgent(agentBtn.dataset.agent)"), "tapping a card still opens the profile");
 assert(app.includes("await openAgent(pick.id)"), "confirming a search opens that same profile");
 assert(app.includes("data-back=\"agents\""), "profile still returns to the roster");
-
-const older = { id: "old", roster: "user", createdAt: "2024-01-01T00:00:00.000Z", name: "LDA Older" };
-const newer = { id: "new", roster: "user", createdAt: "2026-06-01T00:00:00.000Z", name: "LDA Newer" };
-const house = { id: "shark", roster: "house", createdAt: "2027-01-01T00:00:00.000Z", name: "LDA The Shark" };
-eq(sandbox.createdAgentOrder([older, house, newer]).map((agent) => agent.id).join(","), "new,old", "created agents are newest first and the house cast stays out");
-eq(sandbox.createdAgentOrder([newer, older].filter((agent) => sandbox.agentMatchesQuery(agent, "older"))).map((agent) => agent.id).join(","), "old", "search still filters the created directory");
-
-assert(app.includes("data-agent-directory"), "Agents tab has a created-agent directory");
-assert(app.includes("createdAgentOrder(hits)"), "the directory uses newest-first order on the loaded roster");
-assert(app.includes("Buy on Argus"), "a minted agent links out to buy on Argus");
-assert(app.includes("argusTokenUrl(agent.argus)"), "the directory link uses the Argus token url");
-assert(app.includes("No token yet"), "a created agent without a mint still appears");
-assert(app.includes("The house wallet is the on-chain fee recipient."), "the directory notes who receives fees");
+assert(app.includes("Buy on Argus"), "a minted agent profile still links out to buy on Argus");
+assert(app.includes("argusTokenUrl(agent.argus)"), "the profile link uses the Argus token url");
+assert(app.includes("The house wallet is the on-chain fee recipient."), "the profile notes who receives fees");
 assert(app.includes("Spectator splits are later, off this page."), "spectator fee splits stay off this page");
 assert(app.includes("function agentIdFromLocation()"), "a profile can be opened from the address bar");
 assert(app.includes('params.set("agent", id)'), "opening a profile writes ?agent=");
 assert(app.includes('history: "keep"'), "a bookmark does not push another history entry");
 assert(!app.includes("Regenerate PFP") && !app.includes("data-regenerate-pfp"), "spectator regenerate controls stay gone");
 
-const directoryRule = css.slice(css.indexOf(".agent-directory__row"), css.indexOf(".agent-directory__open"));
-assert(directoryRule.includes("var(--lda-surface)"), "directory rows use the arena surface");
-assert(css.includes(".agent-directory__open"), "the directory name is its own control");
-assert(css.slice(css.indexOf(".agent-directory__open"), css.indexOf(".agent-directory__name")).includes("min-height: var(--tap)"), "the directory name keeps a tap target");
+const toggleRule = css.slice(css.indexOf(".page-head .agent-search__toggle {"), css.indexOf(".page-head .agent-search__toggle.is-open"));
+assert(toggleRule.includes("width: var(--tap)"), "the search icon keeps a tap target");
+assert(toggleRule.includes("color: var(--lda-gold)"), "the search icon uses the arena gold");
+assert(css.includes(".agent-search[hidden]"), "a closed search field takes no space");
+assert(!css.includes(".agent-directory"), "directory row styles are gone");
 
 const fieldRule = css.slice(css.indexOf(".agent-search input[type=\"search\"]"), css.indexOf(".agent-search__clear"));
 assert(fieldRule.startsWith(".agent-search input[type=\"search\"]"), "search has its own field rule");
@@ -135,9 +134,9 @@ show.userAgents.get(second.agent.id).argus = {
 const guests = show.agentList().filter((row) => row.roster === "user");
 eq(guests.map((row) => row.id).join(","), [second.agent.id, first.agent.id].join(","), "the roster lists created agents newest first");
 eq(guests[0].createdAt, "2026-06-01T00:00:00.000Z", "createdAt is on the list row");
-eq(guests[0].argus.tokenAddress, "0xF74C1294d67827fF7EaFb21D834B67aB1C8a79D0", "a minted token stays on the directory row");
-eq(guests[0].argus.argusUrl, "https://argus.world/token/0xF74C1294d67827fF7EaFb21D834B67aB1C8a79D0", "the row can open argus.world");
-assert(guests[1].argus == null, "an unminted agent stays on the list without a token");
+eq(guests[0].argus.tokenAddress, "0xF74C1294d67827fF7EaFb21D834B67aB1C8a79D0", "a minted token stays on the roster row for search");
+eq(guests[0].argus.argusUrl, "https://argus.world/token/0xF74C1294d67827fF7EaFb21D834B67aB1C8a79D0", "the profile can open argus.world");
+assert(guests[1].argus == null, "an unminted agent stays on the roster without a token");
 eq(show.agentList().filter((row) => row.roster === "house").length, 12, "house cast stays on the roster");
 
 console.log("agentsearch ok");

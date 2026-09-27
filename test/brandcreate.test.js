@@ -212,6 +212,21 @@ function signatures(concepts) {
   assert(app.includes("Head to head"), "rivalry card names the series");
   assert(app.includes("cast-board"), "profile carries a cast board");
 
+  const fileScale = path.join(dir, "scale.json");
+  const showScale = boot(fileScale);
+  const createdIds = [];
+  for (let i = 1; i <= 20; i++) {
+    const made = showScale.createAgent({ ...INPUT, name: "Guest " + String(i).padStart(2, "0") });
+    assert(made.agent && made.agent.id, "agent " + i + " is created");
+    createdIds.push(made.agent.id);
+  }
+  eq(showScale.userAgents.size, 20, "create keeps going past the old 16-agent roster");
+  eq(new Set(createdIds).size, 20, "each extra agent gets its own id");
+  eq(showScale.agentList().filter((row) => row.roster === "house").length, 12, "house cast stays 12 while user agents scale");
+  const brandcreateSrc = fs.readFileSync(path.join(__dirname, "..", "src", "brandcreate.js"), "utf8");
+  assert(!brandcreateSrc.includes("ROSTER_CAP"), "create no longer exports a user roster cap");
+  assert(!brandcreateSrc.includes("The user roster is full."), "create no longer rejects a full user roster");
+
   console.log("brandcreate ok");
 })().catch((e) => {
   console.error(e);

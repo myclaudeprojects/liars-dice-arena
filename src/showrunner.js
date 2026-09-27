@@ -1626,7 +1626,6 @@ class Show {
       names: this.takenNames(),
       takenIds: this.takenIds(),
       brands: this.brandPool(),
-      count: this.userAgents.size,
       takenPortraits: this.takenPortraits(),
     });
     if (feeWallet) draft.spectatorFeeWallet = feeWallet;

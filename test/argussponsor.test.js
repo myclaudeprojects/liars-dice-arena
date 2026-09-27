@@ -588,6 +588,8 @@ function agent(show, name) {
   assert(app.includes("Launch with server mint"), "server mint button");
   assert(app.includes("data-argus-sponsor"), "server mint action");
   assert(app.includes("data-argus-house"), "house mint uses one launch screen");
+  assert(app.includes("You invent a player for Liar's Dice Arena."), "create copy says what an agent is");
+  assert(app.includes("The house pays you."), "create copy says the house pays the fee share");
   assert(app.includes("Creating token"), "house mint shows status instead of a choice");
   assert(app.includes("The token will retry"), "a failed house mint promises a retry without a button");
   assert(!app.includes("Retry mint"), "house mint does not ask the spectator to retry");

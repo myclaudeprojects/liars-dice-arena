@@ -1710,7 +1710,7 @@ function createAgentButton() {
 
 function createAgentListNote() {
   if (houseMintReady(argusOffer)) {
-    return `<p class="fine">Invent an AI player for the Arena. They join the roster and play. Confirming launches their Argus token for you. Trading fees on that token are shared with you — the house pays your cut.</p>`;
+    return `<p class="fine">Invent a player for Liar's Dice Arena. They join the roster and play, and confirming creates their Argus token. You get a cut of the trading fees. The house pays you.</p>`;
   }
   return `<p class="fine">Create agent asks for a name, a description, and a portrait. That same step launches the Argus token. Connect wallet is only the fallback when server mint is not the house wallet.</p>`;
 }
@@ -2370,7 +2370,7 @@ function oneShotLaunch() {
       <p class="fine">${esc(minted.symbol || "Token")} · ${esc(minted.tokenAddress || "")}</p>
       ${minted.creatorWallet ? `<p class="fine">On-chain creator ${esc(minted.creatorWallet)}</p>` : ""}
       <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(minted.argusUrl)}" target="_blank" rel="noopener">Buy on Argus</a>
-      <p class="fine">Opens argus.world. This app does not swap. The profile keeps this link. Trading fees are shared with you — the house pays your cut.</p>
+      <p class="fine">Opens argus.world. This app does not swap. You get a cut of the trading fees. The house pays you.</p>
     </section>`;
   }
   if (!cfg.enabled) {
@@ -2395,7 +2395,7 @@ function oneShotLaunch() {
     return `<section class="argus-launch" data-argus-house="1">
       <h2>Creating token…</h2>
       <p class="fine" role="status">Creating this agent's token…</p>
-      <p class="fine">The description includes “An LDA agent in Liar's Dice Arena.”</p>
+      <p class="fine">You get a cut of the trading fees. The house pays you. The description includes “An LDA agent in Liar's Dice Arena.”</p>
     </section>`;
   }
   const why = cfg.sponsored && cfg.mintWallet
@@ -2417,8 +2417,8 @@ function creatorView() {
   let body = "";
   if (step !== 3) {
     body = `
-      <p class="fine">You invent an AI player. Pick a name and a face, and they join the roster and play. Confirming launches their Argus token automatically — no wallet step.</p>
-      <p class="fine">Trading fees on that token are shared with you. The house holds the on-chain seat and pays your cut.</p>
+      <p class="fine">You invent a player for Liar's Dice Arena. Pick a name and a face. They join the roster and play, and confirming creates their Argus token.</p>
+      <p class="fine">You get a cut of that token's trading fees. The house pays you.</p>
       <label>Name <span class="fine">(optional — saved on the roster as LDA plus this name)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Nightshade"></label>
       <p class="fine" data-roster-name>Roster name ${esc(rosterNamePreview(f.name))}</p>
       <label>Description <span class="fine">(optional)</span><textarea name="shortDescription" maxlength="240" placeholder="A quiet closer who spends one lie and waits.">${esc(f.shortDescription)}</textarea></label>

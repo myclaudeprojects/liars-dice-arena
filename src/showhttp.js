@@ -2,7 +2,7 @@
 // Test credits only. Argus launches are optional and do not move spectator credits.
 
 const { ERROR_TEXT, DEFAULT_STAKE, THEORY_TAGS } = require("./simmarket");
-const { argusEnabled, argusPublicConfig, sponsoredState } = require("./argus/config");
+const { argusEnabled, argusPublicConfig, sponsoredState, portal8Enabled, houseLaunchProfile } = require("./argus/config");
 const { verifyLaunchTx, findPriorLaunch } = require("./argus/verify");
 const { prepareLaunch } = require("./argus/launch");
 const { readArgusStats } = require("./argus/stats");
@@ -14,6 +14,7 @@ const {
   describeRevert,
   parseMintKey,
 } = require("./argus/sponsor");
+const { parseSpectatorWallet, spectatorForLaunch, setPayoutSplitTx, prepareSpectatorLaunch, readPayoutOf, isPortal8, HOUSE_SPLIT_BPS, CREATOR_SPLIT_BPS } = require("./argus/portal8");
 
 function send(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -82,6 +83,73 @@ function logSponsorFailure(e, txHash) {
   const hash = txHash && /^0x[0-9a-fA-F]{64}$/.test(String(txHash)) ? "tx=" + txHash + " " : "";
   console.warn("argus_sponsor", code, redact((hash + text).replace(/\s+/g, " ").trim(), process.env.ARGUS_MINT_KEY).slice(0, 240));
   if (e) e.sponsorLogged = true;
+}
+
+function preparedName(body, launch) {
+  const row = body && typeof body === "object" ? body : {};
+  return {
+    name: launch.name || row.launchName || row.name || null,
+    symbol: launch.symbol || row.launchTicker || row.symbol || null,
+  };
+}
+
+// After a Portal 8 receipt: payout control stays with the house key, then
+// that key sets the 50/50 split when a spectator wallet is known.
+async function applyPortal8AfterMint(show, agentId, launch, spectatorHint, labels) {
+  const draft = show.userAgents.get(agentId);
+  let payout = null;
+  try {
+    payout = await readPayoutOf(launch.tokenAddress, process.env);
+  } catch (e) {
+    console.warn("argus_portal8", "payout_read", (e && e.code) || "failed");
+  }
+  const controller = sponsoredState().mintWallet;
+  if (payout) launch.payoutWallet = payout;
+  else if (!launch.payoutWallet) launch.payoutWallet = controller || houseLaunchProfile().creatorFeeWallet;
+  launch.portalNumber = 8;
+  if (labels && labels.name) launch.name = launch.name || labels.name;
+  if (labels && labels.symbol) launch.symbol = launch.symbol || labels.symbol;
+  const house = launch.payoutWallet;
+  let spectator = null;
+  try {
+    const hinted = spectatorHint != null && String(spectatorHint).trim()
+      ? spectatorHint
+      : (draft && draft.spectatorFeeWallet);
+    spectator = spectatorForLaunch(hinted, launch.creatorWallet, house);
+  } catch (e) {
+    console.warn("argus_portal8", "fee_wallet", (e && e.code) || "failed");
+    spectator = null;
+  }
+  if (spectator) show.rememberSpectatorFeeWallet(agentId, spectator);
+  launch.feeSplit = {
+    status: "pending",
+    houseBps: HOUSE_SPLIT_BPS,
+    creatorBps: CREATOR_SPLIT_BPS,
+    houseWallet: house,
+    spectatorWallet: spectator,
+    splitTxHash: null,
+  };
+  let saved = show.attachArgusMint(agentId, launch);
+  const controls = controller && house && controller.toLowerCase() === house.toLowerCase();
+  if (spectator && controls) {
+    try {
+      const split = await setPayoutSplitTx({
+        privateKey: process.env.ARGUS_MINT_KEY,
+        token: launch.tokenAddress,
+        spectatorFeeWallet: spectator,
+        env: process.env,
+      });
+      saved = show.setArgusFeeSplit(agentId, {
+        status: "set",
+        houseWallet: split.houseWallet,
+        spectatorWallet: split.spectatorWallet,
+        splitTxHash: split.txHash,
+      });
+    } catch (e) {
+      console.warn("argus_portal8", "split_after_mint", (e && e.code) || "failed");
+    }
+  }
+  return saved;
 }
 
 function stillPlayable(e, fallback) {
@@ -161,9 +229,83 @@ async function handleShow(req, res, url, query, show) {
         return true;
       }
       const body = await readBody(req);
+      const agentId = decodeURIComponent(argusPost[1]);
       const launch = await verifyLaunchTx(body.txHash);
-      const saved = show.attachArgusMint(decodeURIComponent(argusPost[1]), launch);
+      if (portal8Enabled() && (isPortal8(launch.portal) || Number(launch.portalNumber) === 8)) {
+        const saved = await applyPortal8AfterMint(show, agentId, launch, body.spectatorFeeWallet, preparedName(body, launch));
+        send(res, 200, { ok: true, ...saved });
+        return true;
+      }
+      const saved = show.attachArgusMint(agentId, launch);
       send(res, 200, { ok: true, ...saved });
+      return true;
+    }
+    const argusPrepare = path.match(/^\/agents\/([^/]+)\/argus\/prepare$/);
+    if (req.method === "POST" && argusPrepare) {
+      if (!argusEnabled()) {
+        send(res, 403, { ok: false, error: "Argus launch is not enabled on this server.", code: "argus_disabled" });
+        return true;
+      }
+      if (!portal8Enabled()) {
+        send(res, 409, {
+          ok: false,
+          error: "Portal 8 signing is not enabled. New mints stay on Portal 7 until ARGUS_PORTAL=8.",
+          code: "portal7",
+        });
+        return true;
+      }
+      const agentId = decodeURIComponent(argusPrepare[1]);
+      const raw = await readBody(req);
+      const body = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+      const draft = show.userAgents.get(agentId);
+      if (!draft) {
+        send(res, 404, { ok: false, error: "No such agent.", code: "unknown_agent" });
+        return true;
+      }
+      if (draft.argus && draft.argus.status === "minted" && draft.argus.txHash) {
+        send(res, 409, { ok: false, error: "This agent already has an Argus token.", code: "already_minted" });
+        return true;
+      }
+      let prepared;
+      try {
+        prepared = prepareLaunch(body);
+      } catch (e) {
+        fail(res, stillPlayable(e, "Those launch details cannot be submitted."));
+        return true;
+      }
+      if (prepared.devBuyQuote !== 0n) {
+        send(res, 400, {
+          ok: false,
+          error: "Portal 8 uses the opening buy, not a dev buy. Set the dev buy to zero. This agent can still play.",
+          code: "dev_buy",
+        });
+        return true;
+      }
+      const hinted = body.spectatorFeeWallet != null && String(body.spectatorFeeWallet).trim()
+        ? body.spectatorFeeWallet
+        : draft.spectatorFeeWallet;
+      if (!sponsorGuard().begin(agentId)) {
+        send(res, 409, {
+          ok: false,
+          error: "A launch is already being prepared for this agent. This agent can still play.",
+          code: "sponsor_busy",
+        });
+        return true;
+      }
+      try {
+        const built = await prepareSpectatorLaunch({
+          prepared,
+          launcher: body.launcher,
+          spectatorFeeWallet: hinted,
+          env: process.env,
+        });
+        if (built.spectatorFeeWallet) show.rememberSpectatorFeeWallet(agentId, built.spectatorFeeWallet);
+        send(res, 200, { ok: true, prepared: true, ...built });
+      } catch (e) {
+        if (!res.headersSent) fail(res, stillPlayable(e, "Portal 8 could not prepare this launch."));
+      } finally {
+        sponsorGuard().end(agentId);
+      }
       return true;
     }
     const argusSponsor = path.match(/^\/agents\/([^/]+)\/argus\/sponsor$/);
@@ -184,10 +326,29 @@ async function handleShow(req, res, url, query, show) {
         send(res, 409, { ok: false, error: "This agent already has an Argus token.", code: "already_minted" });
         return true;
       }
+      if (portal8Enabled() && draft.mintOwner !== "house") {
+        send(res, 409, {
+          ok: false,
+          error: "This agent was created by a spectator. Their wallet signs the Portal 8 launch. The house mint key is only for house-created agents.",
+          code: "spectator_signs",
+        });
+        return true;
+      }
       const state = sponsoredState();
       if (!state.sponsored) {
         send(res, 503, { ok: false, error: state.sponsoredMessage, code: "mint_key_missing" });
         return true;
+      }
+      if (portal8Enabled()) {
+        const house = houseLaunchProfile().creatorFeeWallet;
+        if (!state.mintWallet || state.mintWallet.toLowerCase() !== house.toLowerCase()) {
+          send(res, 409, {
+            ok: false,
+            error: "Server mint signs only as the house wallet. The mint key must be that wallet. This agent can still play.",
+            code: "not_house_key",
+          });
+          return true;
+        }
       }
       let prepared;
       try {
@@ -203,6 +364,14 @@ async function handleShow(req, res, url, query, show) {
           code: "dev_buy",
         });
         return true;
+      }
+      let spectator = null;
+      if (portal8Enabled()) {
+        const rawWallet = body.spectatorFeeWallet != null && String(body.spectatorFeeWallet).trim()
+          ? body.spectatorFeeWallet
+          : draft.spectatorFeeWallet;
+        spectator = parseSpectatorWallet(rawWallet, state.mintWallet);
+        if (spectator) show.rememberSpectatorFeeWallet(agentId, spectator);
       }
       if (!sponsorGuard().begin(agentId)) {
         send(res, 409, {
@@ -223,7 +392,7 @@ async function handleShow(req, res, url, query, show) {
         if (pending) {
           txHash = pending;
           console.warn("argus_sponsor", "reuse", "tx=" + txHash, "pending");
-        } else if (mint) {
+        } else if (mint && !portal8Enabled()) {
           const prior = await findPriorLaunch({
             creator: mint.address,
             name: prepared.name,
@@ -243,12 +412,22 @@ async function handleShow(req, res, url, query, show) {
         }
         if (!txHash) {
           try {
-            sent = await sponsorLaunch({ privateKey: process.env.ARGUS_MINT_KEY, prepared });
+            sent = await sponsorLaunch({
+              privateKey: process.env.ARGUS_MINT_KEY,
+              prepared,
+              spectatorFeeWallet: spectator,
+              env: process.env,
+            });
           } catch (e) {
             const retryable = e && (e.code === "sponsor_rejected" || e.code === "rpc_unavailable");
             if (!retryable) throw e;
             console.warn("argus_sponsor", "silent_retry", e.code);
-            sent = await sponsorLaunch({ privateKey: process.env.ARGUS_MINT_KEY, prepared });
+            sent = await sponsorLaunch({
+              privateKey: process.env.ARGUS_MINT_KEY,
+              prepared,
+              spectatorFeeWallet: spectator,
+              env: process.env,
+            });
           }
           txHash = sent.txHash;
           show.noteArgusPending(agentId, {
@@ -258,7 +437,7 @@ async function handleShow(req, res, url, query, show) {
             symbol: prepared.symbol,
           });
         }
-        const launch = await verifyLaunchTx(txHash);
+        const launch = await verifyLaunchTx(txHash, sent && sent.portal ? { portal: sent.portal } : {});
         if (sent && sent.creator && launch.creatorWallet && launch.creatorWallet.toLowerCase() !== sent.creator.toLowerCase()) {
           const mismatch = new Error("creator mismatch");
           mismatch.code = "creator_mismatch";
@@ -267,7 +446,7 @@ async function handleShow(req, res, url, query, show) {
           mismatch.txHash = txHash;
           throw mismatch;
         }
-        if (mint && launch.creatorWallet && launch.creatorWallet.toLowerCase() !== mint.address.toLowerCase()) {
+        if (mint && !portal8Enabled() && launch.creatorWallet && launch.creatorWallet.toLowerCase() !== mint.address.toLowerCase()) {
           const mismatch = new Error("creator mismatch");
           mismatch.code = "creator_mismatch";
           mismatch.status = 409;
@@ -275,7 +454,18 @@ async function handleShow(req, res, url, query, show) {
           mismatch.txHash = txHash;
           throw mismatch;
         }
-        const saved = show.attachArgusMint(agentId, launch);
+        let saved;
+        const portal8Mint = isPortal8(launch.portal) || (sent && isPortal8(sent.portal));
+        if (portal8Mint) {
+          launch.openingBuy = (sent && sent.openingBuy) || launch.openingBuy || null;
+          if (sent && sent.creator) launch.payoutWallet = sent.creator;
+          saved = await applyPortal8AfterMint(show, agentId, launch, spectator, {
+            name: prepared.name,
+            symbol: prepared.symbol,
+          });
+        } else {
+          saved = show.attachArgusMint(agentId, launch);
+        }
         send(res, 200, { ok: true, sponsored: true, ...saved });
       } catch (e) {
         if (txHash && !e.txHash) e.txHash = txHash;
@@ -284,6 +474,94 @@ async function handleShow(req, res, url, query, show) {
         }
         logSponsorFailure(e, txHash);
         if (!res.headersSent) fail(res, stillPlayable(e));
+      } finally {
+        sponsorGuard().end(agentId);
+      }
+      return true;
+    }
+    const argusPayout = path.match(/^\/agents\/([^/]+)\/argus\/payout$/);
+    if (req.method === "POST" && argusPayout) {
+      if (!argusEnabled()) {
+        send(res, 403, { ok: false, error: "Argus launch is not enabled on this server.", code: "argus_disabled" });
+        return true;
+      }
+      const agentId = decodeURIComponent(argusPayout[1]);
+      const raw = await readBody(req);
+      const body = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+      const draft = show.userAgents.get(agentId);
+      if (!draft) {
+        send(res, 404, { ok: false, error: "No such agent.", code: "unknown_agent" });
+        return true;
+      }
+      const state = sponsoredState();
+      const house = state.mintWallet || houseLaunchProfile().creatorFeeWallet;
+      const spectator = parseSpectatorWallet(body.spectatorFeeWallet, house);
+      if (!spectator) {
+        send(res, 400, { ok: false, error: "Paste a fee claim wallet. It is optional at create, and required to set the split.", code: "bad_fee_wallet" });
+        return true;
+      }
+      const argus = draft.argus;
+      const minted = argus && argus.status === "minted" && argus.tokenAddress;
+      const minted8 = minted && (isPortal8(argus.portal) || Number(argus.portalNumber) === 8);
+      if (minted && !minted8) {
+        send(res, 409, {
+          ok: false,
+          error: "This token was minted on Portal 7. Creator fees stay with that on-chain creator. Portal 8 splits apply to new mints.",
+          code: "portal7",
+        });
+        return true;
+      }
+      if (!minted8) {
+        const saved = show.rememberSpectatorFeeWallet(agentId, spectator);
+        send(res, 200, { ok: true, pendingMint: true, ...saved });
+        return true;
+      }
+      const current = argus.feeSplit;
+      if (current && current.status === "set" && current.spectatorWallet
+        && current.spectatorWallet.toLowerCase() === spectator.toLowerCase()) {
+        send(res, 200, { ok: true, unchanged: true, argus: publicArgus(argus), spectatorFeeWallet: spectator });
+        return true;
+      }
+      show.rememberSpectatorFeeWallet(agentId, spectator);
+      if (!state.sponsored) {
+        show.setArgusFeeSplit(agentId, {
+          status: "pending",
+          houseWallet: argus.payoutWallet || argus.creatorWallet || house,
+          spectatorWallet: spectator,
+        });
+        send(res, 503, {
+          ok: false,
+          error: state.sponsoredMessage || "Server mint is not set up, so the on-chain split was not set. The fee wallet is saved.",
+          code: "mint_key_missing",
+          spectatorFeeWallet: spectator,
+        });
+        return true;
+      }
+      if (!sponsorGuard().begin(agentId)) {
+        send(res, 409, {
+          ok: false,
+          error: "A server mint is already running for this agent. This agent can still play.",
+          code: "sponsor_busy",
+        });
+        return true;
+      }
+      try {
+        sponsorGuard().take(clientKeys(req, body));
+        const split = await setPayoutSplitTx({
+          privateKey: process.env.ARGUS_MINT_KEY,
+          token: argus.tokenAddress,
+          spectatorFeeWallet: spectator,
+          env: process.env,
+        });
+        const saved = show.setArgusFeeSplit(agentId, {
+          status: "set",
+          houseWallet: split.houseWallet,
+          spectatorWallet: split.spectatorWallet,
+          splitTxHash: split.txHash,
+        });
+        send(res, 200, { ok: true, ...saved });
+      } catch (e) {
+        if (!res.headersSent) fail(res, stillPlayable(e, "The 50/50 split was not set. This agent can still play."));
       } finally {
         sponsorGuard().end(agentId);
       }
@@ -313,6 +591,8 @@ async function handleShow(req, res, url, query, show) {
     }
     if (req.method === "POST" && path === "/agents/brand/create") {
       const body = await readBody(req);
+      const admin = process.env.ADMIN_TOKEN && req.headers["x-admin-token"] === process.env.ADMIN_TOKEN;
+      if (!admin && body && typeof body === "object") delete body.mintOwner;
       send(res, 200, { ok: true, ...show.createAgent(body) });
       return true;
     }

@@ -7,6 +7,7 @@
 const { ethers } = require("ethers");
 const { activePortal, loadAbi, QUOTE_ASSET, CHAIN_ID, CHAIN_ID_HEX, BUNDLE_SHA256, BUNDLE_URL, HOUSE_LAUNCH_DEFAULTS } = require("./launch");
 const { parseMintKey } = require("./sponsor");
+const { portal8Enabled, PORTAL8, CREATOR_REGISTRY, CLAIM_URL, HOUSE_SPLIT_BPS, CREATOR_SPLIT_BPS } = require("./portal8");
 
 const SPONSOR_UNAVAILABLE = "Server mint is not set up. Connect a wallet, or leave this agent playable.";
 let warnedInvalidMintKey = false;
@@ -123,10 +124,12 @@ function houseLaunchProfile(env) {
 }
 
 function argusPublicConfig(env) {
+  const source = env || process.env;
   const state = sponsoredState(env);
   const house = houseLaunchProfile(env);
   const mintIsHouse = !!(state.sponsored && state.mintWallet
     && state.mintWallet.toLowerCase() === house.creatorFeeWallet.toLowerCase());
+  const usePortal8 = portal8Enabled(source);
   const base = {
     enabled: state.enabled,
     sponsored: state.sponsored,
@@ -140,6 +143,12 @@ function argusPublicConfig(env) {
     xUrl: house.xUrl,
     telegramUrl: house.telegramUrl,
     creatorFeeWallet: house.creatorFeeWallet,
+    portal8Enabled: usePortal8,
+    serverPortal: usePortal8 ? PORTAL8 : activePortal(),
+    serverPortalNumber: usePortal8 ? 8 : 7,
+    creatorRegistry: usePortal8 ? CREATOR_REGISTRY : null,
+    claimUrl: usePortal8 ? CLAIM_URL : null,
+    feeSplitBps: usePortal8 ? { house: HOUSE_SPLIT_BPS, creator: CREATOR_SPLIT_BPS } : null,
     arenaToken: arenaToken(env),
     bundleUrl: BUNDLE_URL,
     bundleSha256: BUNDLE_SHA256,
@@ -169,4 +178,4 @@ function argusPublicConfig(env) {
   };
 }
 
-module.exports = { argusEnabled, publicBase, houseLaunchProfile, argusPublicConfig, arenaToken, sponsoredState, SPONSOR_UNAVAILABLE, DEFAULT_LIAR_TOKEN };
+module.exports = { argusEnabled, portal8Enabled, publicBase, houseLaunchProfile, argusPublicConfig, arenaToken, sponsoredState, SPONSOR_UNAVAILABLE, DEFAULT_LIAR_TOKEN };

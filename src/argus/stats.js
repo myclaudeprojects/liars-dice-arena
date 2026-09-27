@@ -17,6 +17,7 @@
 const ethers = require("ethers");
 const { activePortal, PORTAL7, QUOTE_ASSET } = require("./launch");
 const { rpcUrls } = require("./verify");
+const { isPortal8, STATE_VIEW, poolIdFor } = require("./portal8");
 
 const STATS_TTL_MS = 60_000;
 const PARTIAL_TTL_MS = 15_000;
@@ -203,6 +204,42 @@ async function readMarketCapAt(url, token, portal, fetchImpl) {
   return { raw, quoteDecimals };
 }
 
+async function readPortal8MarketCapAt(url, token, argus, fetchImpl) {
+  const supplyRes = await ethCall(url, token, erc20Iface.encodeFunctionData("totalSupply"), fetchImpl);
+  const supply = erc20Iface.decodeFunctionResult("totalSupply", supplyRes)[0];
+  const quote = canonical(QUOTE_ASSET);
+  let poolId = argus && argus.poolId;
+  let tokenIsToken0 = argus && argus.tokenIsToken0;
+  if (!poolId && argus && argus.hook) {
+    const computed = poolIdFor(token, quote, argus.hook);
+    poolId = computed.poolId;
+    tokenIsToken0 = computed.tokenIsToken0;
+  }
+  if (!poolId) return { unavailable: true };
+  const slotRes = await ethCall(url, STATE_VIEW, stateViewIface.encodeFunctionData("getSlot0", [poolId]), fetchImpl);
+  const sqrtPriceX96 = stateViewIface.decodeFunctionResult("getSlot0", slotRes).sqrtPriceX96;
+  const raw = marketCapQuoteRaw({ sqrtPriceX96, tokenIsToken0: !!tokenIsToken0, totalSupply: supply });
+  if (raw == null) return { unavailable: true };
+  return { raw, quoteDecimals: QUOTE_DECIMALS };
+}
+
+async function readPortal8MarketCap(token, argus, opts) {
+  const urls = (opts.rpcUrls || rpcUrls(opts.env)).slice(0, RPC_ATTEMPTS);
+  const fetchImpl = opts.fetchImpl || global.fetch;
+  for (const url of urls) {
+    try {
+      const row = await readPortal8MarketCapAt(url, token, argus, fetchImpl);
+      if (!row || row.unavailable) return null;
+      const label = formatMarketCapLabel(row.raw, row.quoteDecimals);
+      if (!label) return null;
+      return { usdc: formatUnitsTrim(row.raw, row.quoteDecimals), label };
+    } catch {
+      // The next public Arc host may still have the pool.
+    }
+  }
+  return null;
+}
+
 async function readMarketCap(token, portal, opts) {
   const urls = (opts.rpcUrls || rpcUrls(opts.env)).slice(0, RPC_ATTEMPTS);
   const fetchImpl = opts.fetchImpl || global.fetch;
@@ -260,7 +297,7 @@ async function loadFresh(argus, token, opts) {
   const portal = portalOf(argus);
   if (!portal) return payloadFor(argus, token, null, null, at);
   const [marketCap, holders] = await Promise.all([
-    readMarketCap(token, portal, opts),
+    isPortal8(portal) ? readPortal8MarketCap(token, argus, opts) : readMarketCap(token, portal, opts),
     readHolders(token, opts),
   ]);
   return payloadFor(argus, token, marketCap, holders, at);

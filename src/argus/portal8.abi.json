@@ -1,0 +1,607 @@
+[
+  {
+    "name": "BundleEmptyEntry",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "BundleRecipientRefused",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "to",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "name": "BundleTooLong",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "n",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "name": "CreatorPayoutRefused",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "to",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "name": "EconomicsMissing",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "HookMismatch",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "predicted",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "deployed",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "name": "InvalidConfig",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "KothAboveCeiling",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "asked",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "ceiling",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ]
+  },
+  {
+    "name": "PayoutNotAllowed",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "QuoteAdmissionRevoked",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "name": "SeedBuyTooSmall",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "offered",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "required",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "name": "SharesNotWired",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "BundleBought",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "wallets",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "quoteIn",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokensOut",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "LaunchMetadata",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "imageURI",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "website",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "twitter",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "telegram",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "Launched",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "creator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "hook",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "escrow",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "locker",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tickStart",
+        "type": "int24",
+        "indexed": false,
+        "internalType": "int24"
+      },
+      {
+        "name": "tickBond",
+        "type": "int24",
+        "indexed": false,
+        "internalType": "int24"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "creatorRegistry",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ArgusV5CreatorRegistry"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "hookFactory",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ArgusV5HookFactory"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "hookInitCodeHash",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "creator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "hookSalt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "buyTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "sellTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "hookInitCodeTemplate",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "buyTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "sellTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "launch",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "p",
+        "type": "tuple",
+        "components": [
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "totalSupply",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "buyTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "alloc",
+            "type": "uint16[5]",
+            "internalType": "uint16[5]"
+          },
+          {
+            "name": "quoteAsset",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "payoutAsset",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "kothBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "payoutAddress",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "identityProvider",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "identitySubject",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "bundle",
+            "type": "tuple[]",
+            "components": [
+              {
+                "name": "to",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "amountQuote",
+                "type": "uint128",
+                "internalType": "uint128"
+              }
+            ],
+            "internalType": "struct ArgusV5Portal.BundleEntry[]"
+          },
+          {
+            "name": "snipeExempt",
+            "type": "address[]",
+            "internalType": "address[]"
+          },
+          {
+            "name": "meta",
+            "type": "tuple",
+            "components": [
+              {
+                "name": "imageURI",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "website",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "twitter",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "telegram",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "description",
+                "type": "string",
+                "internalType": "string"
+              }
+            ],
+            "internalType": "struct V4TokenMeta"
+          }
+        ],
+        "internalType": "struct ArgusV5Portal.V5LaunchParams"
+      },
+      {
+        "name": "hookSalt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "launchCount",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "launches",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "hook",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "escrow",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "locker",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "tickStart",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "tickBond",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "tokenIsToken0",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "minSeedPpm",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "partsFactory",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ArgusV5PartsFactory"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "predictEscrow",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "creator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "hookSalt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "registry",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IArgusQuoteRouteRegistry"
+      }
+    ],
+    "stateMutability": "view"
+  }
+]

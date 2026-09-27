@@ -194,6 +194,10 @@ function setSponsorTransport(factory) {
   transportOverride = factory || null;
 }
 
+async function openSponsorTransport(env) {
+  return resolveTransport(env);
+}
+
 function clientIp(req) {
   const headers = (req && req.headers) || {};
   const fwd = headers["x-forwarded-for"] || headers["X-Forwarded-For"] || "";
@@ -254,6 +258,7 @@ async function createArcTransport(env) {
           const sent = await live.broadcastTransaction(raw);
           return sent.hash;
         },
+        receipt: (hash) => live.getTransactionReceipt(hash),
         destroy: () => live.destroy(),
       };
     } catch (e) {
@@ -268,6 +273,12 @@ async function createArcTransport(env) {
 
 async function sponsorLaunch(opts) {
   const body = opts || {};
+  const env = body.env || process.env;
+  // Portal 8 is opt-in. An explicit family keeps tests and the Portal 7
+  // fallback on the original launch even if the process flag is set.
+  if (body.family === 8 || (body.family !== 7 && require("./portal8").portal8Enabled(env))) {
+    return require("./portal8").sponsorPortal8(body);
+  }
   const parsed = parseMintKey(body.privateKey);
   if (!parsed) {
     throw fail("mint_key_missing", "Server mint is not set up. Connect a wallet, or leave this agent playable.", 503);
@@ -396,6 +407,7 @@ module.exports = {
   resetSponsorGuard,
   sponsorGuard,
   setSponsorTransport,
+  openSponsorTransport,
   clientKeys,
   clientIp,
   WINDOW_MS,

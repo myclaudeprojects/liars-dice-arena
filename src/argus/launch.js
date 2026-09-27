@@ -632,21 +632,85 @@ function encodeLaunch(abi, prepared) {
     return { txHash: decoded.txHash, creator, hook: mined.hook, decoded, prepared: aligned };
   }
 
+  // Spectator Portal 8 launch. The server mined the hook and set payoutAddress
+  // to the house wallet. This only approves the opening buy and sends that
+  // calldata from the connected wallet.
+  async function sendPreparedLaunch(provider, opts) {
+    const body = opts || {};
+    const status = typeof body.onStatus === "function" ? body.onStatus : function () {};
+    status("Connecting wallet…");
+    const from = await connectWallet(provider);
+    const launcher = body.launcher ? addr(body.launcher) : from;
+    if (launcher !== from) {
+      throw fail("launcher_mismatch", "The connected wallet is not the wallet this launch was prepared for. Connect that wallet and try again.");
+    }
+    const portal = addr(body.portal);
+    const data = String(body.data || "");
+    if (!/^0x[0-9a-fA-F]+$/.test(data) || data.length < 10) {
+      throw fail("bad_tx", "The Portal 8 launch transaction is missing. This agent can still play.");
+    }
+    const opening = BigInt(body.openingBuyRaw || 0);
+    const quote = body.quote ? addr(body.quote) : null;
+    if (opening > 0n) {
+      if (!quote) throw fail("quote", "This launch pairs with Arc USDC.");
+      status("Approving USDC for the opening buy…");
+      await ensureQuoteAllowance(provider, from, portal, quote, opening);
+    }
+    status("Confirm the Portal 8 launch in your wallet…");
+    let txHash;
+    try {
+      txHash = await provider.request({
+        method: "eth_sendTransaction",
+        params: [{ from, to: portal, data, value: "0x0" }],
+      });
+    } catch (e) {
+      if (e && e.code === 4001) throw fail("wallet_rejected", "The wallet request was declined. The agent is still saved.");
+      throw e;
+    }
+    return { txHash, creator: from };
+  }
+
   function publicArgus(raw) {
     if (!raw || raw.status !== "minted" || !raw.tokenAddress || !raw.txHash) return null;
+    let portalNumber = null;
+    let feeSplit = null;
+    let claimUrl = null;
+    try {
+      const portal8 = require("./portal8");
+      feeSplit = portal8.publicFeeSplit(raw);
+      if (portal8.isPortal8(raw.portal) || Number(raw.portalNumber) === 8) {
+        portalNumber = 8;
+        claimUrl = raw.claimUrl || portal8.CLAIM_URL;
+      }
+    } catch { /* Portal 7 records stay readable if the Portal 8 module fails to load. */ }
+    if (!portalNumber && raw.portal && String(raw.portal).toLowerCase() === String(PORTAL7).toLowerCase()) {
+      portalNumber = 7;
+    }
+    const opening = raw.openingBuy && typeof raw.openingBuy === "object" ? {
+      raw: String(raw.openingBuy.raw || ""),
+      quote: raw.openingBuy.quote || null,
+      recipient: raw.openingBuy.recipient || null,
+    } : null;
     return {
       status: "minted",
       tokenAddress: raw.tokenAddress,
       poolId: raw.poolId || null,
+      tokenIsToken0: raw.tokenIsToken0 == null ? null : !!raw.tokenIsToken0,
       hook: raw.hook || null,
       locker: raw.locker || null,
       splitter: raw.splitter || null,
+      escrow: raw.escrow || null,
       portal: raw.portal || null,
+      portalNumber,
       argusUrl: raw.argusUrl || ("https://argus.world/token/" + raw.tokenAddress),
+      claimUrl,
       txHash: raw.txHash,
       creatorWallet: raw.creatorWallet || null,
+      payoutWallet: raw.payoutWallet || null,
       symbol: raw.symbol || null,
       mintedAt: raw.mintedAt || null,
+      feeSplit,
+      openingBuy: portalNumber === 8 ? opening : null,
     };
   }
 
@@ -716,6 +780,7 @@ function encodeLaunch(abi, prepared) {
     mineHookSalt,
     connectWallet,
     runLaunch,
+    sendPreparedLaunch,
     publicArgus,
     portal7FromBundle,
     pinnedBundle,

@@ -24,6 +24,7 @@ let portraitEdit = null;
 let creatorBeat = null;
 let focusMatch = null;
 let agents = [];
+let agentQuery = "";
 let history = [];
 let leaders = [];
 let err = "";
@@ -2897,6 +2898,105 @@ async function confirmConcept() {
   }
 }
 
+function agentSearchNorm(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function agentSearchHaystack(agent) {
+  const argus = agent && agent.argus;
+  return {
+    name: agent && agent.name ? String(agent.name) : "",
+    symbol: String((argus && (argus.symbol || argus.ticker)) || (agent && (agent.symbol || agent.ticker)) || ""),
+    token: String((argus && argus.tokenAddress) || ""),
+  };
+}
+
+function agentMatchesQuery(agent, query) {
+  const q = agentSearchNorm(query);
+  if (!q) return true;
+  const fields = agentSearchHaystack(agent);
+  return agentSearchNorm(fields.name).includes(q)
+    || (fields.symbol && agentSearchNorm(fields.symbol).includes(q))
+    || (fields.token && agentSearchNorm(fields.token).includes(q));
+}
+
+function agentSearchExact(agent, query) {
+  const q = agentSearchNorm(query);
+  if (!q) return false;
+  const fields = agentSearchHaystack(agent);
+  const name = agentSearchNorm(fields.name);
+  const symbol = agentSearchNorm(fields.symbol);
+  const token = agentSearchNorm(fields.token);
+  return token === q || symbol === q || name === q || name === ("lda " + q);
+}
+
+function agentSearchPick(list, query) {
+  const q = agentSearchNorm(query);
+  if (!q) return null;
+  const hits = (list || []).filter((agent) => agentMatchesQuery(agent, query));
+  if (hits.length === 1) return hits[0];
+  const exact = hits.filter((agent) => agentSearchExact(agent, query));
+  return exact.length === 1 ? exact[0] : null;
+}
+
+function agentSearchForm() {
+  const q = agentQuery || "";
+  return `<form class="agent-search" role="search" data-agent-search-form autocomplete="off">
+    <label class="agent-search__label" for="agent-search">Find an agent</label>
+    <div class="agent-search__row">
+      <input id="agent-search" type="search" name="q" data-agent-search inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Name, ticker, or 0x address" aria-controls="agent-roster" value="${esc(q)}">
+      <button class="lda-btn lda-btn-ghost agent-search__clear" type="button" data-agent-search-clear${String(q).trim() ? "" : " hidden"}>Clear</button>
+    </div>
+  </form>`;
+}
+
+function agentSearchEmpty() {
+  return `<section class="empty lda-empty agent-search__empty" data-state="empty" role="status"><div class="kicker">No match</div><p>No agent has that name, ticker, or token address.</p></section>`;
+}
+
+function agentCard(a) {
+  const roster = a.roster === "user" ? (a.status === "READY" ? "Your competitor" : "Brand in progress") : "";
+  return `<button class="agent-card" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
+        <span class="agent-card__portrait">${facePlate(a, 320, { animate: true, context: "roster", state: "idle" })}</span>
+        <span class="agent-card__identity">
+          ${titleLine(a)}
+          <b class="agent-card__name">${esc(a.name)}</b>
+          <span class="agent-card__stats"><span>${esc(a.record || "0–0")}</span>${a.streak ? `<span>Streak ${a.streak}</span>` : ""}</span>
+          ${roster || a.knownFor ? `<span class="fine">${esc([roster, a.knownFor ? `Known for ${a.knownFor}` : ""].filter(Boolean).join(" · "))}</span>` : ""}
+        </span>
+      </button>`;
+}
+
+function agentRosterMarkup() {
+  const hits = agents.filter((a) => agentMatchesQuery(a, agentQuery));
+  if (!hits.length) return { key: "empty", html: agentSearchEmpty() };
+  return {
+    key: hits.map((a) => a.id).join("|"),
+    html: `<div class="agent-roster">${hits.map(agentCard).join("")}</div>`,
+  };
+}
+
+function agentRosterSlot() {
+  const next = agentRosterMarkup();
+  return `<div id="agent-roster" data-agent-roster-slot data-roster-key="${esc(next.key)}">${next.html}</div>`;
+}
+
+function syncAgentSearchChrome() {
+  const btn = matchEl.querySelector("[data-agent-search-clear]");
+  if (btn) btn.hidden = !String(agentQuery || "").trim();
+}
+
+function paintAgentRosterSlot() {
+  const slot = matchEl.querySelector("[data-agent-roster-slot]");
+  if (!slot || tab !== "agents" || focusAgent || creator) return false;
+  const next = agentRosterMarkup();
+  if (slot.dataset.rosterKey === next.key) return true;
+  slot.dataset.rosterKey = next.key;
+  slot.innerHTML = next.html;
+  bindAnimatedPfps(slot);
+  return true;
+}
+
 function agentsView() {
   if (focusAgent) queueHouseMint(focusAgent);
   if (creator) return creatorView();
@@ -2909,19 +3009,25 @@ function agentsView() {
     return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState(listsError ? "Still trying" : "Loading", title, body)}`;
   }
   if (!agents.length) return `${pageHead("Agents", { actions: createAgentButton() })}${createAgentListNote()}${emptyState("No cast yet", "Nobody is seated", "Characters appear here once the show has them.")}`;
-  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}${createAgentListNote()}<div class="agent-roster">` +
-    agents.map((a) => {
-      const roster = a.roster === "user" ? (a.status === "READY" ? "Your competitor" : "Brand in progress") : "";
-      return `<button class="agent-card" type="button" data-agent="${esc(a.id)}" data-cast="${esc(a.id)}"${brandStyle(a)}>
-        <span class="agent-card__portrait">${facePlate(a, 320, { animate: true, context: "roster", state: "idle" })}</span>
-        <span class="agent-card__identity">
-          ${titleLine(a)}
-          <b class="agent-card__name">${esc(a.name)}</b>
-          <span class="agent-card__stats"><span>${esc(a.record || "0–0")}</span>${a.streak ? `<span>Streak ${a.streak}</span>` : ""}</span>
-          ${roster || a.knownFor ? `<span class="fine">${esc([roster, a.knownFor ? `Known for ${a.knownFor}` : ""].filter(Boolean).join(" · "))}</span>` : ""}
-        </span>
-      </button>`;
-    }).join("") + `</div>`;
+  return `${pageHead("Agents", { lede: "Characters, not algorithms with a hat on. Records are from matches they actually played.", actions: createAgentButton() })}${createAgentListNote()}${agentSearchForm()}${agentRosterSlot()}`;
+}
+
+async function openAgent(id) {
+  if (!id) return;
+  try {
+    const j = await api("/api/show/agents/" + encodeURIComponent(id));
+    focusAgent = j.agent;
+    try {
+      const cfg = await api("/api/show/argus/config");
+      if (cfg) rememberArgusConfig(cfg);
+    } catch { /* the detail still opens; launch stays hidden until config loads */ }
+    tab = "agents";
+    paintTabs();
+    pinScroll = false;
+    render();
+    window.scrollTo(0, 0);
+    pinScroll = true;
+  } catch (ex) { err = ex.message; render(); }
 }
 
 async function confirmRegenConcept(id) {
@@ -3277,6 +3383,37 @@ function releaseFocus(root) {
   return key;
 }
 
+function syncAgentQueryFromDom() {
+  const el = matchEl.querySelector("[data-agent-search]");
+  if (!el) return;
+  agentQuery = el.value || "";
+}
+
+function holdAgentSearch() {
+  const el = matchEl.querySelector("[data-agent-search]");
+  if (!el) return null;
+  const focused = document.activeElement === el;
+  return {
+    focused,
+    start: typeof el.selectionStart === "number" ? el.selectionStart : null,
+    end: typeof el.selectionEnd === "number" ? el.selectionEnd : null,
+    direction: el.selectionDirection || "none",
+  };
+}
+
+function restoreAgentSearch(held) {
+  if (!held || !held.focused) return;
+  const el = matchEl.querySelector("[data-agent-search]");
+  if (!el || !el.focus) return;
+  el.focus({ preventScroll: true });
+  if (held.start != null && el.setSelectionRange) {
+    const max = String(el.value || "").length;
+    const start = Math.min(held.start, max);
+    const end = Math.min(held.end == null ? start : held.end, max);
+    try { el.setSelectionRange(start, end, held.direction || "none"); } catch { /* search fields can refuse a range */ }
+  }
+}
+
 function syncCreatorFromDom() {
   if (!creatorSession()) return;
   const root = matchEl.querySelector(".creator");
@@ -3461,6 +3598,7 @@ function paintMatchIntro(match) {
 
 function render() {
   syncCreatorFromDom();
+  syncAgentQueryFromDom();
   syncLaunchFromDom();
   frameBeats = activeMotion(live());
   const watching = live();
@@ -3494,6 +3632,7 @@ function render() {
   const saved = pinScroll ? captureScroll() : null;
   const sheetOpened = !paintedSheet && !!sheetHtml;
   const repaintMatch = matchHtml !== paintedMatch || !!arriving;
+  const heldSearch = repaintMatch ? holdAgentSearch() : null;
   const heldCreator = repaintMatch ? holdCreatorDom() : null;
   const focus = [
     matchHtml === paintedMatch ? "" : releaseFocus(matchEl),
@@ -3505,6 +3644,7 @@ function render() {
   paintedMarket = paintSlot(marketEl, marketHtml, arriving ? "" : paintedMarket);
   paintedSheet = paintSlot(sheetEl, sheetHtml, arriving ? "" : paintedSheet);
   restoreCreatorDom(heldCreator);
+  restoreAgentSearch(heldSearch);
   if (saved) restoreScroll(saved);
   if (sheetOpened) {
     const dialog = sheetEl.querySelector("[data-trade-dialog]");
@@ -3558,6 +3698,13 @@ function openPropSheet(btn) {
 }
 
 view.addEventListener("input", (e) => {
+  const search = e.target && e.target.closest ? e.target.closest("[data-agent-search]") : null;
+  if (search) {
+    agentQuery = search.value || "";
+    syncAgentSearchChrome();
+    if (!paintAgentRosterSlot()) render();
+    return;
+  }
   if (!creator) return;
   const el = e.target;
   if (!el.name || !Object.prototype.hasOwnProperty.call(creator.form, el.name)) return;
@@ -3574,7 +3721,36 @@ view.addEventListener("input", (e) => {
   }
 });
 
+view.addEventListener("search", (e) => {
+  const el = e.target;
+  if (!el || !el.matches || !el.matches("[data-agent-search]")) return;
+  const next = el.value || "";
+  if (next === agentQuery) return;
+  agentQuery = next;
+  syncAgentSearchChrome();
+  if (!paintAgentRosterSlot()) render();
+});
+
+view.addEventListener("submit", async (e) => {
+  if (!e.target || !e.target.matches || !e.target.matches("[data-agent-search-form]")) return;
+  e.preventDefault();
+  const field = e.target.querySelector("[data-agent-search]");
+  if (field) agentQuery = field.value || "";
+  const pick = agentSearchPick(agents, agentQuery);
+  if (pick) await openAgent(pick.id);
+});
+
 view.addEventListener("click", async (e) => {
+  const clearSearch = e.target.closest("[data-agent-search-clear]");
+  if (clearSearch) {
+    agentQuery = "";
+    const field = matchEl.querySelector("[data-agent-search]");
+    if (field) field.value = "";
+    syncAgentSearchChrome();
+    if (!paintAgentRosterSlot()) render();
+    if (field && field.focus) field.focus({ preventScroll: true });
+    return;
+  }
   const createBtn = e.target.closest("[data-create-agent]");
   if (createBtn) { openCreator(); return; }
   const resumeBtn = e.target.closest("[data-resume-agent]");
@@ -3696,20 +3872,7 @@ view.addEventListener("click", async (e) => {
   if (back) { focusAgent = null; focusMatch = null; setTab(back.dataset.back); return; }
   const agentBtn = e.target.closest("[data-agent]");
   if (agentBtn && !e.target.closest("[data-pick]") && !e.target.closest("[data-pick-side]") && !e.target.closest("[data-trade-prop]")) {
-    try {
-      const j = await api("/api/show/agents/" + encodeURIComponent(agentBtn.dataset.agent));
-      focusAgent = j.agent;
-      try {
-        const cfg = await api("/api/show/argus/config");
-        if (cfg) rememberArgusConfig(cfg);
-      } catch { /* the detail still opens; launch stays hidden until config loads */ }
-      tab = "agents";
-      paintTabs();
-      pinScroll = false;
-      render();
-      window.scrollTo(0, 0);
-      pinScroll = true;
-    } catch (ex) { err = ex.message; render(); }
+    await openAgent(agentBtn.dataset.agent);
     return;
   }
   const matchBtn = e.target.closest("[data-match]");

@@ -1968,6 +1968,52 @@ body {
   font-weight: 650;
   color: var(--lda-gold);
 }
+.agent-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-3);
+}
+.agent-search__label {
+  color: var(--lda-text-secondary);
+  font-size: var(--type-meta);
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.agent-search__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.agent-search input[type="search"] {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--tap);
+  margin: 0;
+  padding: 0 var(--space-3);
+  background: var(--lda-surface);
+  color: var(--lda-text);
+  border: 1px solid var(--lda-line);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: 16px;
+  color-scheme: dark;
+}
+.agent-search input[type="search"]::placeholder { color: var(--lda-text-muted); }
+.agent-search input[type="search"]:focus-visible {
+  outline: 3px solid var(--lda-focus);
+  outline-offset: 2px;
+  border-color: var(--lda-gold);
+}
+.agent-search__clear {
+  flex: 0 0 auto;
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+}
+.agent-search__clear[hidden] { display: none; }
+.agent-search__empty { margin-top: var(--space-2); }
 .agent-roster {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

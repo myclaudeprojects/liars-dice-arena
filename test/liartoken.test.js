@@ -51,14 +51,39 @@ const css = fs.readFileSync(path.join(root, "app.css"), "utf8");
 assert(html.includes('id="buy-liar"'), "header has the arena buy control");
 assert(html.includes(">Buy $LIAR</a>"), "header labels the arena coin");
 assert(html.includes(BUY), "header defaults to the arena token page");
-assert(html.includes("/static/app.css?v=42"), "css cache query bumped");
-assert(html.includes("/static/app.js?v=50"), "js cache query bumped");
+assert(html.includes("/static/app.css?v=44"), "css cache query bumped");
+assert(html.includes("/static/app.js?v=51"), "js cache query bumped");
+const xAt = html.indexOf('id="arena-x"');
+const buyAt = html.indexOf('id="buy-liar"');
+assert(xAt > buyAt, "X sits beside Buy $LIAR");
+assert(xAt < html.indexOf('class="top-actions"'), "X stays in the buy cluster");
+const xTag = html.slice(xAt, html.indexOf("</a>", xAt));
+assert(xTag.includes('href="https://x.com/LiarsDiceArc"'), "header defaults to the house X account");
+assert(xTag.includes('target="_blank"') && xTag.includes('rel="noopener"'), "X link opens in a new tab");
+assert(xTag.endsWith(">X"), "header labels the X link");
+assert(app.includes('getElementById("arena-x")'), "client can retarget the X link");
+assert(app.includes("cfg.xUrl"), "client reads the configured X url");
+assert(app.includes('x.protocol === "https:"'), "client only applies an http X url");
 assert(app.includes("Arena token"), "profile names the arena token");
 assert(app.includes("It is not an agent token."), "profile separates $LIAR from agent tokens");
 assert(app.includes("Buy ${esc(token.label)}"), "profile buy label follows the arena ticker");
 assert(app.includes("rememberArgusConfig"), "the client applies the public config");
 assert(app.includes("Opens argus.world. This app does not swap."), "profile uses the same external-link note");
 assert(css.includes("a.buy-liar"), "header buy link is styled");
-assert(css.includes("grid-area: buy"), "narrow screens keep Buy $LIAR in the header");
+assert(css.includes("a.arena-x"), "header X link is styled");
+assert(css.includes(".header-offers { grid-area: buy"), "narrow screens keep X beside Buy $LIAR");
+
+const X = "https://x.com/LiarsDiceArc";
+for (const name of ["index.html", "agents.html", "leaderboard.html", "how.html", "landing.html"]) {
+  const page = fs.readFileSync(path.join(root, name), "utf8");
+  const offers = page.indexOf('class="nav-offers"');
+  assert(offers !== -1, name + " groups Buy $LIAR with X");
+  const chunk = page.slice(offers, page.indexOf("</li>", offers));
+  assert(chunk.includes('class="buy"') && chunk.indexOf('class="buy"') < chunk.indexOf('class="nav-x"'), name + " places X after Buy $LIAR");
+  const xPart = chunk.slice(chunk.indexOf('class="nav-x"') - 80);
+  assert(xPart.includes('href="' + X + '"'), name + " links the official X account");
+  assert(xPart.includes('target="_blank"') && xPart.includes('rel="noopener"'), name + " opens X safely");
+}
+assert(fs.readFileSync(path.join(root, "landing.html"), "utf8").includes('class="btn token-x"'), "landing token card keeps X beside Buy $LIAR");
 
 console.log("liartoken ok");

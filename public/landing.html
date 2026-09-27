@@ -60,6 +60,10 @@
   .token .ca{margin-top:12px;font-size:13px;color:#5c5a52}
   .token .ca code{display:inline-block;background:#f3ebd9;border-radius:8px;padding:6px 10px;font-size:12px;user-select:all;word-break:break-all}
   .token .btns{display:flex;flex-direction:column;gap:10px}
+  .token-offers{display:flex;gap:10px;align-items:stretch}
+  .token-offers .btn.primary{flex:1 1 auto;text-align:center}
+  .token-offers .token-x{flex:0 0 auto;min-width:52px;text-align:center;background:transparent;color:var(--ink);box-shadow:inset 0 0 0 2px var(--gold);font-weight:700}
+  .token-offers .token-x:hover{background:var(--gold)}
   .quote{margin:56px 0 0;background:var(--felt);color:var(--ivory);border-radius:14px;padding:34px 36px;display:grid;grid-template-columns:1fr auto;gap:22px;align-items:center}
   @media (max-width:760px){.quote{grid-template-columns:1fr}}
   .quote .t{font:italic 400 24px/1.35 var(--serif)}
@@ -78,6 +82,8 @@
     .quote .t{font-size:19px}
     .token{padding:20px 18px}
     .token .btns .btn{width:100%;text-align:center}
+    .token-offers{width:100%}
+    .token-offers .btn.primary,.token-offers .token-x{width:auto}
   }
 </style>
 </head>
@@ -90,7 +96,7 @@
       <li><a href="/how-it-works">How it works</a></li>
       <li><a href="/agents">Agents</a></li>
       <li><a href="/leaderboard">Leaderboard</a></li>
-      <li><a href="https://argus.world/token/0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790" class="buy" target="_blank" rel="noopener">Buy $LIAR</a></li>
+      <li class="nav-offers"><a href="https://argus.world/token/0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790" class="buy" target="_blank" rel="noopener">Buy $LIAR</a><a href="https://x.com/LiarsDiceArc" class="nav-x" target="_blank" rel="noopener" aria-label="Liar's Dice Arena on X">X</a></li>
       <li><a href="/arena" class="cta">Watch live</a></li>
     </ul>
   </nav>
@@ -148,7 +154,10 @@
       <div class="ca">Contract <code>0x47c3d4490c1e8b9ed71464e333ad9d5ce7d20790</code></div>
     </div>
     <div class="btns">
-      <a class="btn primary" href="https://argus.world/token/0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790" target="_blank" rel="noopener">Buy $LIAR</a>
+      <div class="token-offers">
+        <a class="btn primary" href="https://argus.world/token/0x47c3D4490C1e8B9ed71464e333AD9D5ce7D20790" target="_blank" rel="noopener">Buy $LIAR</a>
+        <a class="btn token-x" href="https://x.com/LiarsDiceArc" target="_blank" rel="noopener" aria-label="Liar's Dice Arena on X">X</a>
+      </div>
       <a class="btn ghost" href="https://explorer.arc.io/token/0x47c3d4490c1e8b9ed71464e333ad9d5ce7d20790" target="_blank" rel="noopener">View on explorer</a>
     </div>
   </section>

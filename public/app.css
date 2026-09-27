@@ -142,6 +142,24 @@ a.buy-liar {
 }
 a.buy-liar:visited { color: var(--lda-ink); }
 a.buy-liar:hover { color: var(--lda-ink); background: var(--lda-gold-bright); }
+.header-offers { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 0; }
+a.arena-x {
+  flex: 0 0 auto;
+  height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--lda-gold);
+  background: var(--lda-gold);
+  color: var(--lda-ink);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-decoration: none;
+}
+a.arena-x:visited { color: var(--lda-ink); }
+a.arena-x:hover { color: var(--lda-ink); background: var(--lda-gold-bright); border-color: var(--lda-gold-bright); }
 @media (max-width: 720px) {
   .top {
     display: grid;
@@ -155,7 +173,8 @@ a.buy-liar:hover { color: var(--lda-ink); background: var(--lda-gold-bright); }
   .brand { grid-area: brand; }
   .top-end { display: contents; }
   .top-actions { grid-area: actions; }
-  a.buy-liar { grid-area: buy; width: 100%; }
+  .header-offers { grid-area: buy; width: 100%; }
+  a.buy-liar { flex: 1 1 auto; width: auto; min-width: 0; }
 }
 .sound {
   min-height: var(--tap); min-width: 44px; padding: 0 12px;

@@ -190,7 +190,15 @@ async function handleShow(req, res, url, query, show) {
       let txHash = "";
       try {
         sponsorGuard().take(clientKeys(req, body));
-        const sent = await sponsorLaunch({ privateKey: process.env.ARGUS_MINT_KEY, prepared });
+        let sent;
+        try {
+          sent = await sponsorLaunch({ privateKey: process.env.ARGUS_MINT_KEY, prepared });
+        } catch (e) {
+          const retryable = e && (e.code === "sponsor_rejected" || e.code === "rpc_unavailable");
+          if (!retryable) throw e;
+          console.warn("argus_sponsor", "silent_retry", e.code);
+          sent = await sponsorLaunch({ privateKey: process.env.ARGUS_MINT_KEY, prepared });
+        }
         txHash = sent.txHash;
         const launch = await verifyLaunchTx(txHash);
         if (sent.creator && launch.creatorWallet && launch.creatorWallet.toLowerCase() !== sent.creator.toLowerCase()) {

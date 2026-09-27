@@ -359,6 +359,42 @@
     return iface.encodeFunctionData(name, args);
   }
 
+  // Portal #7 clones a reward tracker when the signing wallet's Argus reward
+  // mode is anything other than NONE. dividendBps of 0 then reverts
+  // RewardTrackerWithoutDividend. One basis point, taken from creator, then
+  // liquidity, then burn, is the allocation that launch accepts.
+  function seatRewardDividend(prepared, mode) {
+    const row = Object.assign({}, prepared || {});
+    const m = Number(mode);
+    if (!Number.isInteger(m) || m <= 0) return row;
+    if (Number(row.dividendBps) > 0) return row;
+    const donors = ["creatorBps", "liquidityBps", "burnBps"];
+    for (const key of donors) {
+      if (Number(row[key]) >= 1) {
+        row[key] = Number(row[key]) - 1;
+        row.dividendBps = Number(row.dividendBps || 0) + 1;
+        return row;
+      }
+    }
+    return row;
+  }
+
+  const REWARD_CONFIG_ABI = [
+    "function launchConfig() view returns (address)",
+    "function configFor(address creator) view returns (uint8 mode, uint96 minimumShareBalance)",
+  ];
+
+  async function readRewardMode(call, portal, abi, creator) {
+    const portalAbi = abi || loadAbi();
+    const tokenImplRaw = await call({ to: portal, data: encodeCall(portalAbi, "tokenImpl", []) });
+    const tokenImpl = addr(decodeSingle(["address"], tokenImplRaw)[0]);
+    const cfgIface = new ethers.Interface(REWARD_CONFIG_ABI);
+    const cfgRaw = await call({ to: tokenImpl, data: cfgIface.encodeFunctionData("launchConfig", []) });
+    const cfg = addr(decodeSingle(["address"], cfgRaw)[0]);
+    const modeRaw = await call({ to: cfg, data: cfgIface.encodeFunctionData("configFor", [creator]) });
+    return Number(decodeSingle(["uint8", "uint96"], modeRaw)[0]);
+  }
+
 function encodeLaunch(abi, prepared) {
   const row = prepared || {};
   if (!row.hookSalt) throw fail("hook_salt", "Hook salt is missing.");
@@ -562,6 +598,13 @@ function encodeLaunch(abi, prepared) {
     const initCodeHash = hex32(decodeSingle(["bytes32"], hashRaw)[0]);
     status("Finding a hook address…");
     const mined = mineHookSalt({ portal, creator, initCodeHash });
+    let rewardMode = 0;
+    try {
+      rewardMode = await readRewardMode(async function (tx) {
+        return provider.request({ method: "eth_call", params: [{ to: tx.to, data: tx.data }, "latest"] });
+      }, portal, abi, creator);
+    } catch { rewardMode = 0; }
+    const aligned = seatRewardDividend(prepared, rewardMode);
     if (prepared.devBuyQuote > 0n) {
       status("Approving USDC for the dev buy…");
       await ensureQuoteAllowance(provider, creator, portal, prepared.quoteAsset, prepared.devBuyQuote);
@@ -571,7 +614,7 @@ function encodeLaunch(abi, prepared) {
     try {
       txHash = await provider.request({
         method: "eth_sendTransaction",
-        params: [{ from: creator, to: portal, data: encodeLaunch(abi, { ...prepared, hookSalt: mined.hookSalt }), value: "0x0" }],
+        params: [{ from: creator, to: portal, data: encodeLaunch(abi, { ...aligned, hookSalt: mined.hookSalt }), value: "0x0" }],
       });
     } catch (e) {
       if (e && e.code === 4001) throw fail("wallet_rejected", "The wallet request was declined. The agent is still saved.");
@@ -586,7 +629,7 @@ function encodeLaunch(abi, prepared) {
       throw e;
     }
     const decoded = decodeLaunchReceipt(receipt, portal);
-    return { txHash: decoded.txHash, creator, hook: mined.hook, decoded, prepared };
+    return { txHash: decoded.txHash, creator, hook: mined.hook, decoded, prepared: aligned };
   }
 
   function publicArgus(raw) {
@@ -666,6 +709,8 @@ function encodeLaunch(abi, prepared) {
     prepareLaunch,
     encodeCall,
     encodeLaunch,
+    seatRewardDividend,
+    readRewardMode,
     decodeLaunchReceipt,
     hookCreate2Salt,
     mineHookSalt,

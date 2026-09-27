@@ -489,11 +489,7 @@ function agentPortrait(agent) {
   const brand = brandFor(agent);
   const large = pfpSrc(brand, 320);
   if (!large) return mark(agent.name, agent.hue, agent.id, brand);
-  const small = pfpSrc(brand, 48);
-  const mid = pfpSrc(brand, 96);
-  const hero = animatedPortrait(`<img src="${esc(large)}" alt="" width="320" height="320">`, agent, "profile", "idle");
-  return `${hero}
-    <span class="pfp-sizes" aria-label="Avatar sizes">${small ? `<img class="pfp-mini" src="${esc(small)}" alt="" width="48" height="48">` : ""}${mid ? `<img class="pfp-mini is-96" src="${esc(mid)}" alt="" width="96" height="96">` : ""}</span>`;
+  return animatedPortrait(`<img src="${esc(large)}" alt="" width="320" height="320">`, agent, "profile", "idle");
 }
 function pfpFrame(svg) {
   const art = safeSvg(svg);
@@ -1605,6 +1601,7 @@ function blankCreator() {
     selectedId: null,
     selections: defaultVisualSelections(),
     oneShot: false,
+    mintPhase: "",
     portraits: [],
     selectedPortrait: null,
     seenPortraits: [],
@@ -1712,6 +1709,9 @@ function createAgentButton() {
 }
 
 function createAgentListNote() {
+  if (houseMintReady(argusOffer)) {
+    return `<p class="fine">Invent a player for Liar's Dice Arena. They join the roster and play, and confirming creates their Argus token. You get a cut of the trading fees. The house pays you.</p>`;
+  }
   return `<p class="fine">Create agent asks for a name, a description, and a portrait. That same step launches the Argus token. Connect wallet is only the fallback when server mint is not the house wallet.</p>`;
 }
 
@@ -1826,7 +1826,7 @@ function argusLaunchButtons(cfg, form) {
   if (!cfg.sponsored) return connect + sign;
   const sponsorClass = houseMint ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
   const sponsor = `<button class="${sponsorClass}" type="button" data-argus-sponsor="1"${busy}>${sponsoring ? "Launching…" : "Launch with server mint"}</button>`;
-  if (houseMint) return sponsor + connect + sign;
+  if (houseMint) return "";
   return connect + sign + sponsor;
 }
 
@@ -1849,8 +1849,14 @@ function argusPanel() {
       <p class="fine">This agent is already saved. Creating the agent and minting a token are separate steps. Launch is not open yet. They can play without a token.</p>
     </section>`;
   }
+  if (houseMintReady(cfg)) {
+    return `<section class="argus-launch" data-argus-house="1">
+      <h2>Argus token</h2>
+      <p class="fine" role="status">Creating this agent's token… It can still play.</p>
+    </section>`;
+  }
   const f = creator.launch || {};
-  const houseMint = houseMintReady(cfg);
+  const houseMint = false;
   const house = f.creatorFeeWallet || cfg.creatorFeeWallet || "";
   const wallet = f.wallet ? `Connected ${f.wallet.slice(0, 6)}…${f.wallet.slice(-4)}` : "Wallet not connected";
   const pending = f.pendingTx ? `<p class="fine">Submitted ${esc(f.pendingTx)}. If the wallet already shows that transaction, check again before creating another token.</p>
@@ -2027,24 +2033,57 @@ function argusDetail(agent) {
     </section>`;
   }
   if (!argusOffer.enabled) return "";
-  const stillPlays = agent.playable
-    ? "Skip the launch, or if it fails, this agent still plays."
-    : "Continue branding finishes their look. They can join the show after that, with or without a token.";
-  const houseMint = houseMintReady(argusOffer);
-  const offer = [
-    "This agent is already saved. Creating the agent and minting a token are separate steps.",
-    "The image is this agent's portrait from Create Agent.",
-    houseMint
-      ? "Launch with server mint signs as the house wallet, so the 100% creator share accrues there. Sign create on Arc makes the connected wallet the on-chain creator instead."
-      : "Connect wallet only links MetaMask or Rabby. Sign create on Arc makes that wallet the on-chain creator.",
-    stillPlays,
-  ].filter(Boolean).join(" ");
-  return `<section class="argus-launch">
-    <h2>Launch on Argus</h2>
-    <p class="fine">${esc(offer)}</p>
-    ${argusOffer.sponsoredMessage ? `<p class="fine">${esc(argusOffer.sponsoredMessage)}</p>` : ""}
-    <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-for="1">Launch on Argus</button>
+  const note = houseMintState.get(agent.id);
+  const line = houseMintReady(argusOffer)
+    ? (note === "failed"
+      ? "The token will retry. This agent can still play."
+      : "Creating this agent's token…")
+    : "This agent can play without a token.";
+  return `<section class="argus-launch" data-argus-house="1">
+    <h2>Argus token</h2>
+    <p class="fine" role="status">${esc(line)}</p>
   </section>`;
+}
+
+const houseMintState = new Map();
+
+function launchParamsForAgent(agent) {
+  const brand = (agent && agent.brand) || {};
+  const assets = brand.assets || {};
+  return suggestedLaunch(argusOffer, {
+    name: agent.name,
+    description: agent.shortDescription || agent.note || agent.line || "",
+    canonicalPfp: assets.canonicalPfp || brand.canonicalPfp || "",
+    agentId: agent.id,
+  });
+}
+
+function queueHouseMint(agent) {
+  if (!agent || !agent.id || creator) return;
+  if (!houseMintReady(argusOffer)) return;
+  if (agent.argus && agent.argus.tokenAddress) return;
+  if (houseMintState.has(agent.id)) return;
+  houseMintState.set(agent.id, "pending");
+  const payload = Object.assign({}, launchParamsForAgent(agent), { predictor: predictorId() });
+  api("/api/show/agents/" + encodeURIComponent(agent.id) + "/argus/sponsor", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  }).then((saved) => {
+    houseMintState.set(agent.id, "done");
+    if (focusAgent && focusAgent.id === agent.id && saved && saved.argus) {
+      focusAgent.argus = saved.argus;
+      painted = "";
+      render();
+    }
+    refreshLists().catch(() => {});
+  }).catch(() => {
+    houseMintState.set(agent.id, "failed");
+    if (focusAgent && focusAgent.id === agent.id && tab === "agents" && !creator) {
+      painted = "";
+      render();
+    }
+  });
 }
 
 async function connectArgus() {
@@ -2140,36 +2179,47 @@ async function launchArgus() {
   }
 }
 
-async function sponsorArgus() {
-  if (!creator || creator.busy) return;
-  syncLaunchFromDom();
+async function sponsorArgus(opts) {
+  const auto = !!(opts && opts.auto);
+  if (!creator || (creator.busy && !auto)) return;
+  if (!auto) syncLaunchFromDom();
   const cfg = creator.argusConfig || {};
   const id = argusAgentId();
   if (!cfg.enabled || !id) {
     creator.error = "Launch is not available for this agent. They can still play.";
+    if (auto && creator.oneShot) creator.mintPhase = "failed";
     painted = "";
     render();
     return;
   }
   if (!cfg.sponsored) {
     creator.error = cfg.sponsoredMessage || "Server mint is not set up. Connect a wallet, or leave this agent playable.";
+    if (auto && creator.oneShot) creator.mintPhase = "failed";
     painted = "";
     render();
     return;
   }
+  const house = houseMintReady(cfg);
   creator.busy = true;
   creator.launchMode = "sponsor";
   creator.error = "";
-  if (creator.launch) creator.launch.status = "Submitting the server mint…";
+  if (house && creator.oneShot) creator.mintPhase = "auto";
+  if (creator.launch) creator.launch.status = house && creator.oneShot ? "" : "Submitting the server mint…";
   painted = "";
   render();
   try {
     await submitServerMint();
+    if (creator && house && creator.oneShot) creator.mintPhase = "done";
   } catch (ex) {
     if (creator) {
       if (creator.launch && ex.txHash) creator.launch.pendingTx = ex.txHash;
       if (creator.launch) creator.launch.status = "";
-      creator.error = ex.message || "Server mint did not finish. This agent can still play.";
+      if (house && creator.oneShot) {
+        creator.mintPhase = "failed";
+        creator.error = "The token will retry. This agent can still play.";
+      } else {
+        creator.error = ex.message || "Server mint did not finish. This agent can still play.";
+      }
     }
   } finally {
     if (creator) {
@@ -2315,12 +2365,12 @@ function oneShotLaunch() {
   const cfg = creator.argusConfig || { enabled: false };
   const minted = creator.launch && creator.launch.minted;
   if (minted && minted.argusUrl) {
-    return `<section class="argus-launch">
-      <h2>Launched on Argus</h2>
+    return `<section class="argus-launch" data-argus-house="1">
+      <h2>Done</h2>
       <p class="fine">${esc(minted.symbol || "Token")} · ${esc(minted.tokenAddress || "")}</p>
       ${minted.creatorWallet ? `<p class="fine">On-chain creator ${esc(minted.creatorWallet)}</p>` : ""}
       <a class="cta lda-btn lda-btn-primary lda-btn-block" href="${esc(minted.argusUrl)}" target="_blank" rel="noopener">Buy on Argus</a>
-      <p class="fine">Opens argus.world. This app does not swap. The profile keeps this link.</p>
+      <p class="fine">Opens argus.world. This app does not swap. You get a cut of the trading fees. The house pays you.</p>
     </section>`;
   }
   if (!cfg.enabled) {
@@ -2335,13 +2385,17 @@ function oneShotLaunch() {
   const sign = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-launch="1"${busy}>Sign create on Arc</button>`;
   const connect = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-connect="1"${busy}>Connect wallet</button>`;
   if (houseMint) {
-    return `<section class="argus-launch">
-      <h2>Launch on Argus</h2>
-      <p class="fine">Server mint signs as the house wallet ${esc(house)}, so the 100% creator share accrues there. The token name is the LDA name. The description is yours, plus “An LDA agent in Liar's Dice Arena.” The image is the portrait. ${tokenSocialCopy(cfg)}</p>
-      <p class="fine"><b>Sign create on Arc</b> stays available if server mint does not finish. The signing wallet becomes the on-chain creator. Creator fees then accrue to that wallet instead of ${esc(house)}, unless you are signing as ${esc(house)}.</p>
-      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-sponsor="1"${busy}>Launch with server mint</button>
-      ${connect}
-      ${sign}
+    const failed = creator.mintPhase === "failed";
+    if (failed) {
+      return `<section class="argus-launch" data-argus-house="1">
+        <h2>Argus token</h2>
+        <p class="fine" role="status">The token will retry. This agent can still play.</p>
+      </section>`;
+    }
+    return `<section class="argus-launch" data-argus-house="1">
+      <h2>Creating token…</h2>
+      <p class="fine" role="status">Creating this agent's token…</p>
+      <p class="fine">You get a cut of the trading fees. The house pays you. The description includes “An LDA agent in Liar's Dice Arena.”</p>
     </section>`;
   }
   const why = cfg.sponsored && cfg.mintWallet
@@ -2363,7 +2417,8 @@ function creatorView() {
   let body = "";
   if (step !== 3) {
     body = `
-      <p class="fine">You name them and choose a face. Play style follows that portrait. Create agent saves the competitor and launches the Argus token.</p>
+      <p class="fine">You invent a player for Liar's Dice Arena. Pick a name and a face. They join the roster and play, and confirming creates their Argus token.</p>
+      <p class="fine">You get a cut of that token's trading fees. The house pays you.</p>
       <label>Name <span class="fine">(optional — saved on the roster as LDA plus this name)</span><input type="text" name="name" maxlength="32" value="${esc(f.name)}" autocomplete="off" placeholder="Nightshade"></label>
       <p class="fine" data-roster-name>Roster name ${esc(rosterNamePreview(f.name))}</p>
       <label>Description <span class="fine">(optional)</span><textarea name="shortDescription" maxlength="240" placeholder="A quiet closer who spends one lie and waits.">${esc(f.shortDescription)}</textarea></label>
@@ -2406,7 +2461,6 @@ function creatorView() {
         ${reveal.playstyle ? `<p>${esc(reveal.playstyle)}</p>` : ""}
         ${reveal.description ? `<p class="fine">${esc(reveal.description)}</p>` : ""}
       </div>
-      <span class="pfp-sizes" aria-label="Small-size check">${pfpMini(reveal.svg || (c && c.pfpSvg), 48)}${pfpMini(reveal.svg || (c && c.pfpSvg), 96)}</span>
       ${creator.oneShot ? oneShotLaunch() : argusPanel()}
       ${creator.oneShot ? `<button class="cta lda-btn lda-btn-primary lda-btn-block agent-reveal__enter" type="button" data-view-created="1"${creator.busy ? " disabled" : ""}>View profile</button>` : ""}
       <button class="${creator.oneShot ? "ghost lda-btn lda-btn-ghost" : "cta lda-btn lda-btn-primary"} lda-btn-block agent-reveal__enter" type="button" data-enter-arena="1"${creator.busy ? " disabled" : ""}>Enter the Arena</button>
@@ -2419,11 +2473,13 @@ function creatorView() {
     </section>`;
   }
   const working = creator.statusLabel || "Working.";
+  const houseMinting = creator.oneShot && houseMintReady(creator.argusConfig || {});
+  const quietMint = houseMinting && (creator.mintPhase === "auto" || creator.mintPhase === "failed");
   return `<div class="creator">
     ${pageHead("Create agent", { kicker })}
     ${body}
-    ${creator.busy ? `<p class="fine creator-status" role="status">${esc(working)}</p>` : ""}
-    ${creator.error ? `<div class="err lda-error" role="alert">${esc(creator.error)}</div>` : ""}
+    ${creator.busy && !quietMint ? `<p class="fine creator-status" role="status">${esc(working)}</p>` : ""}
+    ${creator.error && !(quietMint && creator.mintPhase === "failed") ? `<div class="err lda-error" role="alert">${esc(creator.error)}</div>` : ""}
     ${step === 3 ? "" : `<div class="creator-actions">
       <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-creator-confirm="1"${creator.busy ? " disabled" : ""}>${creator.busy ? esc(working) : "Create agent"}</button>
       <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-creator-back="1"${creator.busy ? " disabled" : ""}>Back to agents</button>
@@ -2575,21 +2631,20 @@ async function confirmCreate() {
       selections: generated.creationSelections || creator.selections,
       agentId: id,
     };
-    creator.step = 3;
     saved = true;
     await refreshLists();
     await loadArgusConfig();
     creator.launch = oneShotLaunchParams();
+    stopCreatorBeat();
+    creator.step = 3;
     if (houseMintReady(creator.argusConfig)) {
+      creator.mintPhase = "auto";
       creator.launchMode = "sponsor";
       creator.statusLabel = "Launching the Argus token…";
+      creator.error = "";
       painted = "";
       render();
-      try {
-        await submitServerMint();
-      } catch (ex) {
-        creator.error = ex.message || "Server mint did not finish. This agent can still play.";
-      }
+      await sponsorArgus({ auto: true });
     }
   } catch (ex) {
     if (creator) {
@@ -2802,6 +2857,7 @@ async function confirmConcept() {
 }
 
 function agentsView() {
+  if (focusAgent) queueHouseMint(focusAgent);
   if (creator) return creatorView();
   if (focusAgent) return agentDetail(focusAgent);
   if (!agents.length && !listsReady) {
@@ -3481,7 +3537,6 @@ view.addEventListener("click", async (e) => {
   if (createBtn) { openCreator(); return; }
   const resumeBtn = e.target.closest("[data-resume-agent]");
   if (resumeBtn && focusAgent) { resumeCreator(focusAgent); return; }
-  if (e.target.closest("[data-argus-for]") && focusAgent) { openArgusLaunch(focusAgent); return; }
   const detailOpt = e.target.closest("[data-opt-group]");
   if (detailOpt && focusAgent && !creator && focusAgent.roster === "user") {
     if (!portraitEdit || portraitEdit.id !== focusAgent.id) {
@@ -4143,6 +4198,11 @@ document.addEventListener("keydown", (e) => {
 async function boot() {
   paintSound();
   render();
+  api("/api/show/argus/config").then((cfg) => {
+    if (cfg) argusOffer = cfg;
+    painted = "";
+    render();
+  }).catch(() => {});
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => {
       if (document.querySelector("canvas.share-card")) paintShareCards();

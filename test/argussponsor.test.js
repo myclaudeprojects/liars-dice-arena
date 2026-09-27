@@ -12,6 +12,7 @@ const { argusPublicConfig, SPONSOR_UNAVAILABLE } = require("../src/argus/config"
 const {
   parseMintKey,
   sponsorLaunch,
+  describeRevert,
   setSponsorTransport,
   resetSponsorGuard,
   clientKeys,
@@ -112,6 +113,14 @@ function form(extra) {
   }, extra || {});
 }
 
+const CONFIG_ABI = [
+  "function launchConfig() view returns (address)",
+  "function configFor(address creator) view returns (uint8 mode, uint96 minimumShareBalance)",
+];
+const configIface = new ethers.Interface(CONFIG_ABI);
+const LAUNCH_CONFIG = "0x6666666666666666666666666666666666666666";
+const TOKEN_IMPL = "0x7777777777777777777777777777777777777777";
+
 function mockTransport(opts) {
   const options = opts || {};
   const sent = [];
@@ -119,8 +128,19 @@ function mockTransport(opts) {
   return {
     sent,
     broadcasts: () => broadcasts,
+    get estimates() { return options.estimates || 0; },
     async call({ data }) {
+      const selector = String(data || "").slice(0, 10).toLowerCase();
+      if (selector === configIface.getFunction("launchConfig").selector) {
+        return ethers.AbiCoder.defaultAbiCoder().encode(["address"], [LAUNCH_CONFIG]);
+      }
+      if (selector === configIface.getFunction("configFor").selector) {
+        return ethers.AbiCoder.defaultAbiCoder().encode(["uint8", "uint96"], [options.rewardMode || 0, 0]);
+      }
       const parsed = iface().parseTransaction({ data });
+      if (parsed.name === "tokenImpl") {
+        return ethers.AbiCoder.defaultAbiCoder().encode(["address"], [TOKEN_IMPL]);
+      }
       if (parsed.name === "predictSplitter") {
         return ethers.AbiCoder.defaultAbiCoder().encode(["address"], [SPLITTER]);
       }
@@ -128,6 +148,19 @@ function mockTransport(opts) {
         return ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [ethers.keccak256(ethers.toUtf8Bytes("portal7-hook"))]);
       }
       throw new Error("unexpected call " + parsed.name);
+    },
+    async estimateGas() {
+      if (options.revertData) {
+        options.estimates = (options.estimates || 0) + 1;
+        if (!(options.revertOnce && options.estimates > 1)) {
+          const err = new Error("execution reverted");
+          err.shortMessage = "execution reverted (unknown custom error)";
+          err.data = options.revertData;
+          if (options.revertSecret) err.shortMessage += " " + options.revertSecret;
+          throw err;
+        }
+      }
+      return 210000n;
     },
     async nonce() { return 4; },
     async feeData() { return { gasPrice: 1n, maxFeePerGas: null, maxPriorityFeePerGas: null }; },
@@ -279,6 +312,63 @@ function agent(show, name) {
   eq(decoded[0].expectConvert, 1n, "sponsored calldata expectConvert");
   eq(ethers.getAddress(decoded[0].quoteAsset), ethers.getAddress(launch.QUOTE_ASSET), "sponsored quote is usdc");
   assert((BigInt(signed.hook) & ((1n << 14n) - 1n)) === launch.HOOK_FLAGS, "sponsored hook flags");
+  eq(decoded[0].dividendBps, 0n, "no reward tracker keeps a zero dividend");
+
+  eq(launch.seatRewardDividend({ creatorBps: 10000, burnBps: 0, dividendBps: 0, liquidityBps: 0 }, 0).dividendBps, 0, "mode none leaves the allocation");
+  const quoted = launch.seatRewardDividend({ creatorBps: 10000, burnBps: 0, dividendBps: 0, liquidityBps: 0 }, 1);
+  eq(quoted.creatorBps, 9999, "quote mode takes one basis point from the creator");
+  eq(quoted.dividendBps, 1, "quote mode seats one basis point of dividend");
+  const kind = launch.seatRewardDividend({ creatorBps: 0, burnBps: 0, dividendBps: 0, liquidityBps: 10000 }, 2);
+  eq(kind.liquidityBps, 9999, "in-kind mode can take the basis point from liquidity");
+  eq(kind.dividendBps, 1, "in-kind mode still seats a dividend");
+  const kept = launch.seatRewardDividend({ creatorBps: 9950, burnBps: 0, dividendBps: 50, liquidityBps: 0 }, 1);
+  eq(kept.dividendBps, 50, "an explicit dividend is left alone");
+
+  const nightshadeImage = "https://liars-dice-arena.onrender.com/assets/portraits/bank_0094.webp?v=1&s=6";
+  const tracked = mockTransport({ rewardMode: 1 });
+  const night = await sponsorLaunch({
+    privateKey: TEST_KEY,
+    params: form({
+      launchName: "LDA Nightshade",
+      launchTicker: "NIGHTSHADE",
+      launchImage: nightshadeImage,
+      launchWebsite: "https://liarsdicearc.app/",
+      launchX: "https://x.com/LiarsDiceArc",
+      launchDescription: "A quiet closer.\n\nPlay at https://liarsdicearc.app/",
+    }),
+    transport: tracked,
+  });
+  const nightDecoded = iface().decodeFunctionData("launch", tracked.sent[0].data);
+  eq(nightDecoded[0].name, "LDA Nightshade", "a space in the LDA name is accepted");
+  eq(nightDecoded[0].symbol, "NIGHTSHADE", "nightshade ticker");
+  eq(nightDecoded[1].imageURI, nightshadeImage, "portrait query string is not the revert");
+  eq(nightDecoded[1].website, "https://liarsdicearc.app/", "house website");
+  eq(nightDecoded[0].devBuyQuote, 0n, "nightshade dev buy stays zero");
+  eq(nightDecoded[0].creatorBps, 9999n, "house reward mode moves one basis point");
+  eq(nightDecoded[0].dividendBps, 1n, "house reward mode requires a dividend");
+  eq(night.prepared.dividendBps, 1, "returned launch records the dividend");
+
+  const reverted = mockTransport({ rewardMode: 1, revertData: "0xabec626d", revertSecret: TEST_KEY });
+  const revertLogs = [];
+  console.warn = (...args) => revertLogs.push(args.map(String).join(" "));
+  let revertCode = "";
+  try {
+    await sponsorLaunch({ privateKey: TEST_KEY, params: form(), transport: reverted });
+  } catch (e) {
+    revertCode = e.code;
+    assert(!String(e.publicMessage).includes("RewardTrackerWithoutDividend"), "the spectator message stays short");
+    assert(!String(e.publicMessage).includes(TEST_KEY.slice(2)), "spectator message omits the key");
+  } finally {
+    console.warn = prevWarn;
+  }
+  eq(revertCode, "sponsor_rejected", "estimateGas revert is sponsor_rejected");
+  eq(reverted.broadcasts(), 0, "a revert is not broadcast");
+  const revertLine = revertLogs.find((line) => line.includes("sponsor_rejected")) || "";
+  assert(revertLine.includes("RewardTrackerWithoutDividend"), "log names the custom error");
+  assert(revertLine.includes("selector=0xabec626d"), "log includes the selector");
+  assert(!revertLine.toLowerCase().includes(TEST_KEY.slice(2)), "revert log omits the key");
+  const named = describeRevert({ data: "0xabec626d", shortMessage: "execution reverted (unknown custom error)" }, launch.loadAbi());
+  eq(named, "RewardTrackerWithoutDividend selector=0xabec626d", "describeRevert decodes the portal error");
 
   const wrongChain = mockTransport({ chainId: 1 });
   let wrong = false;
@@ -454,6 +544,28 @@ function agent(show, name) {
     await pendingFirst;
     eq(first.statusCode, 200, "in-flight leader still persists " + first.body);
     eq(show.agentDetail(third).argus.creatorWallet, MINT, "in-flight leader stores the mint wallet");
+
+    resetSponsorGuard({ max: 10, minIntervalMs: 0, globalMax: 100 });
+    const retryId = agent(show, "Relay");
+    const flaky = mockTransport({ rewardMode: 1, revertData: "0xabec626d", revertOnce: true });
+    setSponsorTransport(() => flaky);
+    global.fetch = mockFetch(agreeingHosts(MINT));
+    const retried = mockRes();
+    await handleShow(mockReq("POST", form({ launchTicker: "RELAY", launchName: "Relay" }), { ip: "203.0.113.70" }), retried, "/api/show/agents/" + retryId + "/argus/sponsor", new URLSearchParams(), show);
+    eq(retried.statusCode, 200, "a rejected estimate is retried once " + retried.body);
+    eq(flaky.estimates, 2, "silent retry estimates again");
+    eq(flaky.broadcasts(), 1, "silent retry broadcasts once");
+    eq(show.agentDetail(retryId).argus.status, "minted", "silent retry persists the token");
+
+    const stuck = mockTransport({ rewardMode: 1, revertData: "0xabec626d" });
+    setSponsorTransport(() => stuck);
+    const stuckId = agent(show, "Stuck");
+    const stuckRes = mockRes();
+    await handleShow(mockReq("POST", form({ launchTicker: "STUCK", launchName: "Stuck" }), { ip: "203.0.113.71" }), stuckRes, "/api/show/agents/" + stuckId + "/argus/sponsor", new URLSearchParams(), show);
+    eq(stuckRes.statusCode, 400, "two rejects stay a failure");
+    eq(stuck.estimates, 2, "retry stops after one extra attempt");
+    eq(stuck.broadcasts(), 0, "a repeated reject is not broadcast");
+    eq(show.agentDetail(stuckId).argus, null, "a repeated reject stores nothing");
   } finally {
     console.warn = prevWarn;
     global.fetch = prevFetch;
@@ -469,12 +581,21 @@ function agent(show, name) {
   const mintJs = fs.readFileSync(path.join(__dirname, "..", "public", "argusmint.js"), "utf8");
   const sponsorSrc = fs.readFileSync(path.join(__dirname, "..", "src", "argus", "sponsor.js"), "utf8");
   assert(app.includes("Sign create on Arc"), "browser sign button remains");
-  assert(app.includes("data-argus-for"), "agent detail can open the launch panel");
+  assert(!app.includes("data-argus-for"), "the agent profile has no Launch on Argus button");
+  assert(!app.includes(">Launch on Argus</button>"), "no profile control is labeled Launch on Argus");
   assert(!app.includes("!argusOffer.enabled || !agent.playable"), "a saved user agent can launch before they are playable");
   assert(app.includes("data-argus-launch"), "browser launch action remains");
   assert(app.includes("Launch with server mint"), "server mint button");
   assert(app.includes("data-argus-sponsor"), "server mint action");
-  assert(app.includes("if (houseMint) return sponsor + connect + sign"), "house mint keeps server mint first");
+  assert(app.includes("data-argus-house"), "house mint uses one launch screen");
+  assert(app.includes("You invent a player for Liar's Dice Arena."), "create copy says what an agent is");
+  assert(app.includes("The house pays you."), "create copy says the house pays the fee share");
+  assert(app.includes("Creating token"), "house mint shows status instead of a choice");
+  assert(app.includes("The token will retry"), "a failed house mint promises a retry without a button");
+  assert(!app.includes("Retry mint"), "house mint does not ask the spectator to retry");
+  assert(app.includes("sponsorArgus({ auto: true })"), "create confirm auto-runs the server mint");
+  assert(app.includes("mintPhase"), "mint phase keeps the launching screen stable");
+  assert(!app.includes("if (houseMint) return sponsor + connect + sign"), "house mint does not show the three launch buttons");
   assert(app.includes("return connect + sign + sponsor"), "a mint key that is not the house wallet does not lead with server mint");
   assert(app.includes("signing wallet becomes the on-chain creator"), "ui warns that Sign create changes who receives fees");
   assert(app.includes("unless you are signing as"), "ui warns Sign create conflicts unless the signer is the house wallet");

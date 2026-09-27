@@ -1605,6 +1605,7 @@ function blankCreator() {
     selectedId: null,
     selections: defaultVisualSelections(),
     oneShot: false,
+    mintPhase: "",
     portraits: [],
     selectedPortrait: null,
     seenPortraits: [],
@@ -1826,7 +1827,9 @@ function argusLaunchButtons(cfg, form) {
   if (!cfg.sponsored) return connect + sign;
   const sponsorClass = houseMint ? "cta lda-btn lda-btn-primary lda-btn-block" : "ghost lda-btn lda-btn-ghost lda-btn-block";
   const sponsor = `<button class="${sponsorClass}" type="button" data-argus-sponsor="1"${busy}>${sponsoring ? "Launching…" : "Launch with server mint"}</button>`;
-  if (houseMint) return sponsor + connect + sign;
+  if (houseMint) {
+    return sponsor + `<details class="argus-advanced advanced-config"><summary>Advanced</summary><div class="advanced-config__body">${connect}${sign}</div></details>`;
+  }
   return connect + sign + sponsor;
 }
 
@@ -2140,35 +2143,42 @@ async function launchArgus() {
   }
 }
 
-async function sponsorArgus() {
-  if (!creator || creator.busy) return;
-  syncLaunchFromDom();
+async function sponsorArgus(opts) {
+  const auto = !!(opts && opts.auto);
+  if (!creator || (creator.busy && !auto)) return;
+  if (!auto) syncLaunchFromDom();
   const cfg = creator.argusConfig || {};
   const id = argusAgentId();
   if (!cfg.enabled || !id) {
     creator.error = "Launch is not available for this agent. They can still play.";
+    if (auto && creator.oneShot) creator.mintPhase = "failed";
     painted = "";
     render();
     return;
   }
   if (!cfg.sponsored) {
     creator.error = cfg.sponsoredMessage || "Server mint is not set up. Connect a wallet, or leave this agent playable.";
+    if (auto && creator.oneShot) creator.mintPhase = "failed";
     painted = "";
     render();
     return;
   }
+  const house = houseMintReady(cfg);
   creator.busy = true;
   creator.launchMode = "sponsor";
   creator.error = "";
-  if (creator.launch) creator.launch.status = "Submitting the server mint…";
+  if (house && creator.oneShot) creator.mintPhase = "auto";
+  if (creator.launch) creator.launch.status = house && creator.oneShot ? "" : "Submitting the server mint…";
   painted = "";
   render();
   try {
     await submitServerMint();
+    if (creator && house && creator.oneShot) creator.mintPhase = "done";
   } catch (ex) {
     if (creator) {
       if (creator.launch && ex.txHash) creator.launch.pendingTx = ex.txHash;
       if (creator.launch) creator.launch.status = "";
+      if (house && creator.oneShot) creator.mintPhase = "failed";
       creator.error = ex.message || "Server mint did not finish. This agent can still play.";
     }
   } finally {
@@ -2335,13 +2345,27 @@ function oneShotLaunch() {
   const sign = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-launch="1"${busy}>Sign create on Arc</button>`;
   const connect = `<button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-argus-connect="1"${busy}>Connect wallet</button>`;
   if (houseMint) {
-    return `<section class="argus-launch">
+    const launching = creator.mintPhase === "auto" || (creator.busy && creator.launchMode === "sponsor");
+    if (launching) {
+      return `<section class="argus-launch" data-argus-house="1">
+        <h2>Launching on Argus</h2>
+        <p class="fine" role="status">Launching this agent's token…</p>
+        <p class="fine">The token name is the LDA name. The description is yours, plus “An LDA agent in Liar's Dice Arena.” The image is the portrait. ${tokenSocialCopy(cfg)}</p>
+      </section>`;
+    }
+    const message = creator.error || "Portal #7 did not accept this launch. This agent can still play.";
+    return `<section class="argus-launch" data-argus-house="1">
       <h2>Launch on Argus</h2>
-      <p class="fine">Server mint signs as the house wallet ${esc(house)}, so the 100% creator share accrues there. The token name is the LDA name. The description is yours, plus “An LDA agent in Liar's Dice Arena.” The image is the portrait. ${tokenSocialCopy(cfg)}</p>
-      <p class="fine"><b>Sign create on Arc</b> stays available if server mint does not finish. The signing wallet becomes the on-chain creator. Creator fees then accrue to that wallet instead of ${esc(house)}, unless you are signing as ${esc(house)}.</p>
-      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-sponsor="1"${busy}>Launch with server mint</button>
-      ${connect}
-      ${sign}
+      <p class="err lda-error" role="alert">${esc(message)}</p>
+      <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-argus-sponsor="1"${busy}>Retry mint</button>
+      <details class="argus-advanced advanced-config">
+        <summary>Advanced</summary>
+        <div class="advanced-config__body">
+          <p class="fine"><b>Sign create on Arc</b> uses your wallet. The signing wallet becomes the on-chain creator. Creator fees then accrue to that wallet instead of ${esc(house)}, unless you are signing as ${esc(house)}.</p>
+          ${connect}
+          ${sign}
+        </div>
+      </details>
     </section>`;
   }
   const why = cfg.sponsored && cfg.mintWallet
@@ -2419,11 +2443,13 @@ function creatorView() {
     </section>`;
   }
   const working = creator.statusLabel || "Working.";
+  const houseMinting = creator.oneShot && houseMintReady(creator.argusConfig || {});
+  const quietMint = houseMinting && (creator.mintPhase === "auto" || creator.mintPhase === "failed");
   return `<div class="creator">
     ${pageHead("Create agent", { kicker })}
     ${body}
-    ${creator.busy ? `<p class="fine creator-status" role="status">${esc(working)}</p>` : ""}
-    ${creator.error ? `<div class="err lda-error" role="alert">${esc(creator.error)}</div>` : ""}
+    ${creator.busy && !quietMint ? `<p class="fine creator-status" role="status">${esc(working)}</p>` : ""}
+    ${creator.error && !(quietMint && creator.mintPhase === "failed") ? `<div class="err lda-error" role="alert">${esc(creator.error)}</div>` : ""}
     ${step === 3 ? "" : `<div class="creator-actions">
       <button class="cta lda-btn lda-btn-primary lda-btn-block" type="button" data-creator-confirm="1"${creator.busy ? " disabled" : ""}>${creator.busy ? esc(working) : "Create agent"}</button>
       <button class="ghost lda-btn lda-btn-ghost lda-btn-block" type="button" data-creator-back="1"${creator.busy ? " disabled" : ""}>Back to agents</button>
@@ -2575,21 +2601,20 @@ async function confirmCreate() {
       selections: generated.creationSelections || creator.selections,
       agentId: id,
     };
-    creator.step = 3;
     saved = true;
     await refreshLists();
     await loadArgusConfig();
     creator.launch = oneShotLaunchParams();
+    stopCreatorBeat();
+    creator.step = 3;
     if (houseMintReady(creator.argusConfig)) {
+      creator.mintPhase = "auto";
       creator.launchMode = "sponsor";
       creator.statusLabel = "Launching the Argus token…";
+      creator.error = "";
       painted = "";
       render();
-      try {
-        await submitServerMint();
-      } catch (ex) {
-        creator.error = ex.message || "Server mint did not finish. This agent can still play.";
-      }
+      await sponsorArgus({ auto: true });
     }
   } catch (ex) {
     if (creator) {

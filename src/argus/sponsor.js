@@ -14,6 +14,8 @@ const {
   loadAbi,
   fail,
   CHAIN_ID,
+  seatRewardDividend,
+  readRewardMode,
 } = require("./launch");
 const { rpcUrls } = require("./verify");
 
@@ -52,8 +54,50 @@ function parseMintKey(raw) {
   }
 }
 
-function scrubbed(err, secrets, code, fallback, status) {
-  const detail = redactAll(String((err && (err.shortMessage || err.message)) || ""), secrets).slice(0, 180);
+function revertHex(err) {
+  const found = [];
+  const push = (value) => {
+    if (typeof value !== "string") return;
+    const text = value.trim();
+    if (/^0x[0-9a-fA-F]{8,}$/.test(text)) found.push(text.toLowerCase());
+  };
+  const walk = (node, depth) => {
+    if (!node || depth > 6 || found.length > 6) return;
+    if (typeof node === "string") return push(node);
+    push(node.data);
+    if (node.data && typeof node.data === "object") push(node.data.data);
+    if (node.info) walk(node.info.error || node.info, depth + 1);
+    if (node.error && node.error !== node) walk(node.error, depth + 1);
+    if (node.cause) walk(node.cause, depth + 1);
+  };
+  walk(err, 0);
+  return found[0] || "";
+}
+
+// Name the Portal #7 custom error when the provider only says "unknown custom error".
+// The selector is four bytes. The private key never belongs in this string.
+function describeRevert(err, abi) {
+  const data = revertHex(err);
+  const selector = data.length >= 10 ? data.slice(0, 10) : "";
+  let name = "";
+  if (selector && abi) {
+    try {
+      const parsed = new ethers.Interface(abi).parseError(data);
+      if (parsed && parsed.name) name = parsed.name;
+    } catch { name = ""; }
+  }
+  const bits = [];
+  if (name) bits.push(name);
+  if (selector) bits.push("selector=" + selector);
+  if (!name) {
+    const short = String((err && (err.shortMessage || err.message)) || "").replace(/\s+/g, " ").trim();
+    if (short) bits.push(short.slice(0, 140));
+  }
+  return bits.join(" ") || "reverted";
+}
+
+function scrubbed(err, secrets, code, fallback, status, abi) {
+  const detail = redactAll(describeRevert(err, abi), secrets).slice(0, 220);
   console.warn("argus_sponsor", code, detail || "failed");
   return fail(code, fallback, status);
 }
@@ -184,7 +228,7 @@ async function createArcTransport(env) {
       if (provider) {
         try { provider.destroy(); } catch { /* already closed */ }
       }
-      console.warn("argus_sponsor_rpc", host, redact(e && e.message, env && env.ARGUS_MINT_KEY).slice(0, 120));
+      console.warn("argus_sponsor_rpc", host, redactAll(describeRevert(e), [env && env.ARGUS_MINT_KEY]).slice(0, 160));
     }
   }
   throw fail("rpc_unavailable", "Arc RPCs did not accept the server mint. This agent can still play.", 502);
@@ -207,6 +251,17 @@ async function sponsorLaunch(opts) {
   try {
     try {
     const creator = parsed.address;
+    let launchParams = prepared;
+    try {
+      const rewardMode = await readRewardMode((tx) => transport.call(tx), portal, abi, creator);
+      launchParams = seatRewardDividend(prepared, rewardMode);
+      if (launchParams.dividendBps !== prepared.dividendBps) {
+        console.warn("argus_sponsor", "reward_dividend", "mode=" + rewardMode, "dividendBps=" + launchParams.dividendBps);
+      }
+    } catch (e) {
+      if (e && e.publicMessage) throw e;
+      console.warn("argus_sponsor", "reward_mode_unread", redactAll(describeRevert(e, abi), secrets).slice(0, 180));
+    }
     const splitterRaw = await transport.call({
       to: portal,
       data: encodeCall(abi, "predictSplitter", [creator, prepared.salt]),
@@ -218,7 +273,7 @@ async function sponsorLaunch(opts) {
     });
     const initCodeHash = ethers.hexlify(decodeWord(["bytes32"], hashRaw)[0]);
     const mined = mineHookSalt({ portal, creator, initCodeHash });
-    const data = encodeLaunch(abi, { ...prepared, hookSalt: mined.hookSalt });
+    const data = encodeLaunch(abi, { ...launchParams, hookSalt: mined.hookSalt });
     const chainId = Number(await transport.chainId());
     if (chainId !== CHAIN_ID) {
       throw fail("wrong_chain", "Server mint is not pointed at Arc mainnet (chain id 5042). This agent can still play.", 502);
@@ -231,7 +286,7 @@ async function sponsorLaunch(opts) {
         const est = BigInt(await transport.estimateGas({ from: creator, to: portal, data, value: 0n }));
         if (est > 0n) gasLimit = est + (est / 5n) + 50_000n;
       } catch (e) {
-        throw scrubbed(e, secrets, "sponsor_rejected", "Portal #7 did not accept this launch. This agent can still play.", 400);
+        throw scrubbed(e, secrets, "sponsor_rejected", "Portal #7 did not accept this launch. This agent can still play.", 400, abi);
       }
     }
     if (gasLimit > GAS_CAP) gasLimit = GAS_CAP;
@@ -257,13 +312,13 @@ async function sponsorLaunch(opts) {
     try {
       raw = await wallet.signTransaction(tx);
     } catch (e) {
-      throw scrubbed(e, secrets, "sponsor_failed", "Server mint could not sign the launch. This agent can still play.", 502);
+      throw scrubbed(e, secrets, "sponsor_failed", "Server mint could not sign the launch. This agent can still play.", 502, abi);
     }
     let txHash;
     try {
       txHash = await transport.broadcast(raw);
     } catch (e) {
-      throw scrubbed(e, secrets, "sponsor_failed", "Server mint did not send. This agent can still play.", 502);
+      throw scrubbed(e, secrets, "sponsor_failed", "Server mint did not send. This agent can still play.", 502, abi);
     }
     if (!/^0x[0-9a-fA-F]{64}$/.test(String(txHash || ""))) {
       throw fail("sponsor_failed", "Server mint did not return a transaction. This agent can still play.", 502);
@@ -273,11 +328,11 @@ async function sponsorLaunch(opts) {
       creator,
       hook: mined.hook,
       portal: ethers.getAddress(portal),
-      prepared,
+      prepared: launchParams,
     };
     } catch (e) {
       if (e && e.publicMessage) throw e;
-      throw scrubbed(e, secrets, "sponsor_failed", "Server mint did not send. This agent can still play.", 502);
+      throw scrubbed(e, secrets, "sponsor_failed", "Server mint did not send. This agent can still play.", 502, abi);
     }
   } finally {
     if (transport && typeof transport.destroy === "function") {
@@ -289,6 +344,7 @@ async function sponsorLaunch(opts) {
 module.exports = {
   parseMintKey,
   redact,
+  describeRevert,
   sponsorLaunch,
   createSponsorGuard,
   resetSponsorGuard,

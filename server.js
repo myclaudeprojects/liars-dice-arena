@@ -1,3 +1,13 @@
+
+// One-shot recovery: clear a stale /var/data show lock left after OOM/crash loops.
+if (process.env.SHOW_CLEAR_LOCK === "1") {
+  const fs = require("fs");
+  const locks = ["/var/data/show.json.lock"];
+  if (process.env.SHOW_DATA_PATH) locks.push(`${process.env.SHOW_DATA_PATH}.lock`);
+  for (const lock of locks) {
+    try { fs.unlinkSync(lock); console.log("SHOW_CLEAR_LOCK removed", lock); } catch { /* missing is fine */ }
+  }
+}
 // server.js — Live arena. Serves the spectator UI, streams every event over
 // SSE, and runs the betting window -> match -> settlement cycle.
 //   node server.js            (mock agents + mock wallet, zero keys)

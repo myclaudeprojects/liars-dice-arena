@@ -9,8 +9,8 @@
 // process may open the store again. SIGTERM and SIGINT release the lock and
 // exit, so a Render rolling deploy can hand the disk to the next instance.
 // That next process waits LOCK_WAIT_MS (15s), then throws show_store_locked
-// and does not write. A lock whose pid is dead, or still unreadable when the
-// wait ends, is removed and taken. A live pid is never stolen.
+// and does not write. A lock whose pid is dead, not this app (PID reuse),
+// or still unreadable when the wait ends, is removed and taken.
 //
 // save() writes show.json.tmp, fsyncs that file, fsyncs the directory, then
 // renames it onto show.json and fsyncs the directory again. A crash before
@@ -54,6 +54,21 @@ function pidAlive(pid) {
   }
 }
 
+// After an OOM/crash the lock file persists on the Render disk. A later boot
+// can reuse that numeric pid for an unrelated process (Erlang/Elixir setup,
+// shell, etc.), so pidAlive alone keeps a dead show-store lock forever.
+// Only treat the lock owner as live if /proc cmdline looks like this app.
+function pidHoldsShowStore(pid) {
+  if (!pidAlive(pid)) return false;
+  try {
+    const cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8");
+    const parts = cmdline.split("\0").join(" ");
+    return /\bnode\b/.test(parts) && /server\.js\b/.test(parts);
+  } catch {
+    return true; // cannot read cmdline — keep conservative
+  }
+}
+
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -82,7 +97,7 @@ class ShowStore {
     const owner = this._readPid(this.lockPath);
     if (expectedPid == null) {
       if (owner != null) return;
-    } else if (owner !== expectedPid || pidAlive(owner)) {
+    } else if (owner !== expectedPid || pidHoldsShowStore(owner)) {
       return;
     }
     try { this.fs.unlinkSync(this.lockPath); } catch { /* another waiter took it */ }
@@ -118,8 +133,8 @@ class ShowStore {
           this._hookRelease();
           return;
         }
-        if (owner != null && !pidAlive(owner)) {
-          console.log(`show store: removing stale lock held by dead pid ${owner}`);
+        if (owner != null && !pidHoldsShowStore(owner)) {
+          console.log(`show store: removing stale lock held by non-owner pid ${owner}`);
           this._stealLock(owner);
           continue;
         }

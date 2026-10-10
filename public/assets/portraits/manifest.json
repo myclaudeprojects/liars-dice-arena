@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-10T08:45:38.594Z",
+ "generated": "2026-10-10T10:46:21.765Z",
  "entries": [
   {
    "id": "bank_0000",
@@ -129693,6 +129693,5126 @@
     "background": "tech_lab",
     "accessories": "chips",
     "skin": "tan skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9082",
+   "file": "bank_9082.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "cocky",
+    "attire": "minimal",
+    "colorPalette": "orange",
+    "background": "casino",
+    "accessories": "hat_cap",
+    "skin": "",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9083",
+   "file": "bank_9083.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_athletic",
+    "expression": "laid_back",
+    "attire": "sports",
+    "colorPalette": "monochrome",
+    "background": "club",
+    "accessories": "none",
+    "skin": "fair skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9084",
+   "file": "bank_9084.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "serious",
+    "attire": "trench_coat",
+    "colorPalette": "gold",
+    "background": "bunker",
+    "accessories": "mask",
+    "skin": "",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9086",
+   "file": "bank_9086.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "playful",
+    "attire": "plate_armor",
+    "colorPalette": "monochrome",
+    "background": "space",
+    "accessories": "dice",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9087",
+   "file": "bank_9087.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "young_adult",
+    "expression": "unhinged",
+    "attire": "robe",
+    "colorPalette": "monochrome",
+    "background": "club",
+    "accessories": "headphones",
+    "skin": "olive skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9088",
+   "file": "bank_9088.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "male_muscular",
+    "expression": "mysterious",
+    "attire": "hood_mask",
+    "colorPalette": "purple",
+    "background": "space",
+    "accessories": "unique_fx",
+    "skin": "dark ebony skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9089",
+   "file": "bank_9089.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "elder",
+    "expression": "serious",
+    "attire": "cyber_gear",
+    "colorPalette": "cyan",
+    "background": "boardroom",
+    "accessories": "chips",
+    "skin": "porcelain skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9090",
+   "file": "bank_9090.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "playful",
+    "attire": "formal",
+    "colorPalette": "blue",
+    "background": "tech_lab",
+    "accessories": "cigar",
+    "skin": "",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9091",
+   "file": "bank_9091.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "androgynous",
+    "expression": "calm",
+    "attire": "plate_armor",
+    "colorPalette": "cyan",
+    "background": "dice_table",
+    "accessories": "pet",
+    "skin": "dark ebony skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9092",
+   "file": "bank_9092.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "female_lean",
+    "expression": "laid_back",
+    "attire": "formal",
+    "colorPalette": "gold",
+    "background": "rooftop",
+    "accessories": "hat_cap",
+    "skin": "tan skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9093",
+   "file": "bank_9093.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "young_adult",
+    "expression": "aggressive",
+    "attire": "minimal",
+    "colorPalette": "orange",
+    "background": "city_night",
+    "accessories": "jewelry",
+    "skin": "deep brown skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9094",
+   "file": "bank_9094.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "male_muscular",
+    "expression": "playful",
+    "attire": "formal",
+    "colorPalette": "gold",
+    "background": "vault",
+    "accessories": "glasses",
+    "skin": "tan skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9095",
+   "file": "bank_9095.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "unhinged",
+    "attire": "tactical",
+    "colorPalette": "orange",
+    "background": "studio",
+    "accessories": "smoke",
+    "skin": "",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9096",
+   "file": "bank_9096.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "elder",
+    "expression": "unhinged",
+    "attire": "casual",
+    "colorPalette": "yellow",
+    "background": "arena",
+    "accessories": "chips",
+    "skin": "porcelain skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9098",
+   "file": "bank_9098.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "androgynous",
+    "expression": "intense",
+    "attire": "robe",
+    "colorPalette": "purple",
+    "background": "boardroom",
+    "accessories": "cigar",
+    "skin": "olive skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9099",
+   "file": "bank_9099.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "male_lean",
+    "expression": "mysterious",
+    "attire": "cyber_gear",
+    "colorPalette": "purple",
+    "background": "neon_alley",
+    "accessories": "jewelry",
+    "skin": "brown skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9101",
+   "file": "bank_9101.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "androgynous",
+    "expression": "confident",
+    "attire": "trench_coat",
+    "colorPalette": "pink",
+    "background": "rooftop",
+    "accessories": "smoke",
+    "skin": "deep brown skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9103",
+   "file": "bank_9103.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "male_muscular",
+    "expression": "aggressive",
+    "attire": "minimal",
+    "colorPalette": "purple",
+    "background": "underground",
+    "accessories": "headphones",
+    "skin": "tan skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9104",
+   "file": "bank_9104.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "young_adult",
+    "expression": "playful",
+    "attire": "streetwear",
+    "colorPalette": "blue",
+    "background": "city_night",
+    "accessories": "unique_fx",
+    "skin": "fair skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9105",
+   "file": "bank_9105.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_lean",
+    "expression": "aggressive",
+    "attire": "plate_armor",
+    "colorPalette": "multi",
+    "background": "underground",
+    "accessories": "hat_cap",
+    "skin": "dark ebony skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9106",
+   "file": "bank_9106.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "female_athletic",
+    "expression": "calm",
+    "attire": "hood_mask",
+    "colorPalette": "orange",
+    "background": "neon_alley",
+    "accessories": "hat_cap",
+    "skin": "brown skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9107",
+   "file": "bank_9107.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "female_athletic",
+    "expression": "laid_back",
+    "attire": "sports",
+    "colorPalette": "cyan",
+    "background": "rooftop",
+    "accessories": "cigar",
+    "skin": "deep brown skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9108",
+   "file": "bank_9108.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "elder",
+    "expression": "cocky",
+    "attire": "performance_costume",
+    "colorPalette": "cyan",
+    "background": "space",
+    "accessories": "hat_cap",
+    "skin": "fair skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9109",
+   "file": "bank_9109.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "female_athletic",
+    "expression": "intense",
+    "attire": "plate_armor",
+    "colorPalette": "monochrome",
+    "background": "vault",
+    "accessories": "smoke",
+    "skin": "brown skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9110",
+   "file": "bank_9110.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "young_adult",
+    "expression": "playful",
+    "attire": "streetwear",
+    "colorPalette": "orange",
+    "background": "club",
+    "accessories": "hat_cap",
+    "skin": "fair skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9111",
+   "file": "bank_9111.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "elder",
+    "expression": "cocky",
+    "attire": "casual",
+    "colorPalette": "purple",
+    "background": "vault",
+    "accessories": "unique_fx",
+    "skin": "porcelain skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9112",
+   "file": "bank_9112.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "young_adult",
+    "expression": "calm",
+    "attire": "business",
+    "colorPalette": "green",
+    "background": "arena",
+    "accessories": "hat_cap",
+    "skin": "tan skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9115",
+   "file": "bank_9115.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "male_muscular",
+    "expression": "laid_back",
+    "attire": "tactical",
+    "colorPalette": "yellow",
+    "background": "arena",
+    "accessories": "cigar",
+    "skin": "deep brown skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9116",
+   "file": "bank_9116.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "male_lean",
+    "expression": "unhinged",
+    "attire": "formal",
+    "colorPalette": "blue",
+    "background": "neon_alley",
+    "accessories": "hat_cap",
+    "skin": "olive skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9117",
+   "file": "bank_9117.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "female_lean",
+    "expression": "mysterious",
+    "attire": "formal",
+    "colorPalette": "orange",
+    "background": "club",
+    "accessories": "pet",
+    "skin": "olive skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9118",
+   "file": "bank_9118.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "heavy_set",
+    "expression": "calm",
+    "attire": "cyber_gear",
+    "colorPalette": "red",
+    "background": "tech_lab",
+    "accessories": "cigar",
+    "skin": "olive skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9120",
+   "file": "bank_9120.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "male_muscular",
+    "expression": "intense",
+    "attire": "luxury",
+    "colorPalette": "green",
+    "background": "underground",
+    "accessories": "glasses",
+    "skin": "olive skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9121",
+   "file": "bank_9121.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "calm",
+    "attire": "hood_mask",
+    "colorPalette": "yellow",
+    "background": "neon_alley",
+    "accessories": "smoke",
+    "skin": "",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9122",
+   "file": "bank_9122.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "heavy_set",
+    "expression": "playful",
+    "attire": "casual",
+    "colorPalette": "blue",
+    "background": "arena",
+    "accessories": "chips",
+    "skin": "brown skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9123",
+   "file": "bank_9123.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "male_lean",
+    "expression": "calm",
+    "attire": "bomber_jacket",
+    "colorPalette": "multi",
+    "background": "underground",
+    "accessories": "cigar",
+    "skin": "porcelain skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9124",
+   "file": "bank_9124.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "heavy_set",
+    "expression": "intense",
+    "attire": "bomber_jacket",
+    "colorPalette": "green",
+    "background": "dice_table",
+    "accessories": "jewelry",
+    "skin": "dark ebony skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9126",
+   "file": "bank_9126.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "heavy_set",
+    "expression": "cocky",
+    "attire": "sports",
+    "colorPalette": "yellow",
+    "background": "space",
+    "accessories": "prop",
+    "skin": "olive skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9127",
+   "file": "bank_9127.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "elder",
+    "expression": "confident",
+    "attire": "tactical",
+    "colorPalette": "gold",
+    "background": "tech_lab",
+    "accessories": "dice",
+    "skin": "tan skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9128",
+   "file": "bank_9128.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "androgynous",
+    "expression": "intellectual",
+    "attire": "cyber_gear",
+    "colorPalette": "gold",
+    "background": "casino",
+    "accessories": "prop",
+    "skin": "tan skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9129",
+   "file": "bank_9129.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "androgynous",
+    "expression": "aggressive",
+    "attire": "tactical",
+    "colorPalette": "orange",
+    "background": "tech_lab",
+    "accessories": "dice",
+    "skin": "fair skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9130",
+   "file": "bank_9130.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "male_muscular",
+    "expression": "playful",
+    "attire": "business",
+    "colorPalette": "multi",
+    "background": "dice_table",
+    "accessories": "unique_fx",
+    "skin": "olive skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9131",
+   "file": "bank_9131.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "androgynous",
+    "expression": "intellectual",
+    "attire": "tactical",
+    "colorPalette": "red",
+    "background": "neon_alley",
+    "accessories": "prop",
+    "skin": "porcelain skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9132",
+   "file": "bank_9132.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_lean",
+    "expression": "serious",
+    "attire": "formal",
+    "colorPalette": "red",
+    "background": "dice_table",
+    "accessories": "mask",
+    "skin": "porcelain skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9134",
+   "file": "bank_9134.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "female_athletic",
+    "expression": "cocky",
+    "attire": "tactical",
+    "colorPalette": "gold",
+    "background": "abstract",
+    "accessories": "jewelry",
+    "skin": "tan skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9136",
+   "file": "bank_9136.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "female_athletic",
+    "expression": "serious",
+    "attire": "formal",
+    "colorPalette": "multi",
+    "background": "casino",
+    "accessories": "glasses",
+    "skin": "deep brown skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9137",
+   "file": "bank_9137.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "young_adult",
+    "expression": "calm",
+    "attire": "performance_costume",
+    "colorPalette": "orange",
+    "background": "boardroom",
+    "accessories": "hat_cap",
+    "skin": "olive skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9138",
+   "file": "bank_9138.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_lean",
+    "expression": "confident",
+    "attire": "cyber_gear",
+    "colorPalette": "green",
+    "background": "casino",
+    "accessories": "hat_cap",
+    "skin": "brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9139",
+   "file": "bank_9139.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "male_muscular",
+    "expression": "serious",
+    "attire": "robe",
+    "colorPalette": "yellow",
+    "background": "tech_lab",
+    "accessories": "none",
+    "skin": "fair skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9140",
+   "file": "bank_9140.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "elder",
+    "expression": "laid_back",
+    "attire": "tactical",
+    "colorPalette": "red",
+    "background": "boardroom",
+    "accessories": "pet",
+    "skin": "tan skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9142",
+   "file": "bank_9142.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "female_athletic",
+    "expression": "laid_back",
+    "attire": "plate_armor",
+    "colorPalette": "blue",
+    "background": "tech_lab",
+    "accessories": "cigar",
+    "skin": "fair skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9143",
+   "file": "bank_9143.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "androgynous",
+    "expression": "mysterious",
+    "attire": "sports",
+    "colorPalette": "orange",
+    "background": "vault",
+    "accessories": "scar_tattoo",
+    "skin": "fair skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9145",
+   "file": "bank_9145.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "androgynous",
+    "expression": "mysterious",
+    "attire": "bomber_jacket",
+    "colorPalette": "multi",
+    "background": "tech_lab",
+    "accessories": "chips",
+    "skin": "olive skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9146",
+   "file": "bank_9146.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "laid_back",
+    "attire": "hood_mask",
+    "colorPalette": "purple",
+    "background": "neon_alley",
+    "accessories": "pet",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9147",
+   "file": "bank_9147.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "mysterious",
+    "attire": "casual",
+    "colorPalette": "monochrome",
+    "background": "arena",
+    "accessories": "chips",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9148",
+   "file": "bank_9148.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "heavy_set",
+    "expression": "laid_back",
+    "attire": "formal",
+    "colorPalette": "green",
+    "background": "arena",
+    "accessories": "jewelry",
+    "skin": "tan skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9149",
+   "file": "bank_9149.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "heavy_set",
+    "expression": "unhinged",
+    "attire": "business",
+    "colorPalette": "multi",
+    "background": "arena",
+    "accessories": "scar_tattoo",
+    "skin": "olive skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9150",
+   "file": "bank_9150.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "female_athletic",
+    "expression": "cocky",
+    "attire": "tactical",
+    "colorPalette": "green",
+    "background": "neon_alley",
+    "accessories": "pet",
+    "skin": "olive skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9151",
+   "file": "bank_9151.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "male_muscular",
+    "expression": "confident",
+    "attire": "business",
+    "colorPalette": "red",
+    "background": "boardroom",
+    "accessories": "jewelry",
+    "skin": "fair skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9152",
+   "file": "bank_9152.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "mysterious",
+    "attire": "casual",
+    "colorPalette": "purple",
+    "background": "tech_lab",
+    "accessories": "none",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9153",
+   "file": "bank_9153.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "male_lean",
+    "expression": "confident",
+    "attire": "performance_costume",
+    "colorPalette": "blue",
+    "background": "city_night",
+    "accessories": "chips",
+    "skin": "dark ebony skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9154",
+   "file": "bank_9154.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "androgynous",
+    "expression": "intense",
+    "attire": "sports",
+    "colorPalette": "monochrome",
+    "background": "arena",
+    "accessories": "none",
+    "skin": "tan skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9155",
+   "file": "bank_9155.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "young_adult",
+    "expression": "aggressive",
+    "attire": "formal",
+    "colorPalette": "pink",
+    "background": "casino",
+    "accessories": "hat_cap",
+    "skin": "porcelain skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9156",
+   "file": "bank_9156.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "male_muscular",
+    "expression": "calm",
+    "attire": "casual",
+    "colorPalette": "pink",
+    "background": "casino",
+    "accessories": "scar_tattoo",
+    "skin": "porcelain skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9158",
+   "file": "bank_9158.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "male_lean",
+    "expression": "confident",
+    "attire": "performance_costume",
+    "colorPalette": "pink",
+    "background": "space",
+    "accessories": "chips",
+    "skin": "brown skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9159",
+   "file": "bank_9159.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "elder",
+    "expression": "mysterious",
+    "attire": "trench_coat",
+    "colorPalette": "green",
+    "background": "boardroom",
+    "accessories": "smoke",
+    "skin": "porcelain skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9160",
+   "file": "bank_9160.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "androgynous",
+    "expression": "calm",
+    "attire": "formal",
+    "colorPalette": "cyan",
+    "background": "neon_alley",
+    "accessories": "dice",
+    "skin": "deep brown skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9161",
+   "file": "bank_9161.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "androgynous",
+    "expression": "unhinged",
+    "attire": "trench_coat",
+    "colorPalette": "monochrome",
+    "background": "club",
+    "accessories": "jewelry",
+    "skin": "deep brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9162",
+   "file": "bank_9162.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "female_athletic",
+    "expression": "calm",
+    "attire": "plate_armor",
+    "colorPalette": "green",
+    "background": "club",
+    "accessories": "chips",
+    "skin": "tan skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9163",
+   "file": "bank_9163.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "male_muscular",
+    "expression": "intellectual",
+    "attire": "minimal",
+    "colorPalette": "green",
+    "background": "boardroom",
+    "accessories": "prop",
+    "skin": "olive skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9165",
+   "file": "bank_9165.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "male_lean",
+    "expression": "aggressive",
+    "attire": "hood_mask",
+    "colorPalette": "monochrome",
+    "background": "abstract",
+    "accessories": "cards",
+    "skin": "porcelain skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9166",
+   "file": "bank_9166.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "female_lean",
+    "expression": "cocky",
+    "attire": "trench_coat",
+    "colorPalette": "green",
+    "background": "underground",
+    "accessories": "prop",
+    "skin": "fair skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9167",
+   "file": "bank_9167.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "female_athletic",
+    "expression": "playful",
+    "attire": "cyber_gear",
+    "colorPalette": "yellow",
+    "background": "arena",
+    "accessories": "glasses",
+    "skin": "fair skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9168",
+   "file": "bank_9168.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "heavy_set",
+    "expression": "calm",
+    "attire": "business",
+    "colorPalette": "gold",
+    "background": "city_night",
+    "accessories": "mask",
+    "skin": "brown skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9169",
+   "file": "bank_9169.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "female_lean",
+    "expression": "confident",
+    "attire": "business",
+    "colorPalette": "multi",
+    "background": "casino",
+    "accessories": "jewelry",
+    "skin": "fair skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9170",
+   "file": "bank_9170.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "elder",
+    "expression": "intense",
+    "attire": "casual",
+    "colorPalette": "pink",
+    "background": "casino",
+    "accessories": "chips",
+    "skin": "tan skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9171",
+   "file": "bank_9171.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "female_athletic",
+    "expression": "serious",
+    "attire": "performance_costume",
+    "colorPalette": "yellow",
+    "background": "neon_alley",
+    "accessories": "chips",
+    "skin": "dark ebony skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9172",
+   "file": "bank_9172.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "young_adult",
+    "expression": "intellectual",
+    "attire": "cyber_gear",
+    "colorPalette": "orange",
+    "background": "neon_alley",
+    "accessories": "smoke",
+    "skin": "deep brown skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9173",
+   "file": "bank_9173.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "elder",
+    "expression": "laid_back",
+    "attire": "sports",
+    "colorPalette": "green",
+    "background": "abstract",
+    "accessories": "dice",
+    "skin": "fair skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9174",
+   "file": "bank_9174.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "female_lean",
+    "expression": "calm",
+    "attire": "cyber_gear",
+    "colorPalette": "red",
+    "background": "arena",
+    "accessories": "jewelry",
+    "skin": "fair skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9175",
+   "file": "bank_9175.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "female_lean",
+    "expression": "calm",
+    "attire": "performance_costume",
+    "colorPalette": "purple",
+    "background": "dice_table",
+    "accessories": "glasses",
+    "skin": "deep brown skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9176",
+   "file": "bank_9176.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "female_lean",
+    "expression": "mysterious",
+    "attire": "sports",
+    "colorPalette": "purple",
+    "background": "dice_table",
+    "accessories": "mask",
+    "skin": "brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9178",
+   "file": "bank_9178.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "androgynous",
+    "expression": "intense",
+    "attire": "formal",
+    "colorPalette": "pink",
+    "background": "abstract",
+    "accessories": "scar_tattoo",
+    "skin": "dark ebony skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9179",
+   "file": "bank_9179.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "young_adult",
+    "expression": "serious",
+    "attire": "trench_coat",
+    "colorPalette": "purple",
+    "background": "casino",
+    "accessories": "cards",
+    "skin": "porcelain skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9180",
+   "file": "bank_9180.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "female_athletic",
+    "expression": "aggressive",
+    "attire": "business",
+    "colorPalette": "yellow",
+    "background": "city_night",
+    "accessories": "glasses",
+    "skin": "dark ebony skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9181",
+   "file": "bank_9181.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "androgynous",
+    "expression": "mysterious",
+    "attire": "bomber_jacket",
+    "colorPalette": "yellow",
+    "background": "abstract",
+    "accessories": "mask",
+    "skin": "dark ebony skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9182",
+   "file": "bank_9182.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "male_muscular",
+    "expression": "unhinged",
+    "attire": "streetwear",
+    "colorPalette": "pink",
+    "background": "city_night",
+    "accessories": "glasses",
+    "skin": "brown skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9183",
+   "file": "bank_9183.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "male_muscular",
+    "expression": "intellectual",
+    "attire": "formal",
+    "colorPalette": "multi",
+    "background": "abstract",
+    "accessories": "hat_cap",
+    "skin": "porcelain skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9184",
+   "file": "bank_9184.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "elder",
+    "expression": "cocky",
+    "attire": "trench_coat",
+    "colorPalette": "yellow",
+    "background": "rooftop",
+    "accessories": "chips",
+    "skin": "deep brown skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9185",
+   "file": "bank_9185.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "female_lean",
+    "expression": "intellectual",
+    "attire": "formal",
+    "colorPalette": "red",
+    "background": "space",
+    "accessories": "prop",
+    "skin": "olive skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9188",
+   "file": "bank_9188.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "elder",
+    "expression": "intellectual",
+    "attire": "luxury",
+    "colorPalette": "cyan",
+    "background": "arena",
+    "accessories": "dice",
+    "skin": "olive skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9189",
+   "file": "bank_9189.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "mysterious",
+    "attire": "trench_coat",
+    "colorPalette": "pink",
+    "background": "boardroom",
+    "accessories": "cigar",
+    "skin": "",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9190",
+   "file": "bank_9190.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "female_athletic",
+    "expression": "serious",
+    "attire": "trench_coat",
+    "colorPalette": "orange",
+    "background": "abstract",
+    "accessories": "headphones",
+    "skin": "brown skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9191",
+   "file": "bank_9191.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "young_adult",
+    "expression": "laid_back",
+    "attire": "performance_costume",
+    "colorPalette": "monochrome",
+    "background": "bunker",
+    "accessories": "cigar",
+    "skin": "olive skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9192",
+   "file": "bank_9192.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "skeletal_synthetic",
+    "expression": "serious",
+    "attire": "robe",
+    "colorPalette": "green",
+    "background": "club",
+    "accessories": "cards",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9195",
+   "file": "bank_9195.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "serious",
+    "attire": "plate_armor",
+    "colorPalette": "blue",
+    "background": "bunker",
+    "accessories": "cigar",
+    "skin": "",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9198",
+   "file": "bank_9198.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "aggressive",
+    "attire": "casual",
+    "colorPalette": "red",
+    "background": "vault",
+    "accessories": "prop",
+    "skin": "",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9199",
+   "file": "bank_9199.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "male_lean",
+    "expression": "intellectual",
+    "attire": "casual",
+    "colorPalette": "yellow",
+    "background": "vault",
+    "accessories": "chips",
+    "skin": "deep brown skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9200",
+   "file": "bank_9200.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "male_muscular",
+    "expression": "calm",
+    "attire": "streetwear",
+    "colorPalette": "monochrome",
+    "background": "casino",
+    "accessories": "cards",
+    "skin": "dark ebony skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9201",
+   "file": "bank_9201.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "male_lean",
+    "expression": "cocky",
+    "attire": "plate_armor",
+    "colorPalette": "yellow",
+    "background": "club",
+    "accessories": "jewelry",
+    "skin": "tan skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9202",
+   "file": "bank_9202.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_athletic",
+    "expression": "playful",
+    "attire": "robe",
+    "colorPalette": "blue",
+    "background": "tech_lab",
+    "accessories": "cards",
+    "skin": "tan skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9203",
+   "file": "bank_9203.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "androgynous",
+    "expression": "cocky",
+    "attire": "tactical",
+    "colorPalette": "cyan",
+    "background": "city_night",
+    "accessories": "mask",
+    "skin": "tan skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9204",
+   "file": "bank_9204.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "heavy_set",
+    "expression": "serious",
+    "attire": "casual",
+    "colorPalette": "purple",
+    "background": "studio",
+    "accessories": "cards",
+    "skin": "dark ebony skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9205",
+   "file": "bank_9205.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "intellectual",
+    "attire": "robe",
+    "colorPalette": "purple",
+    "background": "underground",
+    "accessories": "mask",
+    "skin": "",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9206",
+   "file": "bank_9206.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "elder",
+    "expression": "aggressive",
+    "attire": "luxury",
+    "colorPalette": "purple",
+    "background": "tech_lab",
+    "accessories": "jewelry",
+    "skin": "brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9207",
+   "file": "bank_9207.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "calm",
+    "attire": "robe",
+    "colorPalette": "monochrome",
+    "background": "studio",
+    "accessories": "prop",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9208",
+   "file": "bank_9208.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "confident",
+    "attire": "robe",
+    "colorPalette": "cyan",
+    "background": "abstract",
+    "accessories": "cigar",
+    "skin": "",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9209",
+   "file": "bank_9209.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "androgynous",
+    "expression": "intellectual",
+    "attire": "plate_armor",
+    "colorPalette": "green",
+    "background": "dice_table",
+    "accessories": "mask",
+    "skin": "porcelain skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9210",
+   "file": "bank_9210.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "elder",
+    "expression": "confident",
+    "attire": "performance_costume",
+    "colorPalette": "pink",
+    "background": "dice_table",
+    "accessories": "dice",
+    "skin": "brown skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9212",
+   "file": "bank_9212.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "heavy_set",
+    "expression": "intellectual",
+    "attire": "hood_mask",
+    "colorPalette": "yellow",
+    "background": "city_night",
+    "accessories": "glasses",
+    "skin": "tan skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9213",
+   "file": "bank_9213.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "young_adult",
+    "expression": "mysterious",
+    "attire": "luxury",
+    "colorPalette": "cyan",
+    "background": "underground",
+    "accessories": "pet",
+    "skin": "dark ebony skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9214",
+   "file": "bank_9214.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_athletic",
+    "expression": "cocky",
+    "attire": "performance_costume",
+    "colorPalette": "cyan",
+    "background": "neon_alley",
+    "accessories": "hat_cap",
+    "skin": "fair skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9215",
+   "file": "bank_9215.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "female_lean",
+    "expression": "calm",
+    "attire": "sports",
+    "colorPalette": "red",
+    "background": "rooftop",
+    "accessories": "cigar",
+    "skin": "deep brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9216",
+   "file": "bank_9216.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "elder",
+    "expression": "laid_back",
+    "attire": "plate_armor",
+    "colorPalette": "green",
+    "background": "space",
+    "accessories": "chips",
+    "skin": "brown skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9217",
+   "file": "bank_9217.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "skeletal_synthetic",
+    "expression": "intellectual",
+    "attire": "plate_armor",
+    "colorPalette": "yellow",
+    "background": "arena",
+    "accessories": "cigar",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9218",
+   "file": "bank_9218.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "intellectual",
+    "attire": "hood_mask",
+    "colorPalette": "blue",
+    "background": "studio",
+    "accessories": "cigar",
+    "skin": "",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9222",
+   "file": "bank_9222.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "young_adult",
+    "expression": "calm",
+    "attire": "casual",
+    "colorPalette": "monochrome",
+    "background": "abstract",
+    "accessories": "unique_fx",
+    "skin": "olive skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9223",
+   "file": "bank_9223.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "young_adult",
+    "expression": "mysterious",
+    "attire": "casual",
+    "colorPalette": "green",
+    "background": "bunker",
+    "accessories": "unique_fx",
+    "skin": "brown skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9224",
+   "file": "bank_9224.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "male_muscular",
+    "expression": "aggressive",
+    "attire": "casual",
+    "colorPalette": "yellow",
+    "background": "dice_table",
+    "accessories": "hat_cap",
+    "skin": "deep brown skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9225",
+   "file": "bank_9225.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "heavy_set",
+    "expression": "cocky",
+    "attire": "streetwear",
+    "colorPalette": "orange",
+    "background": "neon_alley",
+    "accessories": "cigar",
+    "skin": "olive skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9226",
+   "file": "bank_9226.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "female_lean",
+    "expression": "laid_back",
+    "attire": "streetwear",
+    "colorPalette": "purple",
+    "background": "vault",
+    "accessories": "glasses",
+    "skin": "olive skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9227",
+   "file": "bank_9227.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "male_muscular",
+    "expression": "playful",
+    "attire": "robe",
+    "colorPalette": "cyan",
+    "background": "boardroom",
+    "accessories": "jewelry",
+    "skin": "fair skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9228",
+   "file": "bank_9228.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "androgynous",
+    "expression": "laid_back",
+    "attire": "cyber_gear",
+    "colorPalette": "blue",
+    "background": "city_night",
+    "accessories": "smoke",
+    "skin": "dark ebony skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9229",
+   "file": "bank_9229.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "female_lean",
+    "expression": "intellectual",
+    "attire": "business",
+    "colorPalette": "yellow",
+    "background": "club",
+    "accessories": "cards",
+    "skin": "brown skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9230",
+   "file": "bank_9230.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "heavy_set",
+    "expression": "mysterious",
+    "attire": "luxury",
+    "colorPalette": "green",
+    "background": "dice_table",
+    "accessories": "hat_cap",
+    "skin": "tan skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9231",
+   "file": "bank_9231.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "cocky",
+    "attire": "business",
+    "colorPalette": "yellow",
+    "background": "bunker",
+    "accessories": "scar_tattoo",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9232",
+   "file": "bank_9232.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "serious",
+    "attire": "streetwear",
+    "colorPalette": "red",
+    "background": "bunker",
+    "accessories": "dice",
+    "skin": "",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9233",
+   "file": "bank_9233.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "calm",
+    "attire": "sports",
+    "colorPalette": "gold",
+    "background": "rooftop",
+    "accessories": "pet",
+    "skin": "",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9234",
+   "file": "bank_9234.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "female_lean",
+    "expression": "serious",
+    "attire": "robe",
+    "colorPalette": "yellow",
+    "background": "underground",
+    "accessories": "scar_tattoo",
+    "skin": "olive skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9235",
+   "file": "bank_9235.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "cocky",
+    "attire": "cyber_gear",
+    "colorPalette": "yellow",
+    "background": "city_night",
+    "accessories": "unique_fx",
+    "skin": "",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9236",
+   "file": "bank_9236.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "aggressive",
+    "attire": "robe",
+    "colorPalette": "multi",
+    "background": "arena",
+    "accessories": "jewelry",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9238",
+   "file": "bank_9238.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "androgynous",
+    "expression": "calm",
+    "attire": "performance_costume",
+    "colorPalette": "purple",
+    "background": "arena",
+    "accessories": "chips",
+    "skin": "olive skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9240",
+   "file": "bank_9240.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "male_lean",
+    "expression": "laid_back",
+    "attire": "performance_costume",
+    "colorPalette": "green",
+    "background": "abstract",
+    "accessories": "mask",
+    "skin": "fair skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9241",
+   "file": "bank_9241.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "playful",
+    "attire": "bomber_jacket",
+    "colorPalette": "blue",
+    "background": "arena",
+    "accessories": "mask",
+    "skin": "",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9244",
+   "file": "bank_9244.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "cocky",
+    "attire": "minimal",
+    "colorPalette": "gold",
+    "background": "abstract",
+    "accessories": "prop",
+    "skin": "",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9245",
+   "file": "bank_9245.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "female_athletic",
+    "expression": "confident",
+    "attire": "trench_coat",
+    "colorPalette": "yellow",
+    "background": "space",
+    "accessories": "hat_cap",
+    "skin": "brown skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9246",
+   "file": "bank_9246.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "skeletal_synthetic",
+    "expression": "cocky",
+    "attire": "minimal",
+    "colorPalette": "green",
+    "background": "club",
+    "accessories": "hat_cap",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9247",
+   "file": "bank_9247.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "elder",
+    "expression": "intense",
+    "attire": "business",
+    "colorPalette": "monochrome",
+    "background": "tech_lab",
+    "accessories": "scar_tattoo",
+    "skin": "tan skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9248",
+   "file": "bank_9248.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "heavy_set",
+    "expression": "playful",
+    "attire": "formal",
+    "colorPalette": "multi",
+    "background": "city_night",
+    "accessories": "scar_tattoo",
+    "skin": "fair skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9249",
+   "file": "bank_9249.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "male_lean",
+    "expression": "laid_back",
+    "attire": "cyber_gear",
+    "colorPalette": "pink",
+    "background": "bunker",
+    "accessories": "none",
+    "skin": "fair skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9250",
+   "file": "bank_9250.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "female_lean",
+    "expression": "intellectual",
+    "attire": "plate_armor",
+    "colorPalette": "yellow",
+    "background": "studio",
+    "accessories": "glasses",
+    "skin": "fair skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9252",
+   "file": "bank_9252.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "heavy_set",
+    "expression": "calm",
+    "attire": "business",
+    "colorPalette": "yellow",
+    "background": "abstract",
+    "accessories": "pet",
+    "skin": "brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9253",
+   "file": "bank_9253.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "unhinged",
+    "attire": "minimal",
+    "colorPalette": "red",
+    "background": "abstract",
+    "accessories": "unique_fx",
+    "skin": "",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9254",
+   "file": "bank_9254.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "elder",
+    "expression": "cocky",
+    "attire": "streetwear",
+    "colorPalette": "gold",
+    "background": "arena",
+    "accessories": "none",
+    "skin": "porcelain skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9255",
+   "file": "bank_9255.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "intense",
+    "attire": "tactical",
+    "colorPalette": "cyan",
+    "background": "dice_table",
+    "accessories": "cigar",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9256",
+   "file": "bank_9256.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "intense",
+    "attire": "minimal",
+    "colorPalette": "green",
+    "background": "tech_lab",
+    "accessories": "cards",
+    "skin": "",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9257",
+   "file": "bank_9257.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_athletic",
+    "expression": "cocky",
+    "attire": "plate_armor",
+    "colorPalette": "purple",
+    "background": "neon_alley",
+    "accessories": "dice",
+    "skin": "dark ebony skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9258",
+   "file": "bank_9258.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "female_lean",
+    "expression": "intense",
+    "attire": "formal",
+    "colorPalette": "monochrome",
+    "background": "bunker",
+    "accessories": "mask",
+    "skin": "porcelain skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9259",
+   "file": "bank_9259.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "cocky",
+    "attire": "performance_costume",
+    "colorPalette": "gold",
+    "background": "rooftop",
+    "accessories": "headphones",
+    "skin": "",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9261",
+   "file": "bank_9261.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "male_lean",
+    "expression": "laid_back",
+    "attire": "robe",
+    "colorPalette": "cyan",
+    "background": "boardroom",
+    "accessories": "cards",
+    "skin": "fair skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9262",
+   "file": "bank_9262.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "male_lean",
+    "expression": "intense",
+    "attire": "casual",
+    "colorPalette": "orange",
+    "background": "space",
+    "accessories": "mask",
+    "skin": "tan skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9263",
+   "file": "bank_9263.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_lean",
+    "expression": "laid_back",
+    "attire": "tactical",
+    "colorPalette": "blue",
+    "background": "tech_lab",
+    "accessories": "pet",
+    "skin": "brown skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9265",
+   "file": "bank_9265.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "heavy_set",
+    "expression": "confident",
+    "attire": "hood_mask",
+    "colorPalette": "blue",
+    "background": "casino",
+    "accessories": "hat_cap",
+    "skin": "brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9266",
+   "file": "bank_9266.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "heavy_set",
+    "expression": "intellectual",
+    "attire": "plate_armor",
+    "colorPalette": "gold",
+    "background": "bunker",
+    "accessories": "prop",
+    "skin": "deep brown skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9267",
+   "file": "bank_9267.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "young_adult",
+    "expression": "laid_back",
+    "attire": "trench_coat",
+    "colorPalette": "blue",
+    "background": "bunker",
+    "accessories": "scar_tattoo",
+    "skin": "tan skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9268",
+   "file": "bank_9268.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "young_adult",
+    "expression": "calm",
+    "attire": "business",
+    "colorPalette": "orange",
+    "background": "city_night",
+    "accessories": "smoke",
+    "skin": "tan skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9269",
+   "file": "bank_9269.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "heavy_set",
+    "expression": "intense",
+    "attire": "minimal",
+    "colorPalette": "multi",
+    "background": "casino",
+    "accessories": "hat_cap",
+    "skin": "porcelain skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9270",
+   "file": "bank_9270.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "female_athletic",
+    "expression": "mysterious",
+    "attire": "minimal",
+    "colorPalette": "cyan",
+    "background": "casino",
+    "accessories": "hat_cap",
+    "skin": "olive skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9271",
+   "file": "bank_9271.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "young_adult",
+    "expression": "laid_back",
+    "attire": "sports",
+    "colorPalette": "gold",
+    "background": "studio",
+    "accessories": "glasses",
+    "skin": "tan skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9272",
+   "file": "bank_9272.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "mysterious",
+    "attire": "sports",
+    "colorPalette": "red",
+    "background": "casino",
+    "accessories": "pet",
+    "skin": "",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9273",
+   "file": "bank_9273.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "androgynous",
+    "expression": "serious",
+    "attire": "formal",
+    "colorPalette": "yellow",
+    "background": "studio",
+    "accessories": "dice",
+    "skin": "tan skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9275",
+   "file": "bank_9275.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "intense",
+    "attire": "tactical",
+    "colorPalette": "red",
+    "background": "bunker",
+    "accessories": "smoke",
+    "skin": "",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9276",
+   "file": "bank_9276.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "unhinged",
+    "attire": "casual",
+    "colorPalette": "cyan",
+    "background": "abstract",
+    "accessories": "mask",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9278",
+   "file": "bank_9278.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "male_lean",
+    "expression": "playful",
+    "attire": "minimal",
+    "colorPalette": "green",
+    "background": "underground",
+    "accessories": "smoke",
+    "skin": "porcelain skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9279",
+   "file": "bank_9279.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "male_muscular",
+    "expression": "aggressive",
+    "attire": "performance_costume",
+    "colorPalette": "red",
+    "background": "studio",
+    "accessories": "none",
+    "skin": "brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9280",
+   "file": "bank_9280.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "elder",
+    "expression": "playful",
+    "attire": "business",
+    "colorPalette": "cyan",
+    "background": "abstract",
+    "accessories": "dice",
+    "skin": "porcelain skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9281",
+   "file": "bank_9281.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_lean",
+    "expression": "intellectual",
+    "attire": "formal",
+    "colorPalette": "blue",
+    "background": "city_night",
+    "accessories": "glasses",
+    "skin": "fair skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9282",
+   "file": "bank_9282.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "androgynous",
+    "expression": "cocky",
+    "attire": "casual",
+    "colorPalette": "yellow",
+    "background": "casino",
+    "accessories": "none",
+    "skin": "porcelain skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9283",
+   "file": "bank_9283.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "young_adult",
+    "expression": "playful",
+    "attire": "cyber_gear",
+    "colorPalette": "pink",
+    "background": "underground",
+    "accessories": "mask",
+    "skin": "fair skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9284",
+   "file": "bank_9284.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "young_adult",
+    "expression": "serious",
+    "attire": "trench_coat",
+    "colorPalette": "multi",
+    "background": "arena",
+    "accessories": "scar_tattoo",
+    "skin": "dark ebony skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9285",
+   "file": "bank_9285.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "elder",
+    "expression": "aggressive",
+    "attire": "business",
+    "colorPalette": "cyan",
+    "background": "boardroom",
+    "accessories": "pet",
+    "skin": "brown skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9287",
+   "file": "bank_9287.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "male_lean",
+    "expression": "intellectual",
+    "attire": "luxury",
+    "colorPalette": "purple",
+    "background": "space",
+    "accessories": "pet",
+    "skin": "porcelain skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9288",
+   "file": "bank_9288.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "female_athletic",
+    "expression": "calm",
+    "attire": "trench_coat",
+    "colorPalette": "cyan",
+    "background": "neon_alley",
+    "accessories": "glasses",
+    "skin": "olive skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9289",
+   "file": "bank_9289.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "male_lean",
+    "expression": "playful",
+    "attire": "cyber_gear",
+    "colorPalette": "green",
+    "background": "casino",
+    "accessories": "pet",
+    "skin": "dark ebony skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9290",
+   "file": "bank_9290.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "androgynous",
+    "expression": "intense",
+    "attire": "trench_coat",
+    "colorPalette": "monochrome",
+    "background": "underground",
+    "accessories": "cards",
+    "skin": "fair skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9291",
+   "file": "bank_9291.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "male_lean",
+    "expression": "confident",
+    "attire": "cyber_gear",
+    "colorPalette": "blue",
+    "background": "boardroom",
+    "accessories": "glasses",
+    "skin": "deep brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9292",
+   "file": "bank_9292.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "female_lean",
+    "expression": "laid_back",
+    "attire": "plate_armor",
+    "colorPalette": "cyan",
+    "background": "underground",
+    "accessories": "scar_tattoo",
+    "skin": "tan skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9294",
+   "file": "bank_9294.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "male_muscular",
+    "expression": "unhinged",
+    "attire": "cyber_gear",
+    "colorPalette": "blue",
+    "background": "abstract",
+    "accessories": "cards",
+    "skin": "tan skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9295",
+   "file": "bank_9295.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "aggressive",
+    "attire": "streetwear",
+    "colorPalette": "purple",
+    "background": "space",
+    "accessories": "chips",
+    "skin": "",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9296",
+   "file": "bank_9296.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "young_adult",
+    "expression": "mysterious",
+    "attire": "formal",
+    "colorPalette": "red",
+    "background": "arena",
+    "accessories": "none",
+    "skin": "olive skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9298",
+   "file": "bank_9298.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "androgynous",
+    "expression": "unhinged",
+    "attire": "casual",
+    "colorPalette": "red",
+    "background": "rooftop",
+    "accessories": "glasses",
+    "skin": "deep brown skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9299",
+   "file": "bank_9299.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "heavy_set",
+    "expression": "laid_back",
+    "attire": "streetwear",
+    "colorPalette": "green",
+    "background": "dice_table",
+    "accessories": "jewelry",
+    "skin": "fair skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9300",
+   "file": "bank_9300.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "heavy_set",
+    "expression": "cocky",
+    "attire": "business",
+    "colorPalette": "blue",
+    "background": "tech_lab",
+    "accessories": "cigar",
+    "skin": "porcelain skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9301",
+   "file": "bank_9301.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "androgynous",
+    "expression": "confident",
+    "attire": "cyber_gear",
+    "colorPalette": "multi",
+    "background": "underground",
+    "accessories": "pet",
+    "skin": "brown skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9302",
+   "file": "bank_9302.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "female_athletic",
+    "expression": "mysterious",
+    "attire": "casual",
+    "colorPalette": "gold",
+    "background": "dice_table",
+    "accessories": "hat_cap",
+    "skin": "brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9303",
+   "file": "bank_9303.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "young_adult",
+    "expression": "laid_back",
+    "attire": "business",
+    "colorPalette": "yellow",
+    "background": "tech_lab",
+    "accessories": "unique_fx",
+    "skin": "deep brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9304",
+   "file": "bank_9304.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "heavy_set",
+    "expression": "intellectual",
+    "attire": "streetwear",
+    "colorPalette": "blue",
+    "background": "tech_lab",
+    "accessories": "headphones",
+    "skin": "tan skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9305",
+   "file": "bank_9305.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "heavy_set",
+    "expression": "mysterious",
+    "attire": "bomber_jacket",
+    "colorPalette": "yellow",
+    "background": "abstract",
+    "accessories": "cards",
+    "skin": "fair skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9306",
+   "file": "bank_9306.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "elder",
+    "expression": "laid_back",
+    "attire": "business",
+    "colorPalette": "blue",
+    "background": "vault",
+    "accessories": "scar_tattoo",
+    "skin": "deep brown skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9307",
+   "file": "bank_9307.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "female_lean",
+    "expression": "serious",
+    "attire": "hood_mask",
+    "colorPalette": "yellow",
+    "background": "underground",
+    "accessories": "mask",
+    "skin": "porcelain skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9309",
+   "file": "bank_9309.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "female_athletic",
+    "expression": "mysterious",
+    "attire": "hood_mask",
+    "colorPalette": "pink",
+    "background": "vault",
+    "accessories": "pet",
+    "skin": "fair skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9310",
+   "file": "bank_9310.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "male_lean",
+    "expression": "serious",
+    "attire": "tactical",
+    "colorPalette": "multi",
+    "background": "underground",
+    "accessories": "mask",
+    "skin": "dark ebony skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9312",
+   "file": "bank_9312.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "male_muscular",
+    "expression": "aggressive",
+    "attire": "plate_armor",
+    "colorPalette": "yellow",
+    "background": "city_night",
+    "accessories": "unique_fx",
+    "skin": "tan skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9313",
+   "file": "bank_9313.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "female_athletic",
+    "expression": "intellectual",
+    "attire": "tactical",
+    "colorPalette": "pink",
+    "background": "club",
+    "accessories": "hat_cap",
+    "skin": "dark ebony skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9314",
+   "file": "bank_9314.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "female_athletic",
+    "expression": "calm",
+    "attire": "minimal",
+    "colorPalette": "pink",
+    "background": "tech_lab",
+    "accessories": "glasses",
+    "skin": "olive skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9315",
+   "file": "bank_9315.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "androgynous",
+    "expression": "intellectual",
+    "attire": "cyber_gear",
+    "colorPalette": "green",
+    "background": "boardroom",
+    "accessories": "smoke",
+    "skin": "deep brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9316",
+   "file": "bank_9316.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_lean",
+    "expression": "cocky",
+    "attire": "formal",
+    "colorPalette": "multi",
+    "background": "club",
+    "accessories": "pet",
+    "skin": "brown skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9317",
+   "file": "bank_9317.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "female_athletic",
+    "expression": "calm",
+    "attire": "luxury",
+    "colorPalette": "yellow",
+    "background": "underground",
+    "accessories": "jewelry",
+    "skin": "brown skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9319",
+   "file": "bank_9319.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "female_lean",
+    "expression": "intense",
+    "attire": "minimal",
+    "colorPalette": "pink",
+    "background": "space",
+    "accessories": "glasses",
+    "skin": "brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9320",
+   "file": "bank_9320.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "elder",
+    "expression": "intellectual",
+    "attire": "tactical",
+    "colorPalette": "red",
+    "background": "dice_table",
+    "accessories": "pet",
+    "skin": "tan skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9321",
+   "file": "bank_9321.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "elder",
+    "expression": "calm",
+    "attire": "sports",
+    "colorPalette": "blue",
+    "background": "tech_lab",
+    "accessories": "none",
+    "skin": "tan skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9322",
+   "file": "bank_9322.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "serious",
+    "attire": "sports",
+    "colorPalette": "purple",
+    "background": "club",
+    "accessories": "dice",
+    "skin": "",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9323",
+   "file": "bank_9323.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "unhinged",
+    "attire": "streetwear",
+    "colorPalette": "pink",
+    "background": "space",
+    "accessories": "smoke",
+    "skin": "",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9324",
+   "file": "bank_9324.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "aggressive",
+    "attire": "formal",
+    "colorPalette": "purple",
+    "background": "rooftop",
+    "accessories": "hat_cap",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9325",
+   "file": "bank_9325.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "male_muscular",
+    "expression": "calm",
+    "attire": "formal",
+    "colorPalette": "blue",
+    "background": "dice_table",
+    "accessories": "dice",
+    "skin": "tan skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9326",
+   "file": "bank_9326.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "heavy_set",
+    "expression": "laid_back",
+    "attire": "hood_mask",
+    "colorPalette": "green",
+    "background": "arena",
+    "accessories": "cigar",
+    "skin": "brown skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9327",
+   "file": "bank_9327.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "heavy_set",
+    "expression": "intellectual",
+    "attire": "formal",
+    "colorPalette": "purple",
+    "background": "tech_lab",
+    "accessories": "smoke",
+    "skin": "fair skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9328",
+   "file": "bank_9328.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "calm",
+    "attire": "trench_coat",
+    "colorPalette": "pink",
+    "background": "vault",
+    "accessories": "smoke",
+    "skin": "",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9330",
+   "file": "bank_9330.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "intellectual",
+    "attire": "trench_coat",
+    "colorPalette": "orange",
+    "background": "club",
+    "accessories": "dice",
+    "skin": "",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9331",
+   "file": "bank_9331.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "androgynous",
+    "expression": "cocky",
+    "attire": "sports",
+    "colorPalette": "orange",
+    "background": "tech_lab",
+    "accessories": "smoke",
+    "skin": "olive skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9332",
+   "file": "bank_9332.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "elder",
+    "expression": "playful",
+    "attire": "performance_costume",
+    "colorPalette": "purple",
+    "background": "city_night",
+    "accessories": "mask",
+    "skin": "olive skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9333",
+   "file": "bank_9333.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "female_lean",
+    "expression": "confident",
+    "attire": "casual",
+    "colorPalette": "green",
+    "background": "underground",
+    "accessories": "cigar",
+    "skin": "deep brown skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9334",
+   "file": "bank_9334.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "androgynous",
+    "expression": "laid_back",
+    "attire": "formal",
+    "colorPalette": "purple",
+    "background": "abstract",
+    "accessories": "jewelry",
+    "skin": "tan skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9336",
+   "file": "bank_9336.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "young_adult",
+    "expression": "aggressive",
+    "attire": "bomber_jacket",
+    "colorPalette": "cyan",
+    "background": "underground",
+    "accessories": "dice",
+    "skin": "fair skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9338",
+   "file": "bank_9338.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "male_lean",
+    "expression": "mysterious",
+    "attire": "casual",
+    "colorPalette": "blue",
+    "background": "bunker",
+    "accessories": "cards",
+    "skin": "brown skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9340",
+   "file": "bank_9340.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "female_lean",
+    "expression": "calm",
+    "attire": "performance_costume",
+    "colorPalette": "orange",
+    "background": "abstract",
+    "accessories": "none",
+    "skin": "dark ebony skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9342",
+   "file": "bank_9342.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "young_adult",
+    "expression": "playful",
+    "attire": "bomber_jacket",
+    "colorPalette": "orange",
+    "background": "arena",
+    "accessories": "smoke",
+    "skin": "tan skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9343",
+   "file": "bank_9343.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "male_muscular",
+    "expression": "calm",
+    "attire": "performance_costume",
+    "colorPalette": "pink",
+    "background": "tech_lab",
+    "accessories": "scar_tattoo",
+    "skin": "porcelain skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9344",
+   "file": "bank_9344.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "heavy_set",
+    "expression": "serious",
+    "attire": "hood_mask",
+    "colorPalette": "purple",
+    "background": "boardroom",
+    "accessories": "glasses",
+    "skin": "dark ebony skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9345",
+   "file": "bank_9345.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "elder",
+    "expression": "intellectual",
+    "attire": "luxury",
+    "colorPalette": "monochrome",
+    "background": "rooftop",
+    "accessories": "cigar",
+    "skin": "fair skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9346",
+   "file": "bank_9346.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "male_muscular",
+    "expression": "playful",
+    "attire": "bomber_jacket",
+    "colorPalette": "multi",
+    "background": "studio",
+    "accessories": "cards",
+    "skin": "porcelain skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9347",
+   "file": "bank_9347.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "skeletal_synthetic",
+    "expression": "unhinged",
+    "attire": "hood_mask",
+    "colorPalette": "multi",
+    "background": "arena",
+    "accessories": "prop",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9348",
+   "file": "bank_9348.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "heavy_set",
+    "expression": "cocky",
+    "attire": "cyber_gear",
+    "colorPalette": "green",
+    "background": "city_night",
+    "accessories": "none",
+    "skin": "olive skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9350",
+   "file": "bank_9350.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "male_lean",
+    "expression": "intense",
+    "attire": "robe",
+    "colorPalette": "pink",
+    "background": "arena",
+    "accessories": "glasses",
+    "skin": "tan skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9351",
+   "file": "bank_9351.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "female_athletic",
+    "expression": "intense",
+    "attire": "trench_coat",
+    "colorPalette": "blue",
+    "background": "tech_lab",
+    "accessories": "scar_tattoo",
+    "skin": "brown skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9352",
+   "file": "bank_9352.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "male_muscular",
+    "expression": "intellectual",
+    "attire": "business",
+    "colorPalette": "gold",
+    "background": "rooftop",
+    "accessories": "prop",
+    "skin": "deep brown skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9353",
+   "file": "bank_9353.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "skeletal_synthetic",
+    "expression": "unhinged",
+    "attire": "streetwear",
+    "colorPalette": "blue",
+    "background": "neon_alley",
+    "accessories": "cards",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9355",
+   "file": "bank_9355.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "female_athletic",
+    "expression": "intense",
+    "attire": "tactical",
+    "colorPalette": "monochrome",
+    "background": "bunker",
+    "accessories": "cards",
+    "skin": "brown skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9356",
+   "file": "bank_9356.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "male_muscular",
+    "expression": "confident",
+    "attire": "casual",
+    "colorPalette": "orange",
+    "background": "space",
+    "accessories": "jewelry",
+    "skin": "brown skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9357",
+   "file": "bank_9357.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "male_muscular",
+    "expression": "serious",
+    "attire": "plate_armor",
+    "colorPalette": "monochrome",
+    "background": "casino",
+    "accessories": "dice",
+    "skin": "brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9358",
+   "file": "bank_9358.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "male_muscular",
+    "expression": "intense",
+    "attire": "trench_coat",
+    "colorPalette": "gold",
+    "background": "neon_alley",
+    "accessories": "cigar",
+    "skin": "tan skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9359",
+   "file": "bank_9359.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "intense",
+    "attire": "formal",
+    "colorPalette": "orange",
+    "background": "abstract",
+    "accessories": "headphones",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9360",
+   "file": "bank_9360.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "elder",
+    "expression": "aggressive",
+    "attire": "performance_costume",
+    "colorPalette": "multi",
+    "background": "club",
+    "accessories": "scar_tattoo",
+    "skin": "fair skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9361",
+   "file": "bank_9361.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "female_lean",
+    "expression": "confident",
+    "attire": "minimal",
+    "colorPalette": "orange",
+    "background": "space",
+    "accessories": "pet",
+    "skin": "porcelain skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9363",
+   "file": "bank_9363.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "elder",
+    "expression": "playful",
+    "attire": "casual",
+    "colorPalette": "gold",
+    "background": "neon_alley",
+    "accessories": "hat_cap",
+    "skin": "brown skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9364",
+   "file": "bank_9364.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "intense",
+    "attire": "trench_coat",
+    "colorPalette": "orange",
+    "background": "vault",
+    "accessories": "mask",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9365",
+   "file": "bank_9365.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "elder",
+    "expression": "calm",
+    "attire": "formal",
+    "colorPalette": "pink",
+    "background": "studio",
+    "accessories": "unique_fx",
+    "skin": "olive skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9366",
+   "file": "bank_9366.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "male_muscular",
+    "expression": "unhinged",
+    "attire": "tactical",
+    "colorPalette": "cyan",
+    "background": "vault",
+    "accessories": "hat_cap",
+    "skin": "tan skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9367",
+   "file": "bank_9367.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "elder",
+    "expression": "laid_back",
+    "attire": "tactical",
+    "colorPalette": "purple",
+    "background": "arena",
+    "accessories": "smoke",
+    "skin": "brown skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9368",
+   "file": "bank_9368.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "female_athletic",
+    "expression": "playful",
+    "attire": "performance_costume",
+    "colorPalette": "gold",
+    "background": "casino",
+    "accessories": "jewelry",
+    "skin": "brown skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9369",
+   "file": "bank_9369.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "intellectual",
+    "attire": "minimal",
+    "colorPalette": "purple",
+    "background": "dice_table",
+    "accessories": "jewelry",
+    "skin": "",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9370",
+   "file": "bank_9370.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "male_muscular",
+    "expression": "laid_back",
+    "attire": "cyber_gear",
+    "colorPalette": "yellow",
+    "background": "club",
+    "accessories": "dice",
+    "skin": "porcelain skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9371",
+   "file": "bank_9371.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "male_lean",
+    "expression": "laid_back",
+    "attire": "casual",
+    "colorPalette": "monochrome",
+    "background": "underground",
+    "accessories": "jewelry",
+    "skin": "olive skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9372",
+   "file": "bank_9372.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "elder",
+    "expression": "aggressive",
+    "attire": "bomber_jacket",
+    "colorPalette": "yellow",
+    "background": "bunker",
+    "accessories": "smoke",
+    "skin": "deep brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9373",
+   "file": "bank_9373.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "calm",
+    "attire": "hood_mask",
+    "colorPalette": "blue",
+    "background": "underground",
+    "accessories": "cigar",
+    "skin": "",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9374",
+   "file": "bank_9374.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "female_lean",
+    "expression": "playful",
+    "attire": "cyber_gear",
+    "colorPalette": "purple",
+    "background": "underground",
+    "accessories": "glasses",
+    "skin": "tan skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9375",
+   "file": "bank_9375.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "female_athletic",
+    "expression": "unhinged",
+    "attire": "streetwear",
+    "colorPalette": "monochrome",
+    "background": "rooftop",
+    "accessories": "headphones",
+    "skin": "tan skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9376",
+   "file": "bank_9376.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "male_muscular",
+    "expression": "playful",
+    "attire": "trench_coat",
+    "colorPalette": "cyan",
+    "background": "underground",
+    "accessories": "cigar",
+    "skin": "deep brown skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9377",
+   "file": "bank_9377.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "serious",
+    "attire": "robe",
+    "colorPalette": "pink",
+    "background": "city_night",
+    "accessories": "dice",
+    "skin": "",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9379",
+   "file": "bank_9379.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "male_lean",
+    "expression": "intense",
+    "attire": "minimal",
+    "colorPalette": "orange",
+    "background": "neon_alley",
+    "accessories": "smoke",
+    "skin": "tan skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9380",
+   "file": "bank_9380.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "female_lean",
+    "expression": "calm",
+    "attire": "formal",
+    "colorPalette": "multi",
+    "background": "tech_lab",
+    "accessories": "prop",
+    "skin": "deep brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9381",
+   "file": "bank_9381.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "heavy_set",
+    "expression": "aggressive",
+    "attire": "streetwear",
+    "colorPalette": "blue",
+    "background": "abstract",
+    "accessories": "none",
+    "skin": "tan skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9382",
+   "file": "bank_9382.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "male_muscular",
+    "expression": "intense",
+    "attire": "minimal",
+    "colorPalette": "cyan",
+    "background": "neon_alley",
+    "accessories": "pet",
+    "skin": "deep brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9383",
+   "file": "bank_9383.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "male_muscular",
+    "expression": "playful",
+    "attire": "bomber_jacket",
+    "colorPalette": "blue",
+    "background": "neon_alley",
+    "accessories": "cigar",
+    "skin": "brown skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9384",
+   "file": "bank_9384.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "androgynous",
+    "expression": "laid_back",
+    "attire": "sports",
+    "colorPalette": "green",
+    "background": "studio",
+    "accessories": "pet",
+    "skin": "fair skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9385",
+   "file": "bank_9385.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "male_muscular",
+    "expression": "intellectual",
+    "attire": "casual",
+    "colorPalette": "monochrome",
+    "background": "abstract",
+    "accessories": "chips",
+    "skin": "dark ebony skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9386",
+   "file": "bank_9386.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "heavy_set",
+    "expression": "mysterious",
+    "attire": "performance_costume",
+    "colorPalette": "pink",
+    "background": "abstract",
+    "accessories": "cards",
+    "skin": "brown skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9387",
+   "file": "bank_9387.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "female_athletic",
+    "expression": "serious",
+    "attire": "trench_coat",
+    "colorPalette": "orange",
+    "background": "boardroom",
+    "accessories": "prop",
+    "skin": "brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9388",
+   "file": "bank_9388.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "young_adult",
+    "expression": "intellectual",
+    "attire": "tactical",
+    "colorPalette": "multi",
+    "background": "tech_lab",
+    "accessories": "headphones",
+    "skin": "brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9389",
+   "file": "bank_9389.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "heavy_set",
+    "expression": "cocky",
+    "attire": "formal",
+    "colorPalette": "cyan",
+    "background": "vault",
+    "accessories": "glasses",
+    "skin": "dark ebony skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9390",
+   "file": "bank_9390.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "serious",
+    "attire": "tactical",
+    "colorPalette": "green",
+    "background": "underground",
+    "accessories": "mask",
+    "skin": "",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9391",
+   "file": "bank_9391.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "heavy_set",
+    "expression": "cocky",
+    "attire": "plate_armor",
+    "colorPalette": "gold",
+    "background": "abstract",
+    "accessories": "unique_fx",
+    "skin": "tan skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9392",
+   "file": "bank_9392.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "young_adult",
+    "expression": "serious",
+    "attire": "formal",
+    "colorPalette": "gold",
+    "background": "underground",
+    "accessories": "jewelry",
+    "skin": "fair skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9393",
+   "file": "bank_9393.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "elder",
+    "expression": "mysterious",
+    "attire": "trench_coat",
+    "colorPalette": "monochrome",
+    "background": "studio",
+    "accessories": "chips",
+    "skin": "olive skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9394",
+   "file": "bank_9394.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "androgynous",
+    "expression": "calm",
+    "attire": "hood_mask",
+    "colorPalette": "orange",
+    "background": "studio",
+    "accessories": "cigar",
+    "skin": "olive skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9395",
+   "file": "bank_9395.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "androgynous",
+    "expression": "unhinged",
+    "attire": "performance_costume",
+    "colorPalette": "multi",
+    "background": "casino",
+    "accessories": "none",
+    "skin": "brown skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9396",
+   "file": "bank_9396.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "mysterious",
+    "attire": "formal",
+    "colorPalette": "gold",
+    "background": "tech_lab",
+    "accessories": "jewelry",
+    "skin": "",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9398",
+   "file": "bank_9398.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "female_lean",
+    "expression": "mysterious",
+    "attire": "formal",
+    "colorPalette": "green",
+    "background": "studio",
+    "accessories": "unique_fx",
+    "skin": "fair skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9399",
+   "file": "bank_9399.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "heavy_set",
+    "expression": "playful",
+    "attire": "formal",
+    "colorPalette": "yellow",
+    "background": "tech_lab",
+    "accessories": "none",
+    "skin": "porcelain skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9400",
+   "file": "bank_9400.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "male_lean",
+    "expression": "unhinged",
+    "attire": "robe",
+    "colorPalette": "pink",
+    "background": "neon_alley",
+    "accessories": "dice",
+    "skin": "tan skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9401",
+   "file": "bank_9401.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "intense",
+    "attire": "streetwear",
+    "colorPalette": "monochrome",
+    "background": "dice_table",
+    "accessories": "scar_tattoo",
+    "skin": "",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9403",
+   "file": "bank_9403.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "skeletal_synthetic",
+    "expression": "cocky",
+    "attire": "tactical",
+    "colorPalette": "blue",
+    "background": "city_night",
+    "accessories": "chips",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9405",
+   "file": "bank_9405.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "young_adult",
+    "expression": "unhinged",
+    "attire": "bomber_jacket",
+    "colorPalette": "gold",
+    "background": "casino",
+    "accessories": "jewelry",
+    "skin": "dark ebony skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9406",
+   "file": "bank_9406.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "young_adult",
+    "expression": "unhinged",
+    "attire": "business",
+    "colorPalette": "orange",
+    "background": "space",
+    "accessories": "smoke",
+    "skin": "dark ebony skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9409",
+   "file": "bank_9409.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "androgynous",
+    "expression": "calm",
+    "attire": "formal",
+    "colorPalette": "multi",
+    "background": "dice_table",
+    "accessories": "hat_cap",
+    "skin": "deep brown skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9410",
+   "file": "bank_9410.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "male_lean",
+    "expression": "laid_back",
+    "attire": "hood_mask",
+    "colorPalette": "blue",
+    "background": "rooftop",
+    "accessories": "pet",
+    "skin": "tan skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9411",
+   "file": "bank_9411.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "male_muscular",
+    "expression": "unhinged",
+    "attire": "performance_costume",
+    "colorPalette": "monochrome",
+    "background": "dice_table",
+    "accessories": "scar_tattoo",
+    "skin": "dark ebony skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9412",
+   "file": "bank_9412.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "male_lean",
+    "expression": "serious",
+    "attire": "casual",
+    "colorPalette": "yellow",
+    "background": "studio",
+    "accessories": "cigar",
+    "skin": "deep brown skin",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9413",
+   "file": "bank_9413.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "female_lean",
+    "expression": "mysterious",
+    "attire": "robe",
+    "colorPalette": "multi",
+    "background": "club",
+    "accessories": "headphones",
+    "skin": "fair skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9415",
+   "file": "bank_9415.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "female_athletic",
+    "expression": "intellectual",
+    "attire": "sports",
+    "colorPalette": "pink",
+    "background": "casino",
+    "accessories": "prop",
+    "skin": "fair skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9416",
+   "file": "bank_9416.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "female_athletic",
+    "expression": "playful",
+    "attire": "trench_coat",
+    "colorPalette": "orange",
+    "background": "neon_alley",
+    "accessories": "dice",
+    "skin": "brown skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9417",
+   "file": "bank_9417.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "male_muscular",
+    "expression": "laid_back",
+    "attire": "robe",
+    "colorPalette": "red",
+    "background": "rooftop",
+    "accessories": "cigar",
+    "skin": "porcelain skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9418",
+   "file": "bank_9418.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "playful",
+    "attire": "performance_costume",
+    "colorPalette": "cyan",
+    "background": "underground",
+    "accessories": "dice",
+    "skin": "",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9419",
+   "file": "bank_9419.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "elder",
+    "expression": "confident",
+    "attire": "minimal",
+    "colorPalette": "multi",
+    "background": "arena",
+    "accessories": "chips",
+    "skin": "dark ebony skin",
+    "hair": "neon dyed hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9420",
+   "file": "bank_9420.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "androgynous",
+    "expression": "laid_back",
+    "attire": "cyber_gear",
+    "colorPalette": "red",
+    "background": "vault",
+    "accessories": "cigar",
+    "skin": "dark ebony skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9421",
+   "file": "bank_9421.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "elder",
+    "expression": "mysterious",
+    "attire": "streetwear",
+    "colorPalette": "multi",
+    "background": "bunker",
+    "accessories": "none",
+    "skin": "fair skin",
+    "hair": "long hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9422",
+   "file": "bank_9422.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "female_athletic",
+    "expression": "intense",
+    "attire": "minimal",
+    "colorPalette": "green",
+    "background": "casino",
+    "accessories": "jewelry",
+    "skin": "dark ebony skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9423",
+   "file": "bank_9423.webp",
+   "tags": {
+    "archetype": "executive",
+    "bodyType": "female_lean",
+    "expression": "laid_back",
+    "attire": "tactical",
+    "colorPalette": "green",
+    "background": "rooftop",
+    "accessories": "headphones",
+    "skin": "dark ebony skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9424",
+   "file": "bank_9424.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "female_athletic",
+    "expression": "intellectual",
+    "attire": "formal",
+    "colorPalette": "purple",
+    "background": "casino",
+    "accessories": "mask",
+    "skin": "olive skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9425",
+   "file": "bank_9425.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "aggressive",
+    "attire": "hood_mask",
+    "colorPalette": "purple",
+    "background": "rooftop",
+    "accessories": "mask",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9426",
+   "file": "bank_9426.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "male_lean",
+    "expression": "calm",
+    "attire": "cyber_gear",
+    "colorPalette": "orange",
+    "background": "bunker",
+    "accessories": "chips",
+    "skin": "deep brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9428",
+   "file": "bank_9428.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "intense",
+    "attire": "tactical",
+    "colorPalette": "multi",
+    "background": "studio",
+    "accessories": "unique_fx",
+    "skin": "",
+    "hair": "mohawk"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9429",
+   "file": "bank_9429.webp",
+   "tags": {
+    "archetype": "celebrity",
+    "bodyType": "young_adult",
+    "expression": "confident",
+    "attire": "sports",
+    "colorPalette": "orange",
+    "background": "club",
+    "accessories": "dice",
+    "skin": "tan skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9430",
+   "file": "bank_9430.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "cocky",
+    "attire": "sports",
+    "colorPalette": "yellow",
+    "background": "tech_lab",
+    "accessories": "prop",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9433",
+   "file": "bank_9433.webp",
+   "tags": {
+    "archetype": "animal",
+    "bodyType": "non_human",
+    "expression": "intellectual",
+    "attire": "performance_costume",
+    "colorPalette": "yellow",
+    "background": "arena",
+    "accessories": "scar_tattoo",
+    "skin": "",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9434",
+   "file": "bank_9434.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "male_lean",
+    "expression": "laid_back",
+    "attire": "casual",
+    "colorPalette": "orange",
+    "background": "vault",
+    "accessories": "glasses",
+    "skin": "brown skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9435",
+   "file": "bank_9435.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "serious",
+    "attire": "casual",
+    "colorPalette": "orange",
+    "background": "studio",
+    "accessories": "none",
+    "skin": "",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9437",
+   "file": "bank_9437.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "male_muscular",
+    "expression": "intense",
+    "attire": "sports",
+    "colorPalette": "blue",
+    "background": "arena",
+    "accessories": "smoke",
+    "skin": "dark ebony skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9439",
+   "file": "bank_9439.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "elder",
+    "expression": "cocky",
+    "attire": "luxury",
+    "colorPalette": "green",
+    "background": "studio",
+    "accessories": "none",
+    "skin": "deep brown skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9441",
+   "file": "bank_9441.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "androgynous",
+    "expression": "laid_back",
+    "attire": "plate_armor",
+    "colorPalette": "purple",
+    "background": "space",
+    "accessories": "mask",
+    "skin": "brown skin",
+    "hair": "bald head"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9442",
+   "file": "bank_9442.webp",
+   "tags": {
+    "archetype": "primal",
+    "bodyType": "non_human",
+    "expression": "intense",
+    "attire": "luxury",
+    "colorPalette": "green",
+    "background": "city_night",
+    "accessories": "prop",
+    "skin": "",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9443",
+   "file": "bank_9443.webp",
+   "tags": {
+    "archetype": "antihero",
+    "bodyType": "male_muscular",
+    "expression": "intellectual",
+    "attire": "hood_mask",
+    "colorPalette": "multi",
+    "background": "tech_lab",
+    "accessories": "smoke",
+    "skin": "porcelain skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9444",
+   "file": "bank_9444.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "male_muscular",
+    "expression": "intense",
+    "attire": "minimal",
+    "colorPalette": "yellow",
+    "background": "casino",
+    "accessories": "jewelry",
+    "skin": "porcelain skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9445",
+   "file": "bank_9445.webp",
+   "tags": {
+    "archetype": "athlete",
+    "bodyType": "elder",
+    "expression": "intense",
+    "attire": "hood_mask",
+    "colorPalette": "orange",
+    "background": "rooftop",
+    "accessories": "mask",
+    "skin": "porcelain skin",
+    "hair": "silver hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9446",
+   "file": "bank_9446.webp",
+   "tags": {
+    "archetype": "dealer",
+    "bodyType": "female_athletic",
+    "expression": "calm",
+    "attire": "sports",
+    "colorPalette": "pink",
+    "background": "rooftop",
+    "accessories": "cards",
+    "skin": "olive skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9447",
+   "file": "bank_9447.webp",
+   "tags": {
+    "archetype": "gambler",
+    "bodyType": "androgynous",
+    "expression": "laid_back",
+    "attire": "minimal",
+    "colorPalette": "pink",
+    "background": "club",
+    "accessories": "hat_cap",
+    "skin": "brown skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9448",
+   "file": "bank_9448.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "male_lean",
+    "expression": "laid_back",
+    "attire": "business",
+    "colorPalette": "multi",
+    "background": "club",
+    "accessories": "unique_fx",
+    "skin": "fair skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9449",
+   "file": "bank_9449.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "heavy_set",
+    "expression": "intellectual",
+    "attire": "tactical",
+    "colorPalette": "purple",
+    "background": "casino",
+    "accessories": "prop",
+    "skin": "dark ebony skin",
+    "hair": "slicked back hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9450",
+   "file": "bank_9450.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "young_adult",
+    "expression": "cocky",
+    "attire": "cyber_gear",
+    "colorPalette": "purple",
+    "background": "rooftop",
+    "accessories": "cigar",
+    "skin": "deep brown skin",
+    "hair": "undercut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9451",
+   "file": "bank_9451.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "male_lean",
+    "expression": "aggressive",
+    "attire": "tactical",
+    "colorPalette": "yellow",
+    "background": "underground",
+    "accessories": "headphones",
+    "skin": "brown skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9452",
+   "file": "bank_9452.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "androgynous",
+    "expression": "unhinged",
+    "attire": "bomber_jacket",
+    "colorPalette": "yellow",
+    "background": "vault",
+    "accessories": "jewelry",
+    "skin": "porcelain skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9453",
+   "file": "bank_9453.webp",
+   "tags": {
+    "archetype": "criminal",
+    "bodyType": "female_lean",
+    "expression": "intense",
+    "attire": "robe",
+    "colorPalette": "yellow",
+    "background": "club",
+    "accessories": "dice",
+    "skin": "fair skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9454",
+   "file": "bank_9454.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "elder",
+    "expression": "cocky",
+    "attire": "hood_mask",
+    "colorPalette": "pink",
+    "background": "tech_lab",
+    "accessories": "chips",
+    "skin": "deep brown skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9455",
+   "file": "bank_9455.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "female_lean",
+    "expression": "unhinged",
+    "attire": "minimal",
+    "colorPalette": "orange",
+    "background": "underground",
+    "accessories": "scar_tattoo",
+    "skin": "dark ebony skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9456",
+   "file": "bank_9456.webp",
+   "tags": {
+    "archetype": "hacker",
+    "bodyType": "female_lean",
+    "expression": "unhinged",
+    "attire": "cyber_gear",
+    "colorPalette": "cyan",
+    "background": "bunker",
+    "accessories": "unique_fx",
+    "skin": "fair skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9457",
+   "file": "bank_9457.webp",
+   "tags": {
+    "archetype": "robot_ai",
+    "bodyType": "full_robot",
+    "expression": "mysterious",
+    "attire": "robe",
+    "colorPalette": "green",
+    "background": "tech_lab",
+    "accessories": "cigar",
+    "skin": "",
+    "hair": ""
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9458",
+   "file": "bank_9458.webp",
+   "tags": {
+    "archetype": "royalty",
+    "bodyType": "androgynous",
+    "expression": "calm",
+    "attire": "sports",
+    "colorPalette": "pink",
+    "background": "abstract",
+    "accessories": "unique_fx",
+    "skin": "dark ebony skin",
+    "hair": "wild spiky hair"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9459",
+   "file": "bank_9459.webp",
+   "tags": {
+    "archetype": "experimental",
+    "bodyType": "androgynous",
+    "expression": "intellectual",
+    "attire": "luxury",
+    "colorPalette": "yellow",
+    "background": "city_night",
+    "accessories": "cigar",
+    "skin": "tan skin",
+    "hair": "braids"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9460",
+   "file": "bank_9460.webp",
+   "tags": {
+    "archetype": "street",
+    "bodyType": "androgynous",
+    "expression": "playful",
+    "attire": "cyber_gear",
+    "colorPalette": "multi",
+    "background": "underground",
+    "accessories": "hat_cap",
+    "skin": "brown skin",
+    "hair": "hair in a bun"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9461",
+   "file": "bank_9461.webp",
+   "tags": {
+    "archetype": "tech",
+    "bodyType": "young_adult",
+    "expression": "intellectual",
+    "attire": "plate_armor",
+    "colorPalette": "green",
+    "background": "city_night",
+    "accessories": "unique_fx",
+    "skin": "dark ebony skin",
+    "hair": "short buzz cut"
+   },
+   "house": null
+  },
+  {
+   "id": "bank_9462",
+   "file": "bank_9462.webp",
+   "tags": {
+    "archetype": "comedian",
+    "bodyType": "elder",
+    "expression": "intellectual",
+    "attire": "cyber_gear",
+    "colorPalette": "orange",
+    "background": "studio",
+    "accessories": "hat_cap",
+    "skin": "dark ebony skin",
     "hair": "undercut"
    },
    "house": null

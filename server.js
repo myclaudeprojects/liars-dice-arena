@@ -127,20 +127,45 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Phase 1 spectator sport. Test credits only. The legacy USDC table stays
 // behind LEGACY_USDC=1 and is not the product.
-const show = new Show({
-  pickWindowMs: envNum("PICK_WINDOW_MS", 14000),
-  turnDelayMs: paceMs("TURN_DELAY_MS", 2400),
-  revealDelayMs: paceMs("REVEAL_DELAY_MS", 3600),
-  thinkDelayMs: envNum("THINK_DELAY_MS", process.env.SHOW_TEST_HOOK === "1" ? 0 : 1500),
-  settleHoldMs: envNum("SETTLE_HOLD_MS", 12000),
-  bootstrapCount: envNum("SHOW_BOOTSTRAP", 12),
-  loopEnabled: process.env.SHOW_LOOP !== "0",
-  testHook: process.env.SHOW_TEST_HOOK === "1",
-  dataPath: LEGACY_USDC ? null : defaultShowPath(),
-  sleep,
-});
-// Migrate pre-selection agents to the current portrait design (one-time, background).
-setTimeout(() => { show.migrateLegacyPortraits().catch((e) => console.error("pfp migration:", e && e.message)); }, 3000);
+let show = null;
+function showOptions() {
+  return {
+    pickWindowMs: envNum("PICK_WINDOW_MS", 14000),
+    turnDelayMs: paceMs("TURN_DELAY_MS", 2400),
+    revealDelayMs: paceMs("REVEAL_DELAY_MS", 3600),
+    thinkDelayMs: envNum("THINK_DELAY_MS", process.env.SHOW_TEST_HOOK === "1" ? 0 : 1500),
+    settleHoldMs: envNum("SETTLE_HOLD_MS", 12000),
+    bootstrapCount: envNum("SHOW_BOOTSTRAP", 12),
+    loopEnabled: process.env.SHOW_LOOP !== "0",
+    testHook: process.env.SHOW_TEST_HOOK === "1",
+    dataPath: LEGACY_USDC ? null : defaultShowPath(),
+    // Writes coalesce and finish off the event loop. A crash can lose about
+    // a second of book updates; SIGTERM flushes before the lock is released.
+    asyncPersist: !LEGACY_USDC,
+    persistDelayMs: 200,
+    persistMaxDelayMs: 1500,
+    // A live owner fails immediately so /health keeps answering while we retry.
+    lockWaitMs: 0,
+    sleep,
+  };
+}
+function bootShow() {
+  if (show || LEGACY_USDC) return;
+  try {
+    show = new Show(showOptions());
+    show.start().catch((e) => { console.error("show crashed:", e); });
+    setTimeout(() => { show.migrateLegacyPortraits().catch((e) => console.error("pfp migration:", e && e.message)); }, 3000);
+  } catch (e) {
+    show = null;
+    if (e && e.code === "show_store_locked") {
+      console.error("show store locked, retrying:", e.message);
+      setTimeout(bootShow, 500);
+      return;
+    }
+    console.error("show boot failed:", e);
+    process.exit(1);
+  }
+}
 
 let lastError = null;
 async function cycle() {
@@ -267,28 +292,37 @@ async function agentsApi(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://local");
   const url = u.pathname;
-  if (!LEGACY_USDC && (url === "/api/show" || url.startsWith("/api/show/"))) {
-    return handleShow(req, res, url, u.searchParams, show);
-  }
-  if (!LEGACY_USDC && url.startsWith("/api/verify-match/")) {
-    return handleVerifyMatch(req, res, url, show);
-  }
-  // The show owns "/". Legacy mode keeps the old landing page and the table at /arena.
-  if (LEGACY_USDC && url === "/") return sendFile(res, "landing.html");
-  if (PAGES[url]) return sendFile(res, PAGES[url]);
   if (url === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify({
       ok: true,
       mode: LEGACY_USDC ? "legacy-usdc" : "show",
-      phase: LEGACY_USDC ? state.phase : show.phase,
+      phase: LEGACY_USDC ? state.phase : (show ? show.phase : "booting"),
       matchNo: state.matchNo,
-      showReady: show.ready,
+      showReady: !!(show && show.ready),
+      booting: !LEGACY_USDC && !show,
       wallet: wallet.kind,
       clients: clients.size,
       lastError,
     }));
   }
+  if (!LEGACY_USDC && (url === "/api/show" || url.startsWith("/api/show/"))) {
+    if (!show) {
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ ok: true, starting: true, phase: "booting" }));
+    }
+    return handleShow(req, res, url, u.searchParams, show);
+  }
+  if (!LEGACY_USDC && url.startsWith("/api/verify-match/")) {
+    if (!show) {
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ ok: true, starting: true, phase: "booting" }));
+    }
+    return handleVerifyMatch(req, res, url, show);
+  }
+  // The show owns "/". Legacy mode keeps the old landing page and the table at /arena.
+  if (LEGACY_USDC && url === "/") return sendFile(res, "landing.html");
+  if (PAGES[url]) return sendFile(res, PAGES[url]);
   if (url === "/api/leaderboard") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(stats.leaderboard())); }
   if (url === "/api/state") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(publicState())); }
   const preview = url.match(/^\/assets\/agent-creation-previews\/([A-Za-z]+)\/([A-Za-z0-9_]+)\.svg$/);
@@ -392,7 +426,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`Liar's Dice Arena → http://${HOST}:${PORT}   (${LEGACY_USDC ? "legacy USDC" : "phase 1 show"}, wallet: ${wallet.kind})`);
   if (LEGACY_USDC) cycle().catch((e) => { console.error("cycle crashed (unrecoverable):", e); });
-  else show.start().catch((e) => { console.error("show crashed:", e); });
+  else bootShow();
   process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
   process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
 });

@@ -16,6 +16,8 @@ const {
   similarityCeiling,
   validateBrand,
   wordCount,
+  normalizeTitle,
+  makePaletteProbe,
 } = require("./brands");
 const {
   PFP_STYLE_VERSION,
@@ -616,6 +618,65 @@ function paletteAt(hue, balance) {
   };
 }
 
+function similarityKey(archetype, visual) {
+  const v = visual || {};
+  // Same case folding as brandSimilarity's sameText. At the 0.95 ceiling
+  // every weighted trait must match, so this key is that exact match.
+  return [
+    archetype || "",
+    v.silhouette || "",
+    v.emblem || "",
+    v.facialAttitude || "",
+    v.backgroundMotif || "",
+    v.primaryColor || "",
+    v.accentColor || "",
+  ].map((part) => String(part).toLowerCase()).join("\n");
+}
+
+// One pass over the roster. Later attempts are map lookups. At the crowded
+// ceiling (0.95) brandSimilarity is an exact trait match, so a signature
+// set is equivalent to scanning every palette on every attempt.
+function prepareOcc(occ) {
+  if (!occ || occ._ready) return occ || {};
+  const roster = occ.brands || [];
+  const byEmblem = new Map();
+  const sim = new Set();
+  for (const brand of roster) {
+    const visual = (brand && (brand.visualIdentity || brand.visualDNA)) || brand || {};
+    if (visual.emblem) {
+      let bucket = byEmblem.get(visual.emblem);
+      if (!bucket) byEmblem.set(visual.emblem, bucket = []);
+      bucket.push(brand);
+    }
+    sim.add(similarityKey(brand && brand.archetype, visual));
+  }
+  const norms = [];
+  for (const title of occ.titles || []) {
+    const n = normalizeTitle(title);
+    if (n) norms.push(n);
+  }
+  occ._ready = true;
+  occ._byEmblem = byEmblem;
+  occ._sim = sim;
+  occ._palette = makePaletteProbe(occ.palettes || []);
+  occ._titleNorms = norms;
+  occ._titleCache = new Map();
+  return occ;
+}
+
+function titleBlockedBy(title, norms, cache) {
+  if (cache.has(title)) return cache.get(title);
+  const n = normalizeTitle(title);
+  let blocked = false;
+  if (n) {
+    for (const other of norms) {
+      if (other === n || other.includes(n) || n.includes(other)) { blocked = true; break; }
+    }
+  }
+  cache.set(title, blocked);
+  return blocked;
+}
+
 function occupied(brands) {
   const titles = [];
   const emblems = new Set();
@@ -675,6 +736,7 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
   const roster = occ.brands || [];
   const occupiedCount = roster.length;
   const ceiling = similarityCeiling(occupiedCount);
+  const indexed = prepareOcc(occ);
   const attempts = Math.max(192, SAFE_TITLES.length);
   let best = null;
   let bestRank = -1;
@@ -717,7 +779,13 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
     if (!paletteFree(visual, { palettes: reservedPalettes }, [])) continue;
     if (wordCount(tagline) < 4 || wordCount(tagline) > 14) continue;
     const candidate = { archetype: draft.archetype, visualIdentity: visual };
-    const crowded = [...(occ.palettes || []), ...reservedPalettes].some((other) => brandSimilarity(candidate, other) >= ceiling);
+    let crowded;
+    if (ceiling >= 0.95) {
+      crowded = indexed._sim.has(similarityKey(draft.archetype, visual))
+        || reservedPalettes.some((other) => brandSimilarity(candidate, other) >= ceiling);
+    } else {
+      crowded = [...(occ.palettes || []), ...reservedPalettes].some((other) => brandSimilarity(candidate, other) >= ceiling);
+    }
     if (crowded) continue;
     const identity = {
       agentId: draft.id,
@@ -725,10 +793,13 @@ function conceptVariant(draft, index, salt, occ, vary, anchor) {
       portraitId: draft.portraitId || null,
       visualIdentity: visual,
     };
-    if (!keepEmblem && roster.some((other) => emblemReuseBlocked(identity, other, occupiedCount))) continue;
+    if (!keepEmblem) {
+      const bucket = indexed._byEmblem.get(emblem) || [];
+      if (bucket.some((other) => emblemReuseBlocked(identity, other, occupiedCount))) continue;
+    }
     const emblemFresh = keepEmblem || !occ.emblems.has(emblem);
-    const titleFresh = titleFree(title, occ, []);
-    const paletteFresh = paletteFree(visual, occ, []);
+    const titleFresh = !titleBlockedBy(title, indexed._titleNorms, indexed._titleCache);
+    const paletteFresh = !indexed._palette.near(visual);
     const rank = (emblemFresh ? 4 : 0) + (titleFresh ? 2 : 0) + (paletteFresh ? 1 : 0);
     const row = {
       id: `c${index + 1}`,
@@ -1039,9 +1110,12 @@ function visualForPortrait(draft, selections, pool) {
     accentColor: mapped.accent,
   };
   const others = Array.isArray(pool) ? pool : [];
+  const probe = others.length > 32 ? makePaletteProbe(others) : null;
   for (let i = 0; i < 8; i++) {
     visual.accentColor = i === 0 ? mapped.accent : shiftHex(mapped.accent, i);
-    const near = others.some((brand) => brand && brand.agentId !== draft.id && paletteNear(brand, { visualIdentity: visual }));
+    const near = probe
+      ? probe.near({ visualIdentity: visual }, draft.id)
+      : others.some((brand) => brand && brand.agentId !== draft.id && paletteNear(brand, { visualIdentity: visual }));
     if (!near) return visual;
   }
   return visual;

@@ -4,7 +4,7 @@ const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
 const { Show } = require("../src/showrunner");
-const { ShowStore } = require("../src/showstore");
+const { ShowStore, encodeBook } = require("../src/showstore");
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || "assert"); }
 function eq(a, b, m) { if (a !== b) throw new Error((m || "eq") + `: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); }
@@ -221,7 +221,7 @@ function opts(file, extra = {}) {
   const held = path.join(storeDir, "held.json");
   fs.writeFileSync(held, JSON.stringify({ v: 1, marker: "good" }));
   const heldLock = held + ".lock";
-  const holder = spawn(process.execPath, ["-e", "const fs=require('fs'); fs.writeFileSync(process.argv[1], String(process.pid)); setInterval(()=>{}, 1000);", heldLock], { stdio: "ignore" });
+  const holder = spawn(process.execPath, ["-e", "const fs=require('fs'); fs.writeFileSync(process.argv[1], String(process.pid)); setInterval(()=>{}, 1000);", heldLock, "server.js"], { stdio: "ignore" });
   const waitUntil = async (fn) => {
     const start = Date.now();
     while (!fn()) {
@@ -325,7 +325,7 @@ function opts(file, extra = {}) {
 
   const slowFile = path.join(storeDir, "slow.json");
   fs.writeFileSync(slowFile, JSON.stringify({ v: 1, n: 1, cashValue: 0 }));
-  const slow = spawn(process.execPath, ["-e", "const fs=require('fs'); fs.writeFileSync(process.argv[1], String(process.pid)+'\\n'); setTimeout(()=>{ try { fs.unlinkSync(process.argv[1]); } catch {} process.exit(0); }, 400); setInterval(()=>{}, 1000);", slowFile + ".lock"], { stdio: "ignore" });
+  const slow = spawn(process.execPath, ["-e", "const fs=require('fs'); fs.writeFileSync(process.argv[1], String(process.pid)+'\\n'); setTimeout(()=>{ try { fs.unlinkSync(process.argv[1]); } catch {} process.exit(0); }, 400); setInterval(()=>{}, 1000);", slowFile + ".lock", "server.js"], { stdio: "ignore" });
   try {
     await waitUntil(() => {
       try { return Number(fs.readFileSync(slowFile + ".lock", "utf8")) === slow.pid; }
@@ -341,6 +341,56 @@ function opts(file, extra = {}) {
       await new Promise((r) => slow.on("exit", r));
     }
   }
+
+  // A killed process leaves its pid in the lock file. The next container
+  // often has a live process at that same number whose cmdline looks like
+  // `node server.js`. The lock is older than that process, so it is not the
+  // owner and must be taken without waiting out the health-check timeout.
+  const reusedFile = path.join(storeDir, "reused.json");
+  const reusedLock = reusedFile + ".lock";
+  const reusedChild = spawn(process.execPath, ["-e", "setInterval(()=>{}, 1000);", "server.js"], { stdio: "ignore" });
+  try {
+    await waitUntil(() => reusedChild.pid && reusedChild.exitCode == null);
+    fs.writeFileSync(reusedLock, String(reusedChild.pid) + "\n");
+    const past = new Date(Date.now() - 60_000);
+    fs.utimesSync(reusedLock, past, past);
+    const taken = new ShowStore(reusedFile, { lockWaitMs: 80 });
+    const t0 = Date.now();
+    taken.save({ v: 1, n: 4, cashValue: 0, custody: false, realMoney: false });
+    assert(Date.now() - t0 < 1000, "a reused pid does not block startup");
+    eq(taken.load().n, 4, "a reused pid's lock is taken");
+    eq(Number(fs.readFileSync(reusedLock, "utf8")), process.pid, "the new process records itself");
+  } finally {
+    if (reusedChild.exitCode == null && reusedChild.signalCode == null) {
+      reusedChild.kill("SIGKILL");
+      await new Promise((r) => reusedChild.on("exit", r));
+    }
+  }
+
+  const encodedAgents = [];
+  const encodedRecords = {};
+  for (let i = 0; i < 80; i++) {
+    encodedAgents.push({ id: "u_" + i, name: "LDA " + i, n: i, note: "plain" });
+    encodedRecords["u_" + i] = { id: "u_" + i, won: i, lost: 0 };
+  }
+  const encoded = {
+    v: 1,
+    seq: 3,
+    records: encodedRecords,
+    userAgents: encodedAgents,
+    brands: { agents: { a: { agentId: "a" } }, versions: encodedAgents.map((row) => ({ agentId: row.id, brandVersion: "v1", title: row.name })) },
+    cashValue: 0,
+    custody: false,
+    realMoney: false,
+    empty: null,
+    flag: true,
+  };
+  eq(await encodeBook(encoded), JSON.stringify(encoded), "async encoder matches JSON.stringify");
+  const encodedFile = path.join(storeDir, "encoded.json");
+  const encodedStore = new ShowStore(encodedFile);
+  await encodedStore.saveAsync(encoded);
+  eq(fs.readFileSync(encodedFile, "utf8"), JSON.stringify(encoded), "async save writes the same bytes as JSON.stringify");
+  eq(encodedStore.load().seq, 3, "async save reloads");
 
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(dir2, { recursive: true, force: true });

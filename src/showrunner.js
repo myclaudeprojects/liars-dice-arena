@@ -13,7 +13,7 @@ const { SimMarket, pricesFromRecords, DEFAULT_STAKE } = require("./simmarket");
 const { EVENT_MAP } = require("./marketservice");
 const { classifyPace, bidAside, revealHeadline, matchStory, shareCard } = require("./narrative");
 const { intensityFor, paceDelay, rollDelay, splitHold, publicEvent } = require("./contract");
-const { ShowStore } = require("./showstore");
+const { ShowStore, onShutdown } = require("./showstore");
 const { resolvePlaySeeds } = require("./randomness");
 const { MatchIntegrity } = require("./integrity");
 const { OracleService } = require("./oracle");
@@ -485,7 +485,18 @@ function readCreateFeeWallet(incoming) {
 
 class Show {
   constructor(opts = {}) {
-    this.store = opts.dataPath ? new ShowStore(opts.dataPath) : null;
+    this.store = opts.dataPath ? new ShowStore(opts.dataPath, { lockWaitMs: opts.lockWaitMs }) : null;
+    this.asyncPersist = opts.asyncPersist === true;
+    this.persistDelayMs = opts.persistDelayMs == null ? 200 : opts.persistDelayMs;
+    this.persistMaxDelayMs = opts.persistMaxDelayMs == null ? 1500 : opts.persistMaxDelayMs;
+    this._persistDirty = false;
+    this._persistDirtySince = 0;
+    this._persistWriting = false;
+    this._persistTimer = null;
+    this._persistWaiters = [];
+    this._portraitCache = null;
+    this._orderIds = null;
+    this._names = new Map();
     this._hydrating = false;
     this.oracleKeys = opts.oracleKeys || new OracleKeyStore({ env: opts.env || process.env });
     this.oracleService = opts.oracle || new OracleService(this.oracleKeys);
@@ -545,16 +556,27 @@ class Show {
     this._playing = null;
     if (this.store) this.hydrate(this.store.load());
     this.brands.ensureSeeds();
+    this._reindexNames();
+    if (this.asyncPersist) this._offShutdown = onShutdown(() => this.flushSync());
   }
 
   persist() {
     if (!this.store || this._hydrating) return;
+    this._portraitCache = null;
+    if (!this.asyncPersist) {
+      this.store.save(this._book());
+      return;
+    }
+    this._markDirty();
+  }
+
+  _book() {
     const keep = new Set();
     if (this.current) keep.add(this.current.matchId);
     for (const u of this.upcoming) keep.add(u.matchId);
     const book = this.market.exportState();
     book.markets = book.markets.filter((m) => m.status !== "settled" || keep.has(m.matchId));
-    this.store.save({
+    return {
       v: 1,
       seq: this.seq,
       pairIdx: this.pairIdx,
@@ -567,12 +589,74 @@ class Show {
       upcoming: this.upcoming.map((m) => this.slimCard(m)),
       interrupted: this._interrupted || null,
       integrity: this.integrity.exportState(),
-      brands: this.brands.exportState(),
-      userAgents: this.exportUserAgents(),
+      brands: this.brands.exportState({ clone: false }),
+      userAgents: [...this.userAgents.values()],
       cashValue: 0,
       custody: false,
       realMoney: false,
-    });
+    };
+  }
+
+  _markDirty() {
+    this._persistDirty = true;
+    const now = Date.now();
+    if (!this._persistDirtySince) this._persistDirtySince = now;
+    if (this._persistTimer) return;
+    const elapsed = now - this._persistDirtySince;
+    const wait = Math.max(0, Math.min(this.persistDelayMs, this.persistMaxDelayMs - elapsed));
+    this._persistTimer = setTimeout(() => {
+      this._persistTimer = null;
+      this._flushAsync();
+    }, wait);
+  }
+
+  async _flushAsync() {
+    if (this._persistWriting || !this.store) return;
+    if (!this._persistDirty) {
+      this._resolvePersisted();
+      return;
+    }
+    this._persistDirty = false;
+    this._persistDirtySince = 0;
+    this._persistWriting = true;
+    const book = this._book();
+    try {
+      await this.store.saveAsync(book);
+    } catch (e) {
+      console.error("show persist failed:", e && e.message);
+      this._persistDirty = true;
+    } finally {
+      this._persistWriting = false;
+      if (this._persistDirty) this._markDirty();
+      else this._resolvePersisted();
+    }
+  }
+
+  whenPersisted() {
+    if (!this._persistDirty && !this._persistWriting && !this._persistTimer) return Promise.resolve();
+    return new Promise((resolve) => this._persistWaiters.push(resolve));
+  }
+
+  _resolvePersisted() {
+    if (this._persistDirty || this._persistWriting || this._persistTimer) return;
+    const waiters = this._persistWaiters;
+    this._persistWaiters = [];
+    for (const fn of waiters) fn();
+  }
+
+  // Shutdown path. One synchronous write of whatever is still dirty, so a
+  // SIGTERM does not drop the last second of creates.
+  flushSync() {
+    if (this._persistTimer) {
+      clearTimeout(this._persistTimer);
+      this._persistTimer = null;
+    }
+    if (!this.store || this._hydrating) return;
+    if (!this._persistDirty && !this._persistWriting) return;
+    this._persistDirty = false;
+    this._persistDirtySince = 0;
+    this.store.save(this._book());
+    this._resolvePersisted();
   }
 
   slimCard(m) {
@@ -1494,6 +1578,9 @@ class Show {
       this.userAgents.set(row.id, copy);
       this.records.ensure(row.id);
     }
+    this._orderIds = null;
+    this._portraitCache = null;
+    this._reindexNames();
   }
 
   persona(id) {
@@ -1579,7 +1666,22 @@ class Show {
   }
 
   brandPool() {
-    return this.brands.activeBrands();
+    return this.brands.activeBrandRefs();
+  }
+
+  _reindexNames() {
+    const map = new Map();
+    for (const c of CAST) map.set(normalizeDisplayName(c.name), c.id);
+    for (const row of this.userAgents.values()) map.set(normalizeDisplayName(row.name), row.id);
+    this._names = map;
+  }
+
+  _agentOrder() {
+    if (this._orderIds) return this._orderIds;
+    const guests = [...this.userAgents.values()];
+    guests.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    this._orderIds = [...CAST.map((c) => c.id), ...guests.map((g) => g.id)];
+    return this._orderIds;
   }
 
   takenNames() {
@@ -1598,7 +1700,8 @@ class Show {
     const shaped = shapeCreateBody(incoming, this.takenPortraits());
     const brandedName = storedAgentName(shaped.name, this.takenNames());
     const nameKey = normalizeDisplayName(brandedName);
-    const existing = [...this.userAgents.values()].find((row) => normalizeDisplayName(row.name) === nameKey);
+    const existingId = this._names.get(nameKey);
+    const existing = existingId ? this.userAgents.get(existingId) : null;
     if (existing && existing.status !== "READY") {
       if (shaped.portraitId) {
         existing.portraitId = shaped.portraitId;
@@ -1631,6 +1734,9 @@ class Show {
     if (feeWallet) draft.spectatorFeeWallet = feeWallet;
     draft.mintOwner = incoming.mintOwner === "house" ? "house" : "spectator";
     this.userAgents.set(draft.id, draft);
+    this._names.set(normalizeDisplayName(draft.name), draft.id);
+    this._orderIds = null;
+    this._portraitCache = null;
     this.records.ensure(draft.id);
     this.persist();
     return {
@@ -1854,6 +1960,9 @@ class Show {
     if (this.busyIds().has(agentId)) throw creatorError("agent_busy", "That agent is seated in a live match. Try again after it settles.", 409);
     const brands = this.brands.removeAgent(agentId);
     this.userAgents.delete(agentId);
+    this._names.delete(normalizeDisplayName(draft.name));
+    this._orderIds = null;
+    this._portraitCache = null;
     try { if (this.records && this.records.remove) this.records.remove(agentId); } catch { /* records are optional */ }
     this.persist();
     this.emitState();
@@ -1864,15 +1973,38 @@ class Show {
   // Every library portrait is single-use: the ids currently held by any agent (house cast,
   // locked brands in any version, and drafts' provisional picks), except `exceptId`'s own.
   takenPortraits(exceptId) {
-    const used = new Set();
-    for (const row of this.brands._versions.values()) if (row.portrait && row.portrait.id && row.agentId !== exceptId) used.add(row.portrait.id);
-    for (const e of portraitLib.load().entries) if (e.house) used.add(e.id);
-    for (const d of this.userAgents.values()) {
-      if (d.id === exceptId) continue;
-      if (d.provisionalPortrait) used.add(d.provisionalPortrait);
-      for (const c of d.concepts || []) if (c && c.portrait && c.portrait.id) used.add(c.portrait.id); // faces on offer elsewhere right now
+    const cache = this._portraitCache || this._collectPortraits();
+    if (!exceptId) return cache.all.slice();
+    const out = [];
+    for (const [id, owners] of cache.byId) {
+      let other = false;
+      for (const owner of owners) if (owner !== exceptId) { other = true; break; }
+      if (other) out.push(id);
     }
-    return [...used];
+    return out;
+  }
+
+  _collectPortraits() {
+    const byId = new Map();
+    const add = (id, owner) => {
+      if (!id) return;
+      let owners = byId.get(id);
+      if (!owners) byId.set(id, owners = new Set());
+      owners.add(owner);
+    };
+    for (const row of this.brands._versions.values()) {
+      if (row.portrait && row.portrait.id) add(row.portrait.id, row.agentId);
+    }
+    for (const entry of portraitLib.load().entries) if (entry.house) add(entry.id, "house:" + entry.house);
+    for (const draft of this.userAgents.values()) {
+      if (draft.provisionalPortrait) add(draft.provisionalPortrait, draft.id);
+      for (const concept of draft.concepts || []) {
+        if (concept && concept.portrait && concept.portrait.id) add(concept.portrait.id, draft.id);
+      }
+    }
+    const all = [...byId.keys()];
+    this._portraitCache = { byId, all };
+    return this._portraitCache;
   }
 
   // A draft that has not finished creation has no brand yet. Rather than a letter, the
@@ -2024,7 +2156,7 @@ class Show {
     try {
       portrait = await renderCanonicalPortrait(draft, {
         selections,
-        brands: this.brands.everyVersion(),
+        brands: this.brands.versionRefs(),
         currentVersion: Number(previous && previous.version || 0),
         provider: input.provider,
       });
@@ -2155,12 +2287,37 @@ class Show {
     };
   }
 
-  agentList() {
-    const house = CAST.map((c) => this.listRow(c, "house"));
-    const guests = [...this.userAgents.values()]
-      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-      .map((row) => this.listRow(this.named(row.id), "user", row));
-    return [...house, ...guests];
+  agentCount() {
+    return this._agentOrder().length;
+  }
+
+  agentList(opts = {}) {
+    const order = this._agentOrder();
+    const total = order.length;
+    let start = 0;
+    let end = total;
+    if (opts && opts.offset != null && opts.offset !== "") {
+      const n = Number(opts.offset);
+      if (Number.isFinite(n) && n > 0) start = Math.min(total, Math.floor(n));
+    }
+    if (opts && opts.limit != null && opts.limit !== "") {
+      const n = Number(opts.limit);
+      if (Number.isFinite(n) && n >= 0) end = Math.min(total, start + Math.floor(n));
+    }
+    const agents = [];
+    for (let i = start; i < end; i++) {
+      const row = this._listRowFor(order[i]);
+      if (row) agents.push(row);
+    }
+    return agents;
+  }
+
+  _listRowFor(id) {
+    const house = CAST.find((c) => c.id === id);
+    if (house) return this.listRow(house, "house");
+    const draft = this.userAgents.get(id);
+    if (!draft) return null;
+    return this.listRow(this.named(id), "user", draft);
   }
 
   listRow(c, roster, draft) {

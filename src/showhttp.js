@@ -181,7 +181,15 @@ async function handleShow(req, res, url, query, show) {
       return true;
     }
     if (req.method === "GET" && path === "/agents") {
-      send(res, 200, { ok: true, agents: show.agentList() });
+      const opts = {};
+      const limitRaw = query && query.get ? query.get("limit") : null;
+      const offsetRaw = query && query.get ? query.get("offset") : null;
+      if (limitRaw != null && limitRaw !== "" && Number.isFinite(Number(limitRaw))) opts.limit = Number(limitRaw);
+      if (offsetRaw != null && offsetRaw !== "" && Number.isFinite(Number(offsetRaw))) opts.offset = Number(offsetRaw);
+      const agents = show.agentList(opts);
+      const body = { ok: true, agents };
+      if (opts.limit != null || opts.offset != null) body.total = show.agentCount();
+      send(res, 200, body);
       return true;
     }
     const brandGet = path.match(/^\/agents\/([^/]+)\/brand$/);

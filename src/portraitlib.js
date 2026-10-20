@@ -28,7 +28,7 @@ function manifestPath() {
 
 function load(force) {
   const file = manifestPath();
-  if (!file) return (cache = { file: null, entries: [] });
+  if (!file) return (cache = { file: null, entries: [], byId: new Map(), byHouse: new Map() });
   if (cache && cache.file === file && !force) return cache;
   let entries = [];
   try {
@@ -41,7 +41,17 @@ function load(force) {
       index: i,
     }));
   } catch { entries = []; }
-  cache = { file, dir: path.dirname(file), entries };
+  const byId = new Map();
+  const byHouse = new Map();
+  for (const entry of entries) {
+    byId.set(entry.id, entry);
+    if (entry.house) {
+      let list = byHouse.get(entry.house);
+      if (!list) byHouse.set(entry.house, list = []);
+      list.push(entry);
+    }
+  }
+  cache = { file, dir: path.dirname(file), entries, byId, byHouse };
   return cache;
 }
 
@@ -80,7 +90,7 @@ function match(selections, { count = 4, exclude = [], seed = "" } = {}) {
 }
 
 function houseCandidates(agentId) {
-  return load().entries.filter((e) => e.house === agentId);
+  return load().byHouse.get(agentId) || [];
 }
 
 // House cast: the first candidate unless HOUSE_PORTRAITS picks another ("dracula=3,fox=2").
@@ -92,7 +102,10 @@ function houseEntry(agentId) {
   return list[0];
 }
 
-function byId(id) { return load().entries.find((e) => e.id === id) || null; }
+function byId(id) {
+  const lib = load();
+  return (lib.byId && lib.byId.get(id)) || null;
+}
 
 function hash(text) { let h = 2166136261; const s = String(text || ""); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 

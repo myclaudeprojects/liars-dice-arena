@@ -93,6 +93,56 @@ function paletteNear(a, b, limit = PALETTE_NEAR) {
   return A.every((color, i) => colorDistance(color, B[i]) < limit);
 }
 
+function rgbDistance(a, b) {
+  if (!a || !b) return Infinity;
+  const dr = a[0] - b[0];
+  const dg = a[1] - b[1];
+  const db = a[2] - b[2];
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+// Exact paletteNear over a large roster. Primary colors are bucketed so a
+// candidate only compares against palettes that could be inside `limit`.
+function makePaletteProbe(brands, limit = PALETTE_NEAR) {
+  const cell = 16;
+  const reach = Math.ceil(limit / cell);
+  const map = new Map();
+  for (const brand of brands || []) {
+    if (!brand) continue;
+    const [p, s, a] = paletteOf(brand).map(hexToRgb);
+    if (!p || !s || !a) continue;
+    const key = `${p[0] >> 4},${p[1] >> 4},${p[2] >> 4}`;
+    let bucket = map.get(key);
+    if (!bucket) map.set(key, bucket = []);
+    bucket.push({ brand, p, s, a });
+  }
+  return {
+    near(candidate, exceptId) {
+      const visual = candidate && candidate.visualIdentity ? candidate.visualIdentity : candidate;
+      const p = hexToRgb(visual && visual.primaryColor);
+      const s = hexToRgb(visual && visual.secondaryColor);
+      const a = hexToRgb(visual && visual.accentColor);
+      if (!p || !s || !a) return false;
+      const cx = p[0] >> 4;
+      const cy = p[1] >> 4;
+      const cz = p[2] >> 4;
+      for (let dx = -reach; dx <= reach; dx++) {
+        for (let dy = -reach; dy <= reach; dy++) {
+          for (let dz = -reach; dz <= reach; dz++) {
+            const bucket = map.get(`${cx + dx},${cy + dy},${cz + dz}`);
+            if (!bucket) continue;
+            for (const item of bucket) {
+              if (exceptId && item.brand.agentId === exceptId) continue;
+              if (rgbDistance(p, item.p) < limit && rgbDistance(s, item.s) < limit && rgbDistance(a, item.a) < limit) return true;
+            }
+          }
+        }
+      }
+      return false;
+    },
+  };
+}
+
 function normalizeTitle(title) {
   return String(title || "").toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -553,6 +603,10 @@ class BrandBook {
     this._versions = new Map();
     this._active = new Map();
     this._meta = new Map();
+    this._byEmblem = new Map();
+    this._pub = new Map();
+    this._pubGen = 0;
+    this._publicMap = null;
     if (opts.state) this.importState(opts.state);
     if (opts.seeds !== false) this.ensureSeeds();
   }
@@ -562,8 +616,33 @@ class BrandBook {
       const key = versionKey(brand.agentId, brand.brandVersion);
       if (this._versions.has(key)) continue;
       this._versions.set(key, clone(brand));
+      this._indexEmblem(this._versions.get(key));
       if (!this._active.has(brand.agentId)) this._activate(brand, brand.generation.createdAt);
     }
+  }
+
+  _indexEmblem(brand) {
+    const emblem = brand && brand.visualIdentity && brand.visualIdentity.emblem;
+    if (!emblem) return;
+    let bucket = this._byEmblem.get(emblem);
+    if (!bucket) this._byEmblem.set(emblem, bucket = []);
+    bucket.push(brand);
+  }
+
+  _unindexEmblem(brand) {
+    const emblem = brand && brand.visualIdentity && brand.visualIdentity.emblem;
+    const bucket = emblem && this._byEmblem.get(emblem);
+    if (!bucket) return;
+    const i = bucket.indexOf(brand);
+    if (i >= 0) bucket.splice(i, 1);
+  }
+
+  _dropPublic(agentId) {
+    this._pubGen++;
+    this._publicMap = null;
+    if (!agentId) { this._pub.clear(); return; }
+    const prefix = agentId + ":";
+    for (const key of this._pub.keys()) if (key.startsWith(prefix)) this._pub.delete(key);
   }
 
   _activate(brand, at) {
@@ -603,6 +682,20 @@ class BrandBook {
   // Portrait uniqueness has to clear retired palettes too.
   everyVersion() {
     return [...this._versions.values()].map((row) => clone(row));
+  }
+
+  // Live rows for read-only scans. Callers must not mutate them.
+  versionRefs() {
+    return [...this._versions.values()];
+  }
+
+  activeBrandRefs() {
+    const rows = [];
+    for (const [id, version] of this._active) {
+      const row = this._versions.get(versionKey(id, version));
+      if (row) rows.push(row);
+    }
+    return rows;
   }
 
   list() {
@@ -677,7 +770,17 @@ class BrandBook {
   }
 
   publicOf(agentId, brandVersion) {
-    return this.publicBrand(this.full(agentId, brandVersion));
+    const version = brandVersion || this._active.get(agentId);
+    if (!version) return null;
+    const key = versionKey(agentId, version);
+    const row = this._versions.get(key);
+    if (!row) return null;
+    const sig = key + ":" + (row.visualDirty ? 1 : 0) + ":" + (row.status || "") + ":" + ((row.generation && row.generation.status) || "");
+    const hit = this._pub.get(sig);
+    if (hit) return hit;
+    const view = this.publicBrand(row);
+    this._pub.set(sig, view);
+    return view;
   }
 
   activeBrands() {
@@ -690,11 +793,13 @@ class BrandBook {
   }
 
   publicMap() {
+    if (this._publicMap) return this._publicMap;
     const out = {};
-    for (const row of this.activeBrands()) {
-      const brand = this.publicBrand(row);
-      if (brand && brand.status === "READY") out[row.agentId] = brand;
+    for (const [id, version] of this._active) {
+      const brand = this.publicOf(id, version);
+      if (brand && brand.status === "READY") out[id] = brand;
     }
+    this._publicMap = out;
     return out;
   }
 
@@ -713,7 +818,9 @@ class BrandBook {
       throw err;
     }
     const occupiedCount = this._active.size;
-    for (const other of this._versions.values()) {
+    const emblem = brand.visualIdentity && brand.visualIdentity.emblem;
+    const bucket = emblem ? (this._byEmblem.get(emblem) || []) : [];
+    for (const other of bucket) {
       if (other.agentId === brand.agentId) continue;
       // Shared emblem / title / palette values are allowed. Block only an
       // emblem reuse that does not already differ in title and palette
@@ -726,6 +833,8 @@ class BrandBook {
     }
     const stored = clone(brand);
     this._versions.set(key, stored);
+    this._indexEmblem(stored);
+    this._dropPublic(brand.agentId);
     if (opts.activate !== false) this._activate(stored);
     return clone(stored);
   }
@@ -740,6 +849,7 @@ class BrandBook {
     if (patch.creationSelections) row.creationSelections = patch.creationSelections;
     const meta = this._meta.get(agentId);
     if (meta) meta.updatedAt = new Date().toISOString();
+    this._dropPublic(agentId);
     return clone(row);
   }
 
@@ -777,6 +887,7 @@ class BrandBook {
       const key = versionKey(row.agentId, row.brandVersion);
       if (this._versions.has(key)) continue;
       this._versions.set(key, clone(row));
+      this._indexEmblem(this._versions.get(key));
     }
     const agents = raw.agents && typeof raw.agents === "object" ? raw.agents : {};
     for (const meta of Object.values(agents)) {
@@ -796,18 +907,28 @@ class BrandBook {
   // Drop every version of an agent's brand (admin removal of a user agent).
   removeAgent(agentId) {
     let n = 0;
-    for (const key of [...this._versions.keys()]) { const row = this._versions.get(key); if (row && row.agentId === agentId) { this._versions.delete(key); n++; } }
+    for (const key of [...this._versions.keys()]) {
+      const row = this._versions.get(key);
+      if (row && row.agentId === agentId) {
+        this._unindexEmblem(row);
+        this._versions.delete(key);
+        n++;
+      }
+    }
     this._active.delete(agentId);
+    this._meta.delete(agentId);
+    this._dropPublic(agentId);
     return n;
   }
 
-  exportState() {
-    const versions = [...this._versions.values()].map((row) => clone(row));
+  exportState(opts = {}) {
+    const copy = opts.clone === false ? (row) => row : (row) => clone(row);
+    const versions = [...this._versions.values()].map(copy);
     versions.sort((a, b) => (a.agentId === b.agentId
       ? a.brandVersion.localeCompare(b.brandVersion, undefined, { numeric: true })
       : a.agentId.localeCompare(b.agentId)));
     const agents = {};
-    for (const [id, meta] of this._meta) agents[id] = clone(meta);
+    for (const [id, meta] of this._meta) agents[id] = copy(meta);
     return { agents, versions };
   }
 
@@ -948,10 +1069,12 @@ module.exports = {
   validateBrand,
   paletteNear,
   titlesTooClose,
+  normalizeTitle,
   brandSimilarity,
   paletteDistinctLimit,
   similarityCeiling,
   emblemReuseBlocked,
   colorDistance,
+  makePaletteProbe,
   wordCount,
 };
